@@ -8,8 +8,9 @@ import time
 import networkx as nx
 import matplotlib.pyplot as plt
 import concurrent.futures
-import re
-from collections import defaultdict
+from main import setup_logging
+
+logger = setup_logging()
 
 
 class GraphType(Enum):
@@ -29,14 +30,16 @@ class CallGraph:
     def __init__(self):
         self.G = None
         self.graph_type = GraphType.EMPTY
-        pass
+
+        self.terminal_nodes = []
+
+        # Attributes for code-gen.
+        # TODO
 
 
-    def from_codegen_log(self, trace_path, match_threshold=100):
+    def from_codegen_log(self, trace_path):
         """
         Parses out the call lineage of how functions are generated. 
-        NOTE: This is currently hardcoded for the current `naive`
-        flow of the code-gen project.
         For each test, it also parses out what functions that test 
         called.
 
@@ -44,15 +47,14 @@ class CallGraph:
         - 'fundraising_crm latest'
         """
         self.graph_type = GraphType.CODE_GEN
+        self.G = nx.Graph(directed=True)
 
         # 1. If path doesn't exist, assume it's a trace name.
         if not os.path.exists(trace_path):
             trace_path = get_trace_path(trace_path)
         
         # 2. Read file and init nodes.
-        print("Insert nodes:", end=" ")
         start = time.time()
-        self.G = nx.Graph(directed=True)
         with open(trace_path, "r") as f:
             llm_calls = f.readlines()
         
@@ -64,7 +66,7 @@ class CallGraph:
                 timestamp="N/A", 
                 cache_key="root_spec_0_user")
 
-
+        # Add nodes from trace file.
         for id, llm_call in enumerate(llm_calls):
             call_dict = json.loads(llm_call)
             self.G.add_node(id+1, 
@@ -73,26 +75,40 @@ class CallGraph:
                             llm_out=call_dict["output"], 
                             timestamp=call_dict["timestamp"], 
                             cache_key=call_dict["cache_key"])
-        print(time.time() - start)
+        logger.info(f"Insert nodes: {time.time() - start}")
 
         # 3. Insert edges (build dependency lineage).
-        print("Insert edges:", end=" ")
         start = time.time()
         self._insert_edges_hardcoded()
-        print(time.time() - start)
+
+        self.terminal_nodes = []
+        for node in self.G.nodes:
+            if self.G.degree(node) == 1:
+                self.terminal_nodes.append(node)
+        logger.info(f"Insert edges: {time.time() - start}")
+
+
         # TODO: Cache graph.
 
         # 4. Parse test log (TODO)
-        print("Parse test log:", end=" ")
         start = time.time()
         self.passed_test_calls = {}
         self.failed_test_calls = {}
-        print(time.time() - start)
+        logger.info(f"Parse test log: {time.time() - start}")
 
 
-    def get_subgraph_for_test():
-        # Make new graph.
+    def get_test_lineage(self):
+        # Make subgraph for test's lineage.
+        test_lineage = nx.Graph(directed=True)
 
+        # Test entry example:
+        # fundraising_crm_tree_src.backend_services.data_models.Task_0_sonnet3.7-nothink
+
+        # Get terminal relevant nodes.
+        "test should just be the path as is?"
+        " -> map"
+
+        "for all terminal nodes, check which ones match. You need to consider that some terminal nodes are for classes and others not"
         # Get leave nodes -> called fn in csv to node.
         # Nimm den closest match und dann die hoechste nummer.
         # Jede gecallte function is File.Class
@@ -101,32 +117,24 @@ class CallGraph:
 
         # Do DFS and insert nodes
 
-
-        # Walk backwards
         pass
 
 
-
-
-
-
-
     def visualize(self):
-        # TODO: There are "stray test reviews" (i.e., review -> {fix missing} -> review).
-        # We will just pretend they aren't there.
-
         # Categorize nodes for plotting.
         root_node = [0]
         normal_nodes = []
         exit_nodes = []
         for node in self.G.nodes:
             if self.G.degree(node) == 0:
-                print("Ignoring", self.G.nodes[node]["cache_key"])
+                # TODO: There are "stray test reviews" (i.e., review -> {missing fix} -> review).
+                # We will just pretend they aren't there.
+                # print("Ignoring", self.G.nodes[node]["cache_key"])
+                continue
             elif self.G.degree(node) == 1:
                 exit_nodes.append(node)
             else:
                 normal_nodes.append(node)
-
 
         # Plotting layout (spread nodes out)
         pos = nx.spring_layout(self.G,
@@ -149,7 +157,7 @@ class CallGraph:
                             node_color='red',
                             label="User's design doc")
         
-        # Final nodes.
+        # Terminal nodes.
         nx.draw_networkx_nodes(self.G,
                             pos,
                             nodelist=exit_nodes,
@@ -157,12 +165,7 @@ class CallGraph:
                             node_color="limegreen",
                             label="Terminal LLM call")
 
-        # draw edges (once)
         nx.draw_networkx_edges(self.G, pos)
-
-
-        # sizes = [300 if n == 100 else 50 for n in self.G.nodes()]
-        # nx.draw(self.G, with_labels=False, node_size=sizes)
         plt.legend(loc="lower right")
         plt.show()
 
@@ -221,21 +224,10 @@ class CallGraph:
         self._connect_node_types(node_type="class_test_spec_gen_integration", dependent_node_type="method_test_transpiling_gen")
         self._connect_node_types(node_type="method_test_transpiling_review", dependent_node_type="file_planner_analysis")
 
-        # 3. Connect all to root spec.
+        # 3. Connect to root spec.
         self._connect_to_root(dependent_node_type="file_planner_analysis")
         self._connect_to_root(dependent_node_type="class_test_spec_gen_unit")
         self._connect_to_root(dependent_node_type="class_test_spec_gen_integration")
-
-        # TODO: Just from what I heard from Amadou.
-
-
-
-        # 3.
-
-        # TODO: Connect to input (spec). Those are the test spec nodes!
-
-        # Letzte review -> ersten analysis zeigen
-
 
 
     def _group_nodes_by_cache_key(self, node_type):
@@ -248,8 +240,6 @@ class CallGraph:
         grouped = defaultdict(list)
 
         for node_id in self.G.nodes:
-            if node_id == 0:
-                print()
             cache_key = self.G.nodes[node_id].get("cache_key", "")
             match = pattern.match(cache_key)
             if not match:

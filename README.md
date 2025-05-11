@@ -1,7 +1,7 @@
 # Agent copilot
 
 ## Install
-TODO
+`pip install -r requirements.txt`
 
 ## Running brainstorming doc
 

@@ -1,0 +1,29 @@
+# pyproject.toml
+
+[build-system]
+requires = ["setuptools>=64.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-copilot"
+version = "0.1.0"
+description = "A short description of your agent-copilot tool"
+readme = "README.md"
+requires-python = ">=3.7"
+
+# your runtime dependencies; keep this in sync with requirements.txt
+dependencies = [
+]
+
+[project.scripts]
+# this makes a console command `agent-copilot` that calls main.main()
+agent-copilot = "main:main"
+
+[tool.setuptools]
+# include your top-level main.py
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+# treat traces/ as a package
+where = ["."]
+include = ["traces", "traces.*"]
