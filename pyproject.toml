@@ -1,7 +1,7 @@
 # pyproject.toml
 
 [build-system]
-requires = ["setuptools>=64.0.0", "wheel"]
+requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -15,15 +15,10 @@ requires-python = ">=3.7"
 dependencies = [
 ]
 
+[tool.setuptools]
+package-dir = {"" = "."}
+packages = ["taint_models"]
+
 [project.scripts]
 # this makes a console command `agent-copilot` that calls main.main()
 agent-copilot = "main:main"
-
-[tool.setuptools]
-# include your top-level main.py
-py-modules = ["main"]
-
-[tool.setuptools.packages.find]
-# treat traces/ as a package
-where = ["."]
-include = ["traces", "traces.*", "find_errors", "find_errors.*"]

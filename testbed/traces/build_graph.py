@@ -137,6 +137,52 @@ class CallGraph:
         return test_lineage
 
 
+    def get_test_module(self, module_name):
+        """
+        module_name must have format like: `database/test_db_operations.py`
+
+        `test_function_calls.json` has the following format:
+        {
+          "database/test_db_operations.py": ["database.db_operations"]
+        }
+        """
+        # Get all functions called by the test case.
+        with open(os.path.join(self.trace_path, "test_function_calls.json"), "r") as f:
+            called_functions_dict = json.load(f)
+        called_functions = called_functions_dict[module_name]
+
+        # Loop through terminal nodes and see which ones generated called functions.
+        test_terminal_nodes = []
+        test_added = False # test node will be added many times bc per class ... maybe better way to do this?
+        for t in self.terminal_nodes:
+            cache_key = self.G.nodes[t]["cache_key"]
+
+            if "test" in cache_key:
+                transformed_cache_key = self._test_id_from_cache_key(cache_key)
+                if not test_added and transformed_cache_key in called_functions:
+                    test_terminal_nodes.append(t)
+                    test_added = True # TODO: We have several entries for same test ... leave for now but need to address
+            else:
+                transformed_cache_key = self._function_id_from_cache_key(cache_key)
+                if transformed_cache_key in called_functions:
+                    test_terminal_nodes.append(t)
+
+        # Insert lineage of each called function.
+        test_lineage = nx.DiGraph()
+        for src in test_terminal_nodes:
+            for u, v in nx.dfs_edges(self.G, source=src):
+                test_lineage.add_edge(u, v)
+
+
+        # HACK: Just for visualization purposes, we abuse this function and don't only insert the DFS 
+        # tree but also add further (unnecessary) edges.
+        # TODO: Delete this part.
+        for u, v in [(15, 0), (2, 0)]:
+            test_lineage.add_edge(u, v)
+
+        return test_lineage
+
+
     def visualize(self):
         plt.figure(figsize=(7, 3.5))
 

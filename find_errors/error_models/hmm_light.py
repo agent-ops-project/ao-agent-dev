@@ -138,18 +138,32 @@ class HMMLight:
 
 # Example usage:
 if __name__ == "__main__":
+    # output 1: ["corr", "wrong", "wrong", "corr"]
+    observed = ["corr", "wrong", "wrong", "corr"]
+    true = [1, 0, 0, 0]
+    # output 2: ["corr", "wrong", "corr"]
+    observed = ["corr", "wrong", "corr"]
+    true = [1, 1, 1]
+    # output 3: ["corr", "wrong", "corr", "wrong", "wrong", "wrong"]
+    # output 4: ["corr", "wrong", "corr", "wrong", "wrong", "wrong"]
+    observed = ["corr", "wrong", "corr", "wrong", "wrong", "wrong"]
+    true = [1, 1, 0, 0, 0, 0]
+    observed = ["corr", "wrong", "corr", "wrong", "wrong", "wrong", "wrong", "wrong", "wrong", "wrong", "wrong"]
+    true = [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+
+
     # Map observations to 0=C, 1=U, 2=W
     obs_seqs = [
-        [0, 0, 1, 0, 0, 1, 2],  # a failed run
-        [0, 0, 0, 0, 0],        # a successful run
-        # ... more sequences ...
+        [1, 0, 0, 0],  # a failed run
+        [1, 1, 1],        # a successful run
+        [1, 1, 0, 0, 0, 0]
     ]
     # final_labels: 1 for fail state, 0 for pass state
     final_labels = [1, 0]
     all_labels = [
-        [1, 1, 1, 0, 0, 0, 0], # a failed run
-        [1, 1, 1, 1, 1] # a successful run
-        # ... more sequences ...
+        [1, 1, 0, 0],
+        [1, 1, 1],
+        [1, 1, 1, 0, 0, 0]
     ]
 
     model = HMMLight(n_states=2, n_observations=3)
@@ -158,6 +172,12 @@ if __name__ == "__main__":
 
     # Compute posteriors on a new run
     new_seq = [0, 0, 1, 0]
+    ["corr", "wrong", "corr", "wrong", "wrong", "wrong", "wrong", "wrong", "wrong", "wrong", "wrong"]
+    new_seq = [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]
     post = model.predict_posteriors(new_seq)
     print("Posterior probabilities at each step (columns are states 0=pass,1=fail):")
     print(post)
+
+
+    observed = ["corr", "wrong", "corr", "wrong", "wrong", "wrong", "wrong", "wrong", "wrong", "wrong", "wrong"]
+    true = [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0]
