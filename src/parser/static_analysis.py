@@ -1,8 +1,5 @@
 
 
-
-
-
 class StaticGraph:
 
     def __init__(self):
@@ -11,3 +8,4 @@ class StaticGraph:
 
 
     def parse_graph(self, in_path, cache_path):
+        pass

@@ -1,3 +1,0 @@
-"""
-Code repositories for testing.
-""" 
