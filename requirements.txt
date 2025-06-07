@@ -1,26 +1,47 @@
--e git+https://github.com/ferdiko/agent-copilot@81ac5b6a3041506e358c5f4d2075d9299d4d6118#egg=agent_copilot
+-e git+https://github.com/ferdiko/agent-copilot@5749212a77e6f1ae5fd6675cb77033558f0ee419#egg=agent_copilot
+annotated-types==0.7.0
+anyio==4.9.0
 appnope @ file:///Users/builder/cbouss/perseverance-python-buildout/croot/appnope_1728598891743/work
 asttokens @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_15z9et5x6m/croot/asttokens_1743630451525/work
+boto3==1.38.17
+botocore==1.38.17
+certifi==2025.4.26
+click==8.1.7
 comm @ file:///Users/builder/cbouss/perseverance-python-buildout/croot/comm_1728599088478/work
 contourpy==1.3.2
 cycler==0.12.1
+dataclasses-json==0.5.7
 debugpy @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_a5sm9dmihj/croot/debugpy_1736267550163/work
 decorator @ file:///opt/conda/conda-bld/decorator_1643638310831/work
+distro==1.9.0
+dotenv==0.9.9
 executing @ file:///opt/conda/conda-bld/executing_1646925071911/work
 fonttools==4.57.0
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.10
 ipykernel @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_6757k8pgf8/croot/ipykernel_1737662465787/work
 ipython @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_be0wj_gdwv/croot/ipython_1744912974216/work
 ipython_pygments_lexers @ file:///private/var/folders/c_/qfmhj66j0tn016nkx_th4hxm0000gp/T/abs_c2ksl8pvkj/croot/ipython_pygments_lexers_1744753254606/work
 jedi @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_b78vrox9dk/croot/jedi_1733987406492/work
+jiter==0.9.0
+jmespath==1.0.1
 jupyter_client @ file:///Users/builder/cbouss/buildout/croot/jupyter_client_1739485375188/work
 jupyter_core @ file:///Users/builder/cbouss/perseverance-python-buildout/croot/jupyter_core_1731706382499/work
 kiwisolver==1.4.8
+libcst==1.8.0
+marshmallow==3.26.1
+marshmallow-enum==1.5.1
 matplotlib==3.10.3
 matplotlib-inline @ file:///Users/builder/cbouss/buildout/croot/matplotlib-inline_1732916602568/work
+mypy_extensions==1.1.0
 nest_asyncio @ file:///Users/builder/cbouss/perseverance-python-buildout/croot/nest-asyncio_1728599914369/work
 networkx==3.4.2
 numpy==2.2.5
+openai==1.78.1
 packaging @ file:///private/var/folders/c_/qfmhj66j0tn016nkx_th4hxm0000gp/T/abs_15t4xe1fp0/croot/packaging_1734472125760/work
+pandas==2.3.0
 parso @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_ffagjb_lok/croot/parso_1733963312676/work
 pexpect @ file:///tmp/build/80754af9/pexpect_1605563209008/work
 pillow==11.2.1
@@ -29,14 +50,35 @@ prompt_toolkit @ file:///Users/builder/cbouss/perseverance-python-buildout/croot
 psutil @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_ed123tcwwq/croot/psutil_1736369384437/work
 ptyprocess @ file:///tmp/build/80754af9/ptyprocess_1609355006118/work/dist/ptyprocess-0.7.0-py2.py3-none-any.whl
 pure-eval @ file:///opt/conda/conda-bld/pure_eval_1646925070566/work
+pydantic==2.11.4
+pydantic_core==2.33.2
 Pygments @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_d3k0kb020b/croot/pygments_1744664134805/work
 pyparsing==3.2.3
+pyre-check==0.9.23
+pyre-extensions==0.0.32
 python-dateutil @ file:///Users/builder/cbouss/perseverance-python-buildout/croot/python-dateutil_1728593996450/work
+python-dotenv==1.1.0
+pytz==2025.2
+PyYAML-ft==7.0.1
 pyzmq @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_728n2oj6m9/croot/pyzmq_1734709561835/work
+s3transfer==0.12.0
+scipy==1.15.3
 setuptools==78.1.1
 six @ file:///private/var/folders/c_/qfmhj66j0tn016nkx_th4hxm0000gp/T/abs_2e3n1z57yz/croot/six_1744271514562/work
+sniffio==1.3.1
 stack-data @ file:///opt/conda/conda-bld/stack_data_1646927590127/work
+tabulate==0.9.0
+TestSlide==2.7.1
+toml==0.10.2
+tomli==2.2.1
 tornado @ file:///Users/builder/cbouss/buildout/croot/tornado_1735843078790/work
+tqdm==4.67.1
 traitlets @ file:///Users/builder/cbouss/perseverance-python-buildout/croot/traitlets_1728593682905/work
+typeguard==2.13.3
+typing-inspect==0.9.0
+typing-inspection==0.4.0
+typing_extensions==4.13.2
+tzdata==2025.2
+urllib3==2.4.0
 wcwidth @ file:///Users/ktietz/demo/mc3/conda-bld/wcwidth_1629357192024/work
 wheel==0.45.1

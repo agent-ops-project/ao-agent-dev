@@ -7,11 +7,12 @@
     "/Users/ferdi/Documents/agent-copilot/testbed/code_repos/try"
   ],
   "taint_models_path": [
-    "/Users/ferdi/Documents/agent-copilot/pyre_config/taint"
+    "/Users/ferdi/Documents/agent-copilot/src/parser/pyre_static_analysis/taint"
   ],
   "exclude": [
     ".*/build/.*",
-    ".*/venv/.*"
+    ".*/venv/.*",
+    "*miniconda*"
   ],
   "strict": false
 }

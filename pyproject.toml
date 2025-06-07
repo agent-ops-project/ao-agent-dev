@@ -13,12 +13,23 @@ requires-python = ">=3.7"
 
 # your runtime dependencies; keep this in sync with requirements.txt
 dependencies = [
+    # Add any dependencies you need, e.g.:
+    # "pyre-check",
+    # "requests",
 ]
 
 [tool.setuptools]
-package-dir = {"" = "."}
-packages = ["taint_models"]
+# Tell setuptools to look in src/ for packages
+package-dir = {"" = "src"}
+# Find all packages under src/
+packages = ["agent_copilot", "parser"]
+
+[tool.setuptools.package-data]
+# Include non-Python files like pyre configs
+parser = ["pyre_static_analysis/**/*"]
+# If you have other config files in agent_copilot:
+# agent_copilot = ["*.yaml", "*.json"]
 
 [project.scripts]
-# this makes a console command `agent-copilot` that calls main.main()
-agent-copilot = "main:main"
+# Console command that calls main function in the agent_copilot package
+agent-copilot = "agent_copilot.main:main"

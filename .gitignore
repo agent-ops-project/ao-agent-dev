@@ -178,3 +178,4 @@ cython_debug/
 *.key
 *secret*
 configs/keys
+_results/

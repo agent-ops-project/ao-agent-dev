@@ -3,7 +3,7 @@ import random
 
 class A:
 
-    def init(self, x):
+    def __init__(self, x):
         os.system(x)
         pass
 
@@ -25,17 +25,14 @@ def func2(x):
     func_next(x)
 
 def vulnerable():
-    # (Line 4)
     x = input("Enter something: ")
 
     if random.random() > 0.5:
-        # Branch A → sink at line 7
-        a = x + "safasd"
-        func2(a)
+        # a = x + "safasd"
+        func2(x)
     else:
-        # Branch B → sink at line 9
-        a = "Adfasdf" + x
-        func1(a)
+        # a = "Adfasdf" + x
+        func1(x)
 
 if __name__ == "__main__":
     vulnerable()
