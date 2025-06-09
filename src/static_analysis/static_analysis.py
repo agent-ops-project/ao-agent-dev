@@ -7,7 +7,7 @@ from typing import Dict, Set, Tuple, Optional
 import networkx as nx
 import matplotlib.pyplot as plt
 
-from agent_copilot.logging_config import setup_logging
+from common.logging_config import setup_logging
 logger = setup_logging()
 
 
