@@ -5,12 +5,14 @@
     "version": "0.1.0",
     "configurations": [
         {
-            "name": "Python Debugger: Current File with Arguments",
+            "name": "develop try.py",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
+            "program": "${workspaceFolder}/src/agent_copilot/develop_shim.py",
             "console": "integratedTerminal",
-            "args": "${command:pickArgs}"
-        },
+            "args": [
+                "${workspaceFolder}/testbed/code_repos/try/try.py"
+            ]
+        }
     ]
 }

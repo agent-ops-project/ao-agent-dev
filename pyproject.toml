@@ -22,14 +22,15 @@ dependencies = [
 # Tell setuptools to look in src/ for packages
 package-dir = {"" = "src"}
 # Find all packages under src/
-packages = ["agent_copilot", "parser"]
+packages = ["agent_copilot", "static_analysis", "common", "runtime_tracing"]
 
 [tool.setuptools.package-data]
 # Include non-Python files like pyre configs
-parser = ["pyre_static_analysis/**/*"]
+static_analysis = ["pyre_static_analysis/**/*"]
 # If you have other config files in agent_copilot:
 # agent_copilot = ["*.yaml", "*.json"]
 
 [project.scripts]
 # Console command that calls main function in the agent_copilot package
-agent-copilot = "agent_copilot.main:main"
+# agent-copilot = "agent_copilot.main:main" TODO
+develop = "agent_copilot.develop_shim:main"

@@ -32,6 +32,7 @@ def user_edit(llm_call_id: int, new_input: str) -> None:
     # Send the restart instruction to all connected shim controllers
     with threading.Lock():  # ensure thread-safe sending
         for conn in list(clients.get("shim_control", [])):
+            print("send to shim")
             try:
                 conn.sendall(data)
             except Exception:
@@ -169,7 +170,7 @@ def run_server():
 # CLI entry point
 def main():
     parser = argparse.ArgumentParser(description="Development server for LLM call visualization")
-    parser.add_argument('command', choices=['start', 'stop'], help="Start or stop the server")
+    parser.add_argument('command', choices=['start', 'stop', 'edit'], help="Start or stop the server")
     args = parser.parse_args()
 
     if args.command == 'start':
@@ -202,7 +203,7 @@ def main():
     # DEBUG: Call from VS Code extension in the future.
     elif args.command == 'edit':
         user_edit(llm_call_id=42, new_input="hello 42")
-        
+
 
 if __name__ == "__main__":
     # Support internal "--serve" invocation to actually run the server loop
