@@ -1,6 +1,7 @@
 import hashlib
 import pickle
 import diskcache as dc
+import yaml
 
 
 def cache_key(fn, args, kwargs):
@@ -22,11 +23,16 @@ class CacheManager:
     get_input, get_output return None if no special inputs/outputs should be used
     """
     def __init__(self):
-        # TODO: Read cache config.
-        cache_dir = "/Users/ferdi/Documents/agent-copilot/testbed/code_repos/try_out/.user_config/"
-        size_limit = int(2e9)
-        self.ttl = None
-        self.cache = dc.Cache(cache_dir, size_limit=size_limit) # ".../.cache"
+        # TODO: Figure out absolute paths!!
+        config_path = "/Users/ferdi/Documents/agent-copilot/testbed/try_out_repo/.user_config/cache.yaml"
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)["cache_config"]
+
+        cache_dir = config["cache_location"]
+        size_limit = config["size_limit"]
+        ttl = config["time_to_live"]
+        self.ttl = None if ttl == -1 else ttl
+        self.cache = dc.Cache(cache_dir, size_limit=size_limit)
 
         self.input_overwrites = {} # "file:line_no" -> string
         self.output_overwrites = {} # "file:line_no" -> string
@@ -54,6 +60,7 @@ class CacheManager:
 
 
     def evict_caller(self, file_name, line_no):
+        # TODO: I don't think we ever need this?
         caller_id = f"{file_name}:{line_no}"
         self.cache.evict(caller_id)
 

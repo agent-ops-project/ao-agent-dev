@@ -27,7 +27,7 @@ def patch_by_path(dotted_path, *, notify=False, server_conn=None):
 
 def apply_all_monkey_patches(yaml_path=None):
     # TODO: For debugging:
-    yaml_path = "/Users/ferdi/Documents/agent-copilot/testbed/code_repos/try_out/.user_config/cache.yaml"
+    yaml_path = "/Users/ferdi/Documents/agent-copilot/testbed/try_out_repo/.user_config/cache.yaml"
 
     # Read functions that should be patched.
     with open(yaml_path, 'r') as f:
