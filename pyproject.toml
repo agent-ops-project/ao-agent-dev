@@ -13,9 +13,7 @@ requires-python = ">=3.7"
 
 # your runtime dependencies; keep this in sync with requirements.txt
 dependencies = [
-    # Add any dependencies you need, e.g.:
-    # "pyre-check",
-    # "requests",
+    # Should all be in full-environment.yml
 ]
 
 [tool.setuptools]
