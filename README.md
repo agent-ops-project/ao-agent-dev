@@ -30,16 +30,17 @@ https://docs.google.com/document/d/1B0YCZXxEa1St744XfLSZR2Yzt_zihRdUB-d_c1wFw3Q/
 
 ### Architecture
 
-These are the processes running. Since the user runs their `develop` process from the debugger or command line, it communicates with the server over a TCP socket. 
+These are the processes running. 
+
+1. The users launch processes of their program by running `devlop their_script.py` which feels exactly like running their script normally with `python their_script.py` --- they can also use the debugger to run their script, which also feels completely normal. Under the hood the `develop` command monkey patches certain functions and logs runtime events to the `Python server`.
+2. The `Python server` is the core of the system and responsbible for all analysis. It receives the logs from the user process and updates the UI according to its analyses.
+3. The red boxes are the UI of the VS Code extension. The UI gets updated by the `Python server`. The VS Code extension spawn the `Python server` and tear it down. They also exchange a heart beat for failures and unclean VS Code exits.
 
 ![Processes overview](./media/processes.png)
 
-The python server gets torn down by the VS Code extension if there's a clean exit. VS Code extension and python server also exchange a heart beat so the python server can destroy itself or be restarted by the VS Code extension.
-
-
 ### Keep dependencies up to date
 
-Keep dependencies in pyproject.toml up to date:
+Keep dependencies up to date:
 
 `conda env export --no-builds --from-history > conda-environment.yml`
 

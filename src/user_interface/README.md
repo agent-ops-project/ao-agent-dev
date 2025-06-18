@@ -50,3 +50,38 @@ Message format:
     }
 }
 ```
+
+## Dev
+
+### Architecture
+
+There are three components that communicate with each other:
+
+ - Python bridge: Executes the python code. Code in `src/user_interface/python_bridge`.
+ - VS Code extension: Hosts the VS Code extension (UI). Code in `src/extension.ts` and helpers in `src/providers`.
+ - Webview: Visualizes the graph (in React). Code in `src/webview`
+
+Communication goes: python bridge <-> vs code extension <-> webview.
+
+#### Extension <-> Webview
+
+ - Webview send message to extension. Utilities (e.g., `sendMessage()`) in `src/webview/utils/messaging.ts`
+ - Webview receive message from extension: `src/webview/App.tsx`
+ - Extension receive message from webview: `src/providers/GraphViewProvider.ts`
+ - Extension send to webview happens in several places using `webview.postMessage()`. For example in `GraphViewProvider.ts`
+
+#### Extension <-> Python bridge
+
+ - Extension receives and sends messages in `GraphViewProvider.ts` (see `_sendToPython` and `_handlePythonMessage`)
+ - Python
+
+There's a python bridge () which
+
+
+Message receiving handler: `src/webview/App.tsx`
+
+Utilities for sending messages: `src/webview/utils/messaging.ts`
+
+
+
+
