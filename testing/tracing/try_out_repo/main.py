@@ -6,7 +6,7 @@ import random
 import sys
 import os
 
-from testbed.code_repos.try_out.external_functions import openai_call
+from evaluation.code_repos.try_out.external_functions import openai_call
 
 # def trace_calls(frame, event, arg):
 #     if event != 'call':

@@ -7,6 +7,7 @@ import threading
 import subprocess
 import select
 import uuid
+import time
 from typing import Dict, Any, Optional
 
 # Default host/port for the server socket
@@ -21,6 +22,9 @@ clients = {
 }
 calls = []              # list of recorded LLM call details (with assigned IDs)
 call_id_counter = 1     # incremental ID generator for calls
+
+# Add global mapping for shim process IDs
+dashim_pid_map = {}  # process_id -> (session_id, shim_conn)
 
 # --- Data Structures ---
 
@@ -96,6 +100,7 @@ def handle_client(conn: socket.socket, addr):
     print(f"New client connection from {addr}")
     file_obj = conn.makefile(mode='r')
     session: Optional[Session] = None
+    process_id = None
     try:
         # Expect handshake first
         handshake_line = file_obj.readline()
@@ -105,6 +110,7 @@ def handle_client(conn: socket.socket, addr):
         role = handshake.get("role")
         script = handshake.get("script")
         session_id = handshake.get("session_id")
+        process_id = handshake.get("process_id")
         if not session_id:
             session_id = str(uuid.uuid4())
         with threading.Lock():
@@ -114,10 +120,19 @@ def handle_client(conn: socket.socket, addr):
         if role == "shim-runner" or role == "shim-control":
             with session.lock:
                 session.shim_conn = conn
+            if process_id is not None:
+                dashim_pid_map[process_id] = (session_id, conn)
+                # Broadcast updated shim list to all UIs
+                for sess in sessions.values():
+                    for ui_conn in list(sess.ui_conns):
+                        send_json(ui_conn, {"type": "shim_list", "pids": list(dashim_pid_map.keys())})
         elif role == "ui":
             with session.lock:
                 session.ui_conns.add(conn)
-        conn_info[conn] = {"role": role, "session_id": session_id}
+            # On UI connect, send list of shim pids
+            shim_pids = list(dashim_pid_map.keys())
+            send_json(conn, {"type": "shim_list", "pids": shim_pids})
+        conn_info[conn] = {"role": role, "session_id": session_id, "process_id": process_id}
         send_json(conn, {"type": "session_id", "session_id": session_id, "script": session.script_name})
         # Main message loop
         try:
@@ -139,8 +154,25 @@ def handle_client(conn: socket.socket, addr):
                         except Exception as e:
                             print(f"Error closing socket: {e}")
                             pass
-                    # Close the main server socket if accessible
-                    os._exit(0)  # Immediately exit the process
+                    os._exit(0)
+                # If UI sends restart with process_id, route to correct shim
+                if msg.get("type") == "restart" and "process_id" in msg:
+                    pid = msg["process_id"]
+                    target = dashim_pid_map.get(pid)
+                    if target:
+                        _, shim_conn = target
+                        send_json(shim_conn, msg)
+                        continue  # Don't route to all shims
+                # If shim sends deregister, remove from pid map and broadcast
+                if msg.get("type") == "deregister" and "process_id" in msg:
+                    pid = msg["process_id"]
+                    if pid in dashim_pid_map:
+                        del dashim_pid_map[pid]
+                        # Broadcast updated shim list to all UIs
+                        for sess in sessions.values():
+                            for ui_conn in list(sess.ui_conns):
+                                send_json(ui_conn, {"type": "shim_list", "pids": list(dashim_pid_map.keys())})
+                    continue
                 route_message(conn, msg)
         except (ConnectionResetError, OSError):
             # Socket closed, exit thread quietly
@@ -151,6 +183,10 @@ def handle_client(conn: socket.socket, addr):
             if info["role"] == "shim":
                 with session.lock:
                     session.shim_conn = None
+                # Remove from pid map if present
+                for pid, (sess_id, c) in list(dashim_pid_map.items()):
+                    if c == conn:
+                        del dashim_pid_map[pid]
             elif info["role"] == "ui":
                 with session.lock:
                     session.ui_conns.discard(conn)
@@ -181,7 +217,7 @@ def run_server():
 # CLI entry point
 def main():
     parser = argparse.ArgumentParser(description="Development server for LLM call visualization")
-    parser.add_argument('command', choices=['start', 'stop', 'edit'], help="Start or stop the server")
+    parser.add_argument('command', choices=['start', 'stop', 'edit', 'restart'], help="Start or stop the server")
     args = parser.parse_args()
 
     if args.command == 'start':
@@ -201,7 +237,7 @@ def main():
         # Connect to the server and send a shutdown command
         try:
             sock = socket.create_connection((HOST, PORT), timeout=3)
-            # Send handshake
+            # The server will only accept messages from this process after a handshake.
             handshake = {"type": "hello", "role": "ui", "script": "stopper"}
             sock.sendall((json.dumps(handshake) + "\n").encode('utf-8'))
             # Send shutdown message
@@ -211,6 +247,22 @@ def main():
         except Exception:
             print("No running server found.")
             sys.exit(1)
+    elif args.command == 'restart':
+        # Stop the server if running
+        try:
+            sock = socket.create_connection((HOST, PORT), timeout=3)
+            handshake = {"type": "hello", "role": "ui", "script": "restarter"}
+            sock.sendall((json.dumps(handshake) + "\n").encode('utf-8'))
+            sock.sendall((json.dumps({"type": "shutdown"}) + "\n").encode('utf-8'))
+            sock.close()
+            print("Develop server stop signal sent (for restart). Waiting for shutdown...")
+            time.sleep(2)
+        except Exception:
+            print("No running server found. Proceeding to start.")
+        # Start the server
+        subprocess.Popen([sys.executable, __file__, "--serve"],
+                            close_fds=True, start_new_session=True)
+        print("Develop server restarted.")
     elif args.command == '--serve':
         # Internal: run the server loop (not meant to be called by users directly)
         run_server()

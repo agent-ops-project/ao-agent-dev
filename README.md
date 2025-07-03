@@ -47,6 +47,10 @@ Keep dependencies up to date:
 
 `conda env export --no-builds --from-history > conda-environment.yml`
 
+### Testing
+
+Go to `testing` dir to just try things out. See READMEs there.
+
 
 ### TODOs
 

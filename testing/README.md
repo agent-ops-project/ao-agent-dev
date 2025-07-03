@@ -1,13 +1,5 @@
-## Test shim <-> Server communication.
+# Quick testing to verify functionlity
 
-1. Start server
+ - `server_comm`: Write dummy shim and UIs to communicate with the server
+ - `tracing`: Example repo to try tracing and static analysis.
 
-```
-python src/agent_copilot/develop_server.py start
-```
-
-2. Run your example shim script.
-
-```
-python testing/simulate_shim.py
-```

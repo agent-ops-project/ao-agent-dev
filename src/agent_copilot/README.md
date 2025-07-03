@@ -29,13 +29,16 @@ We have a supervisor server running in the background. This server (1) communica
 
 ### Server
 
-Manually starting and stoping server:
+Manually starting, stoping, restarting server:
 
  - `python src/agent_copilot/develop_server.py start` 
  - `python src/agent_copilot/develop_server.py stop`
+ - `python src/agent_copilot/develop_server.py restart`
 
 Some basics: 
 
  - To check if the server process is still running: `ps aux | grep develop_server.py` 
 
- - To check if the socket is still in use (and which process is holding it): `lsof -i :5959`
+ - Check which processes are holding the port: `lsof -i :5959`
+
+ - When you make changes to `develop_server.py`, remember to restart the server to see them take effect.
