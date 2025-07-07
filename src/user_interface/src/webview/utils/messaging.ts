@@ -1,4 +1,4 @@
-import { NodeUpdateMessage } from '../types';
+import { NodeUpdateMessage, GraphNode } from '../types';
 
 declare const vscode: any;
 
@@ -7,7 +7,7 @@ export function sendMessage(message: any) {
     vscode.postMessage(message);
 }
 
-export function sendNodeUpdate(nodeId: string, field: string, value: string) {
+export function sendNodeUpdate(nodeId: string, field: keyof GraphNode, value: string) {
     vscode.postMessage({
         type: 'nodeUpdated',
         payload: { nodeId, field, value }

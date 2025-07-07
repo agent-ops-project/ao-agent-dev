@@ -8,7 +8,7 @@ import subprocess
 import select
 import uuid
 import time
-from typing import Dict, Any, Optional, Set
+from typing import Dict, Any, Optional, Set, Tuple
 
 # Configuration constants
 HOST = '127.0.0.1'
@@ -30,33 +30,25 @@ class DevelopServer:
     """Manages the development server for LLM call visualization."""
     
     def __init__(self):
-        # Global state for tracking connected clients and LLM call records
-        self.clients = {
-            "shim_control": [],  # shim controller connections (orchestrators)
-            "shim_runner": [],   # shim runner connections (sending call data)
-            "extension": []      # extension client connections
+        self.clients: Dict[str, list] = {
+            "shim_control": [],
+            "shim_runner": [],
+            "extension": []
         }
-        self.calls = []              # list of recorded LLM call details (with assigned IDs)
-        self.call_id_counter = 1     # incremental ID generator for calls
-        
-        # Add global mapping for shim process IDs
-        self.dashim_pid_map: Dict[int, tuple] = {}  # process_id -> (session_id, shim_conn)
-        
-        # Map session_id to Session
+        self.calls: list = []
+        self.call_id_counter: int = 1
+        self.dashim_pid_map: Dict[int, Tuple[str, socket.socket]] = {}
         self.sessions: Dict[str, Session] = {}
-        
-        # Map socket to (role, session_id)
         self.conn_info: Dict[socket.socket, Dict[str, Any]] = {}
-        
-        # Server socket
+        self.process_info: Dict[int, Dict[str, Any]] = {}
         self.server_sock: Optional[socket.socket] = None
+        self.lock = threading.Lock()
     
     def send_json(self, conn: socket.socket, msg: dict) -> None:
-        """Send a JSON message to a client."""
         try:
             conn.sendall((json.dumps(msg) + "\n").encode("utf-8"))
-        except Exception:
-            pass  # Best effort only
+        except Exception as e:
+            print(f"[develop_server] Error sending JSON: {e}")
     
     def broadcast_to_uis(self, session: Session, msg: dict) -> None:
         """Broadcast a message to all UI connections in a session."""
@@ -65,6 +57,25 @@ class DevelopServer:
                 self.send_json(ui_conn, msg)
             except Exception:
                 session.ui_conns.discard(ui_conn)
+    
+    def broadcast_process_list_to_all_uis(self) -> None:
+        process_list = [
+            {
+                "pid": pid,
+                "script_name": info.get("script_name", "unknown"),
+                "session_id": info.get("session_id", ""),
+                "status": info.get("status", "running")
+            }
+            for pid, info in self.process_info.items()
+        ]
+        msg = {"type": "process_list", "processes": process_list}
+        for session in self.sessions.values():
+            for ui_conn in list(session.ui_conns):
+                try:
+                    self.send_json(ui_conn, msg)
+                except Exception as e:
+                    print(f"[develop_server] Error broadcasting to UI: {e}")
+                    session.ui_conns.discard(ui_conn)
     
     def route_message(self, sender: socket.socket, msg: dict) -> None:
         """Route a message based on sender role."""
@@ -129,16 +140,17 @@ class DevelopServer:
         return False
     
     def handle_deregister_message(self, msg: dict) -> bool:
-        """Handle deregister message, remove from pid map and broadcast."""
         if msg.get("type") == "deregister" and "process_id" in msg:
             pid = msg["process_id"]
+            role = None
+            for conn, info in list(self.conn_info.items()):
+                if info.get("process_id") == pid:
+                    role = info.get("role")
+                    break
             if pid in self.dashim_pid_map:
                 del self.dashim_pid_map[pid]
-                # Broadcast updated shim list to all UIs
-                for sess in self.sessions.values():
-                    for ui_conn in list(sess.ui_conns):
-                        self.send_json(ui_conn, {"type": "shim_list", "pids": list(self.dashim_pid_map.keys())})
-                return True  # Message handled
+                self._untrack_process_if_runner(role, pid)
+                return True
         return False
     
     def handle_debugger_restart_message(self, msg: dict) -> bool:
@@ -147,21 +159,29 @@ class DevelopServer:
             pid = msg["process_id"]
             script_name = msg.get("script", "unknown")
             print(f"[develop_server] Debugger restart detected for PID {pid}, script: {script_name}")
-            # Update the session info to reflect the restart
             if pid in self.dashim_pid_map:
                 session_id, shim_conn = self.dashim_pid_map[pid]
                 if session_id in self.sessions:
                     self.sessions[session_id].script_name = script_name
-                    # Broadcast updated session info to UIs
-                    for sess in self.sessions.values():
-                        for ui_conn in list(sess.ui_conns):
-                            self.send_json(ui_conn, {
-                                "type": "session_restart", 
-                                "process_id": pid,
-                                "script": script_name
-                            })
-            return True  # Message handled
+                    if pid in self.process_info:
+                        self.process_info[pid]["script_name"] = script_name
+                        self.broadcast_process_list_to_all_uis()
+            return True
         return False
+    
+    def _track_process_if_runner(self, role: str, process_id: int, script: str, session_id: str) -> None:
+        if role == "shim-runner":
+            self.process_info[process_id] = {
+                "script_name": script or "unknown",
+                "session_id": session_id,
+                "status": "running"
+            }
+            self.broadcast_process_list_to_all_uis()
+
+    def _untrack_process_if_runner(self, role: Optional[str], process_id: int) -> None:
+        if role == "shim-runner" and process_id in self.process_info:
+            del self.process_info[process_id]
+            self.broadcast_process_list_to_all_uis()
     
     def handle_client(self, conn: socket.socket, addr) -> None:
         """Handle a new client connection in a separate thread."""
@@ -169,6 +189,7 @@ class DevelopServer:
         file_obj = conn.makefile(mode='r')
         session: Optional[Session] = None
         process_id = None
+        role = None
         
         try:
             # Expect handshake first
@@ -184,26 +205,21 @@ class DevelopServer:
             if not session_id:
                 session_id = str(uuid.uuid4())
             
-            with threading.Lock():
+            with self.lock:
                 if session_id not in self.sessions:
                     self.sessions[session_id] = Session(session_id, script or "")
                 session = self.sessions[session_id]
             
-            if role == "shim-runner" or role == "shim-control":
+            if role in ("shim-runner", "shim-control"):
                 with session.lock:
                     session.shim_conn = conn
                 if process_id is not None:
                     self.dashim_pid_map[process_id] = (session_id, conn)
-                    # Broadcast updated shim list to all UIs
-                    for sess in self.sessions.values():
-                        for ui_conn in list(sess.ui_conns):
-                            self.send_json(ui_conn, {"type": "shim_list", "pids": list(self.dashim_pid_map.keys())})
+                    self._track_process_if_runner(role, process_id, script, session_id)
             elif role == "ui":
                 with session.lock:
                     session.ui_conns.add(conn)
-                # On UI connect, send list of shim pids
-                shim_pids = list(self.dashim_pid_map.keys())
-                self.send_json(conn, {"type": "shim_list", "pids": shim_pids})
+                self.broadcast_process_list_to_all_uis()
             
             self.conn_info[conn] = {"role": role, "session_id": session_id, "process_id": process_id}
             self.send_json(conn, {"type": "session_id", "session_id": session_id, "script": session.script_name})
@@ -214,7 +230,8 @@ class DevelopServer:
                     print(f"[develop_server] Raw line received: {line!r}")
                     try:
                         msg = json.loads(line.strip())
-                    except Exception:
+                    except Exception as e:
+                        print(f"[develop_server] Error parsing JSON: {e}")
                         continue
                     
                     if "session_id" not in msg:
@@ -236,9 +253,8 @@ class DevelopServer:
                     else:
                         self.route_message(conn, msg)
                         
-            except (ConnectionResetError, OSError):
-                # Socket closed, exit thread quietly
-                pass
+            except (ConnectionResetError, OSError) as e:
+                print(f"[develop_server] Connection closed: {e}")
         finally:
             # Clean up connection
             info = self.conn_info.pop(conn, None)
@@ -250,13 +266,15 @@ class DevelopServer:
                     for pid, (sess_id, c) in list(self.dashim_pid_map.items()):
                         if c == conn:
                             del self.dashim_pid_map[pid]
+                            # Only remove from process info if shim-runner
+                            self._untrack_process_if_runner(info.get("role"), pid)
                 elif info["role"] == "ui":
                     with session.lock:
                         session.ui_conns.discard(conn)
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[develop_server] Error closing connection: {e}")
     
     def run_server(self) -> None:
         """Main server loop: accept clients and spawn handler threads."""

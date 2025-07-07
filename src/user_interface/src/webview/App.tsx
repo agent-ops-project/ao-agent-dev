@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GraphView } from './components/GraphView';
+import { ExperimentsView } from './components/ExperimentsView';
 import { GraphNode, GraphEdge } from './types';
 import { sendReady } from './utils/messaging';
 import { useIsVsCodeDarkTheme } from './utils/themeUtils';
@@ -10,6 +11,12 @@ export const App: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'overview' | 'experiments'>('overview');
     const [nodes, setNodes] = useState<GraphNode[]>([]);
     const [edges, setEdges] = useState<GraphEdge[]>([]);
+    const [processes, setProcesses] = useState<Array<{
+        pid: number;
+        script_name: string;
+        session_id: string;
+        status: string;
+    }>>([]);
 
     const isDarkTheme = useIsVsCodeDarkTheme();
 
@@ -31,6 +38,10 @@ export const App: React.FC = () => {
                     if (message.payload.edges) {
                         setEdges(message.payload.edges);
                     }
+                    break;
+                case 'process_list':
+                    console.log('Received process list:', message.processes); // Debug log
+                    setProcesses(message.processes || []);
                     break;
             }
         };
@@ -119,7 +130,7 @@ export const App: React.FC = () => {
                 onNodeUpdate={handleNodeUpdate}
               />
           ) : (
-            <div style={{ padding: '20px' }}>Experiments tab content goes here</div>
+            <ExperimentsView processes={processes} />
           )}
         </div>
       </div>
