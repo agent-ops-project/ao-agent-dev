@@ -21,7 +21,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     public handleEditDialogSave(value: string): void {
         if (this._pendingEdit && this._view) {
             this._view.webview.postMessage({
-                type: 'nodeUpdated',
+                type: 'updateNode',
                 payload: {
                     nodeId: this._pendingEdit.nodeId,
                     field: this._pendingEdit.field,
@@ -62,15 +62,13 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
         // Handle messages from the webview
         webviewView.webview.onDidReceiveMessage(data => {
-            console.log("Extension received message from webview:", data);
             if (data.type === 'restart') {
                 pythonClient.sendMessage({ type: 'restart', id: data.id });
             }
             switch (data.type) {
-                case 'nodeUpdated':
-                    // Handle node update - forward to backend
-                    console.log('Node updated:', data.payload);
-                    // Here you would send this to your backend
+                case 'updateNode':
+                    // Forward the updateNode message to the develop server
+                    pythonClient.sendMessage(data);
                     break;
                 case 'ready':
                     // Webview is ready, send initial graph data if available

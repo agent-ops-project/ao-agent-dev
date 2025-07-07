@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { GraphView } from './components/GraphView';
 import { ExperimentsView } from './components/ExperimentsView';
 import { GraphNode, GraphEdge, GraphData } from './types';
@@ -32,29 +32,63 @@ export const App: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'overview' | 'experiments' | 'experiment-graph'>('overview');
     const [nodes, setNodes] = useState<GraphNode[]>([]);
     const [edges, setEdges] = useState<GraphEdge[]>([]);
-    const [processes, setProcesses] = useState<Array<{
+    interface ProcessInfo {
         pid: number;
         script_name: string;
         session_id: string;
         status: string;
         role?: string;
-    }>>([]);
-    const [selectedExperiment, setSelectedExperiment] = useState<{ pid: number; script_name: string; session_id: string; status: string; role?: string } | null>(null);
+        graph?: GraphData;
+    }
+
+    const [processes, setProcesses] = useState<ProcessInfo[]>([]);
+    const [experimentGraphs, setExperimentGraphs] = useState<Record<string, GraphData>>({});
+    const [selectedExperiment, setSelectedExperiment] = useState<ProcessInfo | null>(null);
 
     const isDarkTheme = useIsVsCodeDarkTheme();
+
+    const handleNodeUpdate = useCallback((nodeId: string, field: string, value: string) => {
+        // If in experiment-graph tab, update the selected experiment's graph
+        if (activeTab === 'experiment-graph' && selectedExperiment) {
+            const sessionId = selectedExperiment.session_id;
+            setExperimentGraphs(prev => {
+                const prevGraph = prev[sessionId];
+                if (!prevGraph) {
+                    console.warn(`[App] No graph found for session: ${sessionId}`);
+                    return prev;
+                }
+                const updatedNodes = prevGraph.nodes.map(node =>
+                    node.id === nodeId ? { ...node, [field]: value } : node
+                );
+                const updatedGraph = { ...prevGraph, nodes: updatedNodes };
+                
+                // Send update to backend
+                vscode.postMessage({
+                    type: 'updateNode',
+                    session_id: sessionId,
+                    nodeId,
+                    field,
+                    value
+                });
+                return { ...prev, [sessionId]: updatedGraph };
+            });
+        } else {
+            // Overview graph (legacy, keep for now)
+            setNodes(prev => prev.map(node =>
+                node.id === nodeId ? { ...node, [field]: value } : node
+            ));
+        }
+    }, [activeTab, selectedExperiment]);
 
     useEffect(() => {
         // Listen for messages from the extension
         const handleMessage = (event: MessageEvent) => {
             const message = event.data;
-            console.log('Received message:', message); // Debug log
             switch (message.type) {
                 case 'addNode':
-                    console.log('Adding node:', message.payload); // Debug log
                     setNodes(prev => [...prev, message.payload]);
                     break;
                 case 'setGraph':
-                    console.log('Setting graph:', message.payload); // Debug log
                     if (message.payload.nodes) {
                         setNodes(message.payload.nodes);
                     }
@@ -62,9 +96,23 @@ export const App: React.FC = () => {
                         setEdges(message.payload.edges);
                     }
                     break;
+                case 'updateNode':
+                    // Handle node update from extension's EditDialog
+                    if (message.payload) {
+                        const { nodeId, field, value } = message.payload;
+                        handleNodeUpdate(nodeId, field, value);
+                    }
+                    break;
                 case 'process_list':
-                    console.log('Received process list:', message.processes); // Debug log
                     setProcesses(message.processes || []);
+                    // Build experimentGraphs map
+                    const graphMap: Record<string, GraphData> = {};
+                    (message.processes || []).forEach((proc: ProcessInfo) => {
+                        if (proc.session_id && proc.graph) {
+                            graphMap[proc.session_id] = proc.graph;
+                        }
+                    });
+                    setExperimentGraphs(graphMap);
                     break;
             }
         };
@@ -72,32 +120,21 @@ export const App: React.FC = () => {
         window.addEventListener('message', handleMessage);
         
         // Notify extension that webview is ready
-        console.log('Sending ready message'); // Debug log
         sendReady();
 
         return () => {
             window.removeEventListener('message', handleMessage);
         };
-    }, []);
+    }, [handleNodeUpdate]);
 
-    // Debug log for state changes
-    useEffect(() => {
-        console.log('Nodes updated:', nodes);
-        console.log('Edges updated:', edges);
-    }, [nodes, edges]);
 
-    const handleNodeUpdate = (nodeId: string, field: string, value: string) => {
-        setNodes(prev => prev.map(node => 
-            node.id === nodeId ? { ...node, [field]: value } : node
-        ));
-    };
 
     // Filter for shim-control only
     const shimControlProcesses = processes.filter(p => p.role === 'shim-control');
     const runningProcesses = shimControlProcesses.filter(p => p.status === 'running');
     const finishedProcesses = shimControlProcesses.filter(p => p.status === 'finished');
 
-    const handleExperimentCardClick = (process: any) => {
+    const handleExperimentCardClick = (process: ProcessInfo) => {
         setSelectedExperiment(process);
         setActiveTab('experiment-graph');
     };
@@ -180,9 +217,10 @@ export const App: React.FC = () => {
             <ExperimentsView runningProcesses={runningProcesses} finishedProcesses={finishedProcesses} onCardClick={handleExperimentCardClick} />
           ) : activeTab === 'experiment-graph' && selectedExperiment ? (
             <GraphView
-              nodes={exampleGraph.nodes}
-              edges={exampleGraph.edges}
-              onNodeUpdate={() => {}}
+              nodes={experimentGraphs[selectedExperiment.session_id]?.nodes || []}
+              edges={experimentGraphs[selectedExperiment.session_id]?.edges || []}
+              onNodeUpdate={handleNodeUpdate}
+              session_id={selectedExperiment.session_id}
             />
           ) : null}
         </div>

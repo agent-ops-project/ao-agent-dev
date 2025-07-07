@@ -41,7 +41,7 @@ export interface Message {
 }
 
 export interface NodeUpdateMessage extends Message {
-    type: 'nodeUpdated';
+    type: 'updateNode';
     payload: {
         nodeId: string;
         field: keyof GraphNode;

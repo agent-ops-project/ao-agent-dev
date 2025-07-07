@@ -14,7 +14,7 @@ import { CustomEdge } from './CustomEdge';
 import { GraphNode, GraphEdge } from '../types';
 import { calculateNodePositions } from '../utils/nodeLayout';
 import { routeEdges } from '../utils/edgeRouting';
-import { sendNodeUpdate, sendMessage } from '../utils/messaging';
+import { sendNodeUpdate, sendMessage, sendReset } from '../utils/messaging';
 import styles from './GraphView.module.css';
 
 interface GraphViewProps {
@@ -31,10 +31,11 @@ const edgeTypes = {
   custom: CustomEdge,
 };
 
-export const GraphView: React.FC<GraphViewProps> = ({
+export const GraphView: React.FC<GraphViewProps & { session_id?: string }> = ({
   nodes: initialNodes,
   edges: initialEdges,
   onNodeUpdate,
+  session_id,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -44,10 +45,12 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
   const handleNodeUpdate = useCallback(
     (nodeId: string, field: keyof GraphNode, value: string) => {
+      console.log('[GraphView] handleNodeUpdate called:', { nodeId, field, value, session_id });
       onNodeUpdate(nodeId, field, value);
-      sendNodeUpdate(nodeId, field, value);
+      sendNodeUpdate(nodeId, field, value, session_id);
+      sendReset();
     },
-    [onNodeUpdate]
+    [onNodeUpdate, session_id]
   );
 
   const updateLayout = useCallback(() => {

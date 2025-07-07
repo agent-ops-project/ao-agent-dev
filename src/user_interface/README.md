@@ -42,7 +42,7 @@ The extension sends messages to the backend when:
 Message format:
 ```typescript
 {
-    type: 'nodeUpdated',
+    type: 'updateNode',
     payload: {
         nodeId: string,
         field: 'input' | 'output' | 'label',

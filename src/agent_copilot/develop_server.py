@@ -8,6 +8,7 @@ import subprocess
 import select
 import uuid
 import time
+import copy
 from typing import Dict, Any, Optional, Set, Tuple
 
 # Configuration constants
@@ -15,6 +16,27 @@ HOST = '127.0.0.1'
 PORT = 5959
 SOCKET_TIMEOUT = 3
 SHUTDOWN_WAIT = 2
+
+EXAMPLE_GRAPH = {
+    "nodes": [
+        {"id": "1", "input": "User input data", "output": "Processed user data", "codeLocation": "file.py:15", "label": "User Input Handler", "border_color": "#ff3232"},
+        {"id": "2", "input": "Processed user data", "output": "Validated data", "codeLocation": "file.py:42", "label": "Data Validator", "border_color": "#00c542"},
+        {"id": "3", "input": "Validated data", "output": "Database query", "codeLocation": "file.py:78", "label": "Query Builder", "border_color": "#ffba0c"},
+        {"id": "4", "input": "Database query", "output": "Query results", "codeLocation": "file.py:23", "label": "Query Executor", "border_color": "#ffba0c"},
+        {"id": "5", "input": "Query results", "output": "Formatted response", "codeLocation": "file.py:56", "label": "Response Formatter", "border_color": "#00c542"},
+        {"id": "6", "input": "Validated data", "output": "Cache key", "codeLocation": "file.py:12", "label": "Cache Key Generator", "border_color": "#ff3232"},
+        {"id": "7", "input": "Cache key", "output": "Cache status", "codeLocation": "file.py:34", "label": "Cache Manager", "border_color": "#00c542"}
+    ],
+    "edges": [
+        {"id": "e1-2", "source": "1", "target": "2"},
+        {"id": "e2-3", "source": "2", "target": "3"},
+        {"id": "e3-4", "source": "3", "target": "4"},
+        {"id": "e4-5", "source": "4", "target": "5"},
+        {"id": "e2-6", "source": "2", "target": "6"},
+        {"id": "e6-7", "source": "6", "target": "7"},
+        {"id": "e7-5", "source": "7", "target": "5"}
+    ]
+}
 
 class Session:
     """Represents a running develop process and its associated UI clients."""
@@ -65,7 +87,8 @@ class DevelopServer:
                 "script_name": info.get("script_name", "unknown"),
                 "session_id": info.get("session_id", ""),
                 "status": info.get("status", "running"),
-                "role": info.get("role", "shim-control")
+                "role": info.get("role", "shim-control"),
+                "graph": info.get("graph")
             }
             for pid, info in self.process_info.items() if info.get("role") == "shim-control"
         ]
@@ -176,7 +199,8 @@ class DevelopServer:
                 "script_name": script or "unknown",
                 "session_id": session_id,
                 "status": "running",
-                "role": role
+                "role": role,
+                "graph": copy.deepcopy(EXAMPLE_GRAPH)
             }
             self.broadcast_process_list_to_all_uis()
 
@@ -251,6 +275,33 @@ class DevelopServer:
                     elif self.handle_deregister_message(msg):
                         continue
                     elif self.handle_debugger_restart_message(msg):
+                        continue
+                    elif msg.get("type") == "updateNode":
+                        # Update the node in the process's graph
+                        sid = msg.get("session_id")
+                        node_id = msg.get("nodeId")
+                        field = msg.get("field")
+                        value = msg.get("value")
+                        
+                        # Find the process by session_id
+                        for pid, info in self.process_info.items():
+                            if info.get("session_id") == sid and info.get("graph"):
+                                nodes = info["graph"].get("nodes", [])
+                                for i, node in enumerate(nodes):
+                                    if node.get("id") == node_id:
+                                        # Deep copy node before mutation
+                                        new_node = dict(node)
+                                        new_node[field] = value
+                                        nodes[i] = new_node
+                                        print(f"[develop_server] Updated node {node_id} field '{field}' to '{value}' in process {pid}")
+                                        break
+                                else:
+                                    print(f"[develop_server] Warning: Node {node_id} not found in graph for process {pid}")
+                                break
+                        else:
+                            print(f"[develop_server] Warning: No process found with session_id {sid}")
+                        
+                        self.broadcast_process_list_to_all_uis()
                         continue
                     else:
                         self.route_message(conn, msg)
