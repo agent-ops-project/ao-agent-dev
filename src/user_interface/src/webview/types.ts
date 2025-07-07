@@ -54,3 +54,8 @@ export interface PopoverAction {
     label: string;
     icon?: string;
 }
+
+export interface GraphData {
+    nodes: GraphNode[];
+    edges: GraphEdge[];
+}

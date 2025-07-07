@@ -1,14 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import { GraphView } from './components/GraphView';
 import { ExperimentsView } from './components/ExperimentsView';
-import { GraphNode, GraphEdge } from './types';
+import { GraphNode, GraphEdge, GraphData } from './types';
 import { sendReady } from './utils/messaging';
 import { useIsVsCodeDarkTheme } from './utils/themeUtils';
 
 declare const vscode: any;
 
+const exampleGraph: GraphData = {
+  nodes: [
+    { id: '1', input: 'User input data', output: 'Processed user data', codeLocation: 'file.py:15', label: 'User Input Handler', border_color: '#ff3232' },
+    { id: '2', input: 'Processed user data', output: 'Validated data', codeLocation: 'file.py:42', label: 'Data Validator', border_color: '#00c542' },
+    { id: '3', input: 'Validated data', output: 'Database query', codeLocation: 'file.py:78', label: 'Query Builder', border_color: '#ffba0c' },
+    { id: '4', input: 'Database query', output: 'Query results', codeLocation: 'file.py:23', label: 'Query Executor', border_color: '#ffba0c' },
+    { id: '5', input: 'Query results', output: 'Formatted response', codeLocation: 'file.py:56', label: 'Response Formatter', border_color: '#00c542' },
+    { id: '6', input: 'Validated data', output: 'Cache key', codeLocation: 'file.py:12', label: 'Cache Key Generator', border_color: '#ff3232' },
+    { id: '7', input: 'Cache key', output: 'Cache status', codeLocation: 'file.py:34', label: 'Cache Manager', border_color: '#00c542' },
+  ],
+  edges: [
+    { id: 'e1-2', source: '1', target: '2' },
+    { id: 'e2-3', source: '2', target: '3' },
+    { id: 'e3-4', source: '3', target: '4' },
+    { id: 'e4-5', source: '4', target: '5' },
+    { id: 'e2-6', source: '2', target: '6' },
+    { id: 'e6-7', source: '6', target: '7' },
+    { id: 'e7-5', source: '7', target: '5' },
+  ],
+};
+
 export const App: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'experiments'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'experiments' | 'experiment-graph'>('overview');
     const [nodes, setNodes] = useState<GraphNode[]>([]);
     const [edges, setEdges] = useState<GraphEdge[]>([]);
     const [processes, setProcesses] = useState<Array<{
@@ -16,7 +37,9 @@ export const App: React.FC = () => {
         script_name: string;
         session_id: string;
         status: string;
+        role?: string;
     }>>([]);
+    const [selectedExperiment, setSelectedExperiment] = useState<{ pid: number; script_name: string; session_id: string; status: string; role?: string } | null>(null);
 
     const isDarkTheme = useIsVsCodeDarkTheme();
 
@@ -67,6 +90,16 @@ export const App: React.FC = () => {
         setNodes(prev => prev.map(node => 
             node.id === nodeId ? { ...node, [field]: value } : node
         ));
+    };
+
+    // Filter for shim-control only
+    const shimControlProcesses = processes.filter(p => p.role === 'shim-control');
+    const runningProcesses = shimControlProcesses.filter(p => p.status === 'running');
+    const finishedProcesses = shimControlProcesses.filter(p => p.status === 'finished');
+
+    const handleExperimentCardClick = (process: any) => {
+        setSelectedExperiment(process);
+        setActiveTab('experiment-graph');
     };
 
     return (
@@ -121,6 +154,20 @@ export const App: React.FC = () => {
           >
             Experiments
           </button>
+          {activeTab === 'experiment-graph' && selectedExperiment && (
+            <button
+              onClick={() => setActiveTab('experiment-graph')}
+              style={{
+                padding: "10px 20px",
+                border: "none",
+                backgroundColor: "var(--vscode-button-background)",
+                color: "var(--vscode-button-foreground)",
+                cursor: "pointer",
+              }}
+            >
+              {selectedExperiment.script_name}
+            </button>
+          )}
         </div>
         <div style={{ flex: 1, overflow: "hidden" }}>
           {activeTab === "overview" ? (           
@@ -129,9 +176,15 @@ export const App: React.FC = () => {
                 edges={edges}
                 onNodeUpdate={handleNodeUpdate}
               />
-          ) : (
-            <ExperimentsView processes={processes} />
-          )}
+          ) : activeTab === "experiments" ? (
+            <ExperimentsView runningProcesses={runningProcesses} finishedProcesses={finishedProcesses} onCardClick={handleExperimentCardClick} />
+          ) : activeTab === 'experiment-graph' && selectedExperiment ? (
+            <GraphView
+              nodes={exampleGraph.nodes}
+              edges={exampleGraph.edges}
+              onNodeUpdate={() => {}}
+            />
+          ) : null}
         </div>
       </div>
     );

@@ -64,9 +64,10 @@ class DevelopServer:
                 "pid": pid,
                 "script_name": info.get("script_name", "unknown"),
                 "session_id": info.get("session_id", ""),
-                "status": info.get("status", "running")
+                "status": info.get("status", "running"),
+                "role": info.get("role", "shim-control")
             }
-            for pid, info in self.process_info.items()
+            for pid, info in self.process_info.items() if info.get("role") == "shim-control"
         ]
         msg = {"type": "process_list", "processes": process_list}
         for session in self.sessions.values():
@@ -149,7 +150,7 @@ class DevelopServer:
                     break
             if pid in self.dashim_pid_map:
                 del self.dashim_pid_map[pid]
-                self._untrack_process_if_runner(role, pid)
+                self._mark_process_finished(role, pid)
                 return True
         return False
     
@@ -169,18 +170,19 @@ class DevelopServer:
             return True
         return False
     
-    def _track_process_if_runner(self, role: str, process_id: int, script: str, session_id: str) -> None:
-        if role == "shim-runner":
+    def _track_process(self, role: str, process_id: int, script: str, session_id: str) -> None:
+        if role == "shim-control":
             self.process_info[process_id] = {
                 "script_name": script or "unknown",
                 "session_id": session_id,
-                "status": "running"
+                "status": "running",
+                "role": role
             }
             self.broadcast_process_list_to_all_uis()
 
-    def _untrack_process_if_runner(self, role: Optional[str], process_id: int) -> None:
-        if role == "shim-runner" and process_id in self.process_info:
-            del self.process_info[process_id]
+    def _mark_process_finished(self, role: str, process_id: int) -> None:
+        if role == "shim-control" and process_id in self.process_info:
+            self.process_info[process_id]["status"] = "finished"
             self.broadcast_process_list_to_all_uis()
     
     def handle_client(self, conn: socket.socket, addr) -> None:
@@ -210,12 +212,12 @@ class DevelopServer:
                     self.sessions[session_id] = Session(session_id, script or "")
                 session = self.sessions[session_id]
             
-            if role in ("shim-runner", "shim-control"):
+            if role == "shim-control":
                 with session.lock:
                     session.shim_conn = conn
                 if process_id is not None:
                     self.dashim_pid_map[process_id] = (session_id, conn)
-                    self._track_process_if_runner(role, process_id, script, session_id)
+                    self._track_process(role, process_id, script, session_id)
             elif role == "ui":
                 with session.lock:
                     session.ui_conns.add(conn)
@@ -267,7 +269,7 @@ class DevelopServer:
                         if c == conn:
                             del self.dashim_pid_map[pid]
                             # Only remove from process info if shim-runner
-                            self._untrack_process_if_runner(info.get("role"), pid)
+                            self._mark_process_finished(info.get("role"), pid)
                 elif info["role"] == "ui":
                     with session.lock:
                         session.ui_conns.discard(conn)
