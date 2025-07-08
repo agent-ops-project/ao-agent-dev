@@ -55,9 +55,9 @@ If you make changes to the server code, you can also do `server restart` so the 
 
 These are the processes running. 
 
-1. The users launch processes of their program by running `devlop their_script.py` which feels exactly like running their script normally with `python their_script.py` --- they can also use the debugger to run their script, which also feels completely normal. Under the hood the `develop` command monkey patches certain functions and logs runtime events to the `Python server`.
-2. The `Python server` is the core of the system and responsbible for all analysis. It receives the logs from the user process and updates the UI according to its analyses.
-3. The red boxes are the UI of the VS Code extension. The UI gets updated by the `Python server`. The VS Code extension spawn the `Python server` and tear it down. They also exchange a heart beat for failures and unclean VS Code exits.
+1. Run user program (green): The users launch processes of their program by running `devlop their_script.py` which feels exactly like running their script normally with `python their_script.py` --- they can also use the debugger to run their script, which also feels completely normal. Under the hood the `develop` command monkey patches certain functions and logs runtime events to the `develop server`. The `develop runner` runs the actual python program of the user. The `develop orchestrator` manages the life cycle of the runner. For example, when the user presses the restart button in the UI, the orchestrator with kill the current runner and re-launch it.
+2. Develop server (blue): The `develop server` is the core of the system and responsbible for all analysis. It receives the logs from the user process and updates the UI according to its analyses. All communication to/from the `develop server` happens over TCP socket 5959. 
+3. UI (red): The red boxes are the UI of the VS Code extension. The UI gets updated by the `develop server`. TODO: The VS Code extension spawn the `develop server` and tears it down. They also exchange a heart beat for failures and unclean VS Code exits.
 
 ![Processes overview](./media/processes.png)
 

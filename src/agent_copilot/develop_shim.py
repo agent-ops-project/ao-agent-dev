@@ -8,6 +8,7 @@ import time
 import signal
 import select
 from typing import Optional, List
+from runtime_tracing.apply_monkey_patches import apply_all_monkey_patches
 
 # Configuration constants
 HOST = '127.0.0.1'

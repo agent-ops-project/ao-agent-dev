@@ -5,7 +5,7 @@ import yaml
 
 from common.logging_config import setup_logging
 from common.utils import rel_path_to_abs
-from runtime_tracing.monkey_patches import no_notify_patch, notify_server_patch
+from runtime_tracing.monkey_patches import no_notify_patch, notify_server_patch, CUSTOM_PATCH_FUNCTIONS
 logger = setup_logging()
 
 
@@ -27,32 +27,44 @@ def patch_by_path(dotted_path, *, notify=False, server_conn=None):
     return original
 
 
-def apply_all_monkey_patches(yaml_path=None):
-    # TODO: For debugging:
-    dir = os.path.dirname(__file__)
-    yaml_path = "agent-copilot/testbed/try_out_repo/.user_config/cache.yaml"
+def _import_from_qualified_name(qualified_name):
+    """Import a function or method from a fully qualified name."""
+    parts = qualified_name.split('.')
+    module_path = '.'.join(parts[:-1])
+    attr_path = parts[-1]
+    module = importlib.import_module(module_path)
+    # Support class methods: e.g., some.module.Class.method
+    obj = module
+    for part in parts[len(module_path.split('.')):]:
+        obj = getattr(obj, part)
+    return obj, module, parts
 
-    # Read functions that should be patched.
-    with open(yaml_path, 'r') as f:
-        functions = yaml.safe_load(f)["cached_functions"]
-    
-    # Patch.
-    for fn in functions:
-        if fn == "":
-            pass
-        elif fn == "":
-            pass
-        elif fn == "":
-            pass
-        else:
-            try:
-                patch_by_path(fn, notify=False, server_conn=None)
-            except ImportError:
-                logger.warning(f"Couldn't import {fn}, calls will not be cached.")
-            except ValueError:
-                logger.warning(f"`{fn}` has invalid format, calls will not be cached.")
+
+def apply_all_monkey_patches(server_conn, config_path="../../configs/cache.yaml"):
+    """
+    Apply all monkey patches as specified in the YAML config and custom patch list.
+    This includes generic patches (from YAML) and custom patch functions.
+    """
+    # 1. Apply generic patches from YAML config
+    config_path = rel_path_to_abs(__file__, config_path)
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    cached_functions = config.get("cached_functions") or []
+    for qualified_name in cached_functions:
+        func, module, parts = _import_from_qualified_name(qualified_name)
+        # Patch the function/method in its parent (module or class)
+        parent = module
+        if len(parts) > 1:
+            # If it's a class method, get the class
+            for part in parts[1:-1]:
+                parent = getattr(parent, part)
+        setattr(parent, parts[-1], no_notify_patch(func))
+
+    # 2. Apply custom patches (these handle their own logic and server notification)
+    for patch_func in CUSTOM_PATCH_FUNCTIONS:
+        patch_func(server_conn)
 
 
 if __name__ == "__main__":
     yaml_path = rel_path_to_abs(__file__,"agent-copilot/configs/cache.yaml")
-    apply_all_monkey_patches(yaml_path)
+    apply_all_monkey_patches(None, yaml_path)

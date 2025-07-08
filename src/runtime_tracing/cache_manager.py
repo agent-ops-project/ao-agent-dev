@@ -7,14 +7,21 @@ from common.utils import rel_path_to_abs
 
 
 def cache_key(fn, args, kwargs):
-    context = (
-        fn.__module__, 
-        fn.__name__,
-        args,
-        tuple(sorted(kwargs.items())),
-    )
-    raw = pickle.dumps(context)
-    return hashlib.sha256(raw).hexdigest()
+    context = {
+        "fn": fn.__module__ + '.' + fn.__qualname__,
+        "args": args,
+        "kwargs": kwargs,
+    }
+    try:
+        raw = pickle.dumps(context)
+    except Exception as e:
+        print("CACHE_KEY PICKLE ERROR")
+        print("Function:", fn)
+        print("Args:", args)
+        print("Kwargs:", kwargs)
+        print("Exception:", e)
+        raise
+    return raw
 
 
 class CacheManager:

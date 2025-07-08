@@ -1,16 +1,8 @@
 cached_functions:
   # Example:
   # - foo.bar # <-- If you added `import foo.bar` to your python script, it must succeed.
-  - external_functions.openai_call
+  # - external_functions.openai_call
 
-  # Database calls.
-
-  # Testing tools.
-
-  # LLM APIs.
-  # - openai.resources.response.response.create
-
-  # Random number generators.
 
 cache_config:
   size_limit: 2_000_000_000 # ~ 2GB max
