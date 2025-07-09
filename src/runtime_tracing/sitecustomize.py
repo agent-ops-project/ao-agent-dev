@@ -13,6 +13,7 @@ def setup_tracing():
         return
     host = os.environ.get('AGENT_COPILOT_SERVER_HOST', '127.0.0.1')
     port = int(os.environ.get('AGENT_COPILOT_SERVER_PORT', '5959'))
+    session_id = os.environ.get('AGENT_COPILOT_SESSION_ID')
     server_conn = None
     try:
         server_conn = socket.create_connection((host, port), timeout=5)
@@ -32,13 +33,16 @@ def setup_tracing():
             if session_line:
                 try:
                     session_msg = json.loads(session_line.strip())
-                    session_id = session_msg.get("session_id")
+                    # session_id = session_msg.get("session_id")  # Don't override env session_id
                 except Exception:
                     pass
         except Exception:
             pass
         try:
             from runtime_tracing.apply_monkey_patches import apply_all_monkey_patches
+            from runtime_tracing.monkey_patches import set_session_id
+            if session_id:
+                set_session_id(session_id)
             apply_all_monkey_patches(server_conn)
         except Exception as e:
             logger.error(f"Exception in sitecustomize.py patching: {e}")

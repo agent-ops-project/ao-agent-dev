@@ -2,110 +2,200 @@ import functools
 import uuid
 import collections.abc
 
-def _merge_taint(origins):
-    merged = set()
-    for o in origins:
-        if isinstance(o, (list, set)):
-            merged.update(o)
-        elif o is not None:
-            merged.add(o)
-    return list(merged)
+def get_origin_nodes(val):
+    if hasattr(val, '_taint_origin') and val._taint_origin:
+        return val._taint_origin.get('origin_nodes', [])
+    return []
 
-class TaintedStr(str):
-    def __new__(cls, value, taint_id=None, taint_origin=None):
+# Utility functions
+def is_tainted(obj):
+    return hasattr(obj, '_taint_origin') and bool(get_origin_nodes(obj))
+
+def get_taint_origin(obj):
+    if hasattr(obj, '_taint_origin'):
+        return obj._taint_origin
+    return None
+
+def is_openai_response(obj):
+    # Heuristic: check for OpenAIObject or openai module, or fallback to user config
+    cls = obj.__class__
+    mod = cls.__module__
+    name = cls.__name__
+    if 'openai' in mod.lower() or 'openai' in name.lower():
+        return True
+    # Optionally, add more checks here
+    return False
+
+# Taint-aware str
+class TaintStr(str):
+    def __new__(cls, value, taint_origin=None):
         obj = str.__new__(cls, value)
-        obj._taint_id = taint_id or str(uuid.uuid4())
-        obj._taint_origin = taint_origin or obj._taint_id
+        if taint_origin is None:
+            obj._taint_origin = {'origin_nodes': []}
+        elif isinstance(taint_origin, dict):
+            nodes = taint_origin.get('origin_nodes', [])
+            if not isinstance(nodes, list):
+                raise TypeError('origin_nodes must be a list')
+            obj._taint_origin = dict(taint_origin)
+        elif isinstance(taint_origin, (int, str)):
+            obj._taint_origin = {'origin_nodes': [taint_origin]}
+        elif isinstance(taint_origin, list):
+            obj._taint_origin = {'origin_nodes': list(taint_origin)}
+        else:
+            raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
         return obj
 
     def __add__(self, other):
         result = str.__add__(self, other)
-        origins = _merge_taint([getattr(self, '_taint_origin', None), getattr(other, '_taint_origin', None)])
-        return TaintedStr(result, taint_origin=origins)
+        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
+        return TaintStr(result, {'origin_nodes': list(nodes)})
 
     def __radd__(self, other):
         result = str.__add__(other, self)
-        origins = _merge_taint([getattr(self, '_taint_origin', None), getattr(other, '_taint_origin', None)])
-        return TaintedStr(result, taint_origin=origins)
+        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
+        return TaintStr(result, {'origin_nodes': list(nodes)})
 
     def __getitem__(self, key):
         result = str.__getitem__(self, key)
-        return TaintedStr(result, taint_origin=self._taint_origin)
+        return TaintStr(result, self._taint_origin)
 
-class TaintedInt(int):
-    def __new__(cls, value, taint_id=None, taint_origin=None):
+class TaintInt(int):
+    def __new__(cls, value, taint_origin=None):
         obj = int.__new__(cls, value)
-        obj._taint_id = taint_id or str(uuid.uuid4())
-        obj._taint_origin = taint_origin or obj._taint_id
+        if taint_origin is None:
+            obj._taint_origin = {'origin_nodes': []}
+        elif isinstance(taint_origin, dict):
+            nodes = taint_origin.get('origin_nodes', [])
+            if not isinstance(nodes, list):
+                raise TypeError('origin_nodes must be a list')
+            obj._taint_origin = dict(taint_origin)
+        elif isinstance(taint_origin, (int, str)):
+            obj._taint_origin = {'origin_nodes': [taint_origin]}
+        elif isinstance(taint_origin, list):
+            obj._taint_origin = {'origin_nodes': list(taint_origin)}
+        else:
+            raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
         return obj
 
     def __add__(self, other):
         result = int.__add__(self, other)
-        origins = _merge_taint([getattr(self, '_taint_origin', None), getattr(other, '_taint_origin', None)])
-        return TaintedInt(result, taint_origin=origins)
+        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
+        return TaintInt(result, {'origin_nodes': list(nodes)})
 
     def __radd__(self, other):
         result = int.__add__(other, self)
-        origins = _merge_taint([getattr(self, '_taint_origin', None), getattr(other, '_taint_origin', None)])
-        return TaintedInt(result, taint_origin=origins)
+        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
+        return TaintInt(result, {'origin_nodes': list(nodes)})
 
-class TaintedFloat(float):
-    def __new__(cls, value, taint_id=None, taint_origin=None):
+class TaintFloat(float):
+    def __new__(cls, value, taint_origin=None):
         obj = float.__new__(cls, value)
-        obj._taint_id = taint_id or str(uuid.uuid4())
-        obj._taint_origin = taint_origin or obj._taint_id
+        if taint_origin is None:
+            obj._taint_origin = {'origin_nodes': []}
+        elif isinstance(taint_origin, dict):
+            nodes = taint_origin.get('origin_nodes', [])
+            if not isinstance(nodes, list):
+                raise TypeError('origin_nodes must be a list')
+            obj._taint_origin = dict(taint_origin)
+        elif isinstance(taint_origin, (int, str)):
+            obj._taint_origin = {'origin_nodes': [taint_origin]}
+        elif isinstance(taint_origin, list):
+            obj._taint_origin = {'origin_nodes': list(taint_origin)}
+        else:
+            raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
         return obj
 
     def __add__(self, other):
         result = float.__add__(self, other)
-        origins = _merge_taint([getattr(self, '_taint_origin', None), getattr(other, '_taint_origin', None)])
-        return TaintedFloat(result, taint_origin=origins)
+        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
+        return TaintFloat(result, {'origin_nodes': list(nodes)})
 
     def __radd__(self, other):
         result = float.__add__(other, self)
-        origins = _merge_taint([getattr(self, '_taint_origin', None), getattr(other, '_taint_origin', None)])
-        return TaintedFloat(result, taint_origin=origins)
+        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
+        return TaintFloat(result, {'origin_nodes': list(nodes)})
 
-class TaintedList(list):
-    def __init__(self, value, taint_id=None, taint_origin=None):
-        super().__init__(value)
-        self._taint_id = taint_id or str(uuid.uuid4())
-        self._taint_origin = taint_origin or self._taint_id
-
-    def __getitem__(self, key):
-        result = super().__getitem__(key)
-        return taint_wrap(result, taint_origin=self._taint_origin)
+class TaintList(list):
+    def __init__(self, value, taint_origin=None):
+        list.__init__(self, value)
+        if taint_origin is None:
+            self._taint_origin = {'origin_nodes': []}
+        elif isinstance(taint_origin, dict):
+            nodes = taint_origin.get('origin_nodes', [])
+            if not isinstance(nodes, list):
+                raise TypeError('origin_nodes must be a list')
+            self._taint_origin = dict(taint_origin)
+        elif isinstance(taint_origin, (int, str)):
+            self._taint_origin = {'origin_nodes': [taint_origin]}
+        elif isinstance(taint_origin, list):
+            self._taint_origin = {'origin_nodes': list(taint_origin)}
+        else:
+            raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
+        # Merge in taint from all items
+        for v in value:
+            self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(v)))
 
     def append(self, item):
-        super().append(item)
-        if hasattr(item, '_taint_origin'):
-            self._taint_origin = _merge_taint([self._taint_origin, item._taint_origin])
+        list.append(self, item)
+        self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(item)))
 
-class TaintedDict(dict):
-    def __init__(self, value, taint_id=None, taint_origin=None):
-        super().__init__(value)
-        self._taint_id = taint_id or str(uuid.uuid4())
-        self._taint_origin = taint_origin or self._taint_id
+    def extend(self, items):
+        list.extend(self, items)
+        for item in items:
+            self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(item)))
 
-    def __getitem__(self, key):
-        result = super().__getitem__(key)
-        return taint_wrap(result, taint_origin=self._taint_origin)
+class TaintDict(dict):
+    def __init__(self, value, taint_origin=None):
+        dict.__init__(self, value)
+        if taint_origin is None:
+            self._taint_origin = {'origin_nodes': []}
+        elif isinstance(taint_origin, dict):
+            nodes = taint_origin.get('origin_nodes', [])
+            if not isinstance(nodes, list):
+                raise TypeError('origin_nodes must be a list')
+            self._taint_origin = dict(taint_origin)
+        elif isinstance(taint_origin, (int, str)):
+            self._taint_origin = {'origin_nodes': [taint_origin]}
+        elif isinstance(taint_origin, list):
+            self._taint_origin = {'origin_nodes': list(taint_origin)}
+        else:
+            raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
+        # Merge in taint from all values
+        for v in value.values():
+            self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(v)))
+
+    def __setitem__(self, key, value):
+        dict.__setitem__(self, key, value)
+        self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(value)))
 
 class TaintedOpenAIResponse:
     """
     Proxy for OpenAI response objects (or any object), tainting all attribute/item access.
     """
-    def __init__(self, wrapped, taint_id=None, taint_origin=None):
+    def __init__(self, wrapped, taint_origin=None):
         self._wrapped = wrapped
-        self._taint_id = taint_id or str(uuid.uuid4())
-        self._taint_origin = taint_origin or self._taint_id
+        if taint_origin is None:
+            self._taint_origin = {'origin_nodes': []}
+        elif isinstance(taint_origin, dict):
+            nodes = taint_origin.get('origin_nodes', [])
+            if not isinstance(nodes, list):
+                raise TypeError('origin_nodes must be a list')
+            self._taint_origin = dict(taint_origin)
+        elif isinstance(taint_origin, (int, str)):
+            self._taint_origin = {'origin_nodes': [taint_origin]}
+        elif isinstance(taint_origin, list):
+            self._taint_origin = {'origin_nodes': list(taint_origin)}
+        else:
+            raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
 
     def __getattr__(self, name):
         value = getattr(self._wrapped, name)
+        print(f"[TaintedOpenAIResponse] Accessing attribute '{name}', taint-wrapping value: {repr(value)} with origin {self._taint_origin}")
         return taint_wrap(value, taint_origin=self._taint_origin)
 
     def __getitem__(self, key):
         value = self._wrapped[key]
+        print(f"[TaintedOpenAIResponse] Accessing item '{key}', taint-wrapping value: {repr(value)} with origin {self._taint_origin}")
         return taint_wrap(value, taint_origin=self._taint_origin)
 
     def __repr__(self):
@@ -123,28 +213,7 @@ class TaintedOpenAIResponse:
     def __contains__(self, item):
         return item in self._wrapped
 
-# Utility functions
-def is_tainted(obj):
-    return hasattr(obj, '_taint_id')
-
-def get_taint_origin(obj):
-    return getattr(obj, '_taint_origin', None)
-
-def is_openai_response(obj):
-    # Heuristic: check for OpenAIObject or openai module, or fallback to user config
-    cls = obj.__class__
-    mod = cls.__module__
-    name = cls.__name__
-    if 'openai' in mod.lower() or 'openai' in name.lower():
-        return True
-    # Optionally, add more checks here
-    return False
-
 def taint_wrap(obj, taint_origin=None, _seen=None):
-    """
-    Recursively taint all strings, ints, floats, lists, dicts, Mapping and Sequence types, and user-defined object attributes.
-    Handles cyclic references robustly. Taints OpenAIObject and similar types with a proxy.
-    """
     if _seen is None:
         _seen = set()
     obj_id = id(obj)
@@ -153,21 +222,28 @@ def taint_wrap(obj, taint_origin=None, _seen=None):
     _seen.add(obj_id)
 
     if is_tainted(obj):
+        print(f"[taint_wrap] Already tainted: {repr(obj)} with origin {get_taint_origin(obj)}")
         return obj
     if isinstance(obj, str):
-        return TaintedStr(obj, taint_origin=taint_origin)
+        print(f"[taint_wrap] Wrapping str: {repr(obj)} with origin {taint_origin}")
+        return TaintStr(obj, taint_origin=taint_origin)
     if isinstance(obj, int):
-        return TaintedInt(obj, taint_origin=taint_origin)
+        print(f"[taint_wrap] Wrapping int: {repr(obj)} with origin {taint_origin}")
+        return TaintInt(obj, taint_origin=taint_origin)
     if isinstance(obj, float):
-        return TaintedFloat(obj, taint_origin=taint_origin)
-    # Handle Mapping-like objects (including OpenAIObject)
+        print(f"[taint_wrap] Wrapping float: {repr(obj)} with origin {taint_origin}")
+        return TaintFloat(obj, taint_origin=taint_origin)
+    if is_openai_response(obj):
+        print(f"[taint_wrap] Wrapping OpenAI response: {repr(obj)} with origin {taint_origin}")
+        return TaintedOpenAIResponse(obj, taint_origin=taint_origin)
     if isinstance(obj, collections.abc.Mapping):
-        return TaintedDict({k: taint_wrap(v, taint_origin=taint_origin, _seen=_seen) for k, v in obj.items()}, taint_origin=taint_origin)
-    # Handle Sequence-like objects (excluding str/bytes)
+        print(f"[taint_wrap] Wrapping dict-like: {repr(obj)} with origin {taint_origin}")
+        return TaintDict({k: taint_wrap(v, taint_origin=taint_origin, _seen=_seen) for k, v in obj.items()}, taint_origin=taint_origin)
     if isinstance(obj, collections.abc.Sequence) and not isinstance(obj, (str, bytes, bytearray)):
-        return TaintedList([taint_wrap(x, taint_origin=taint_origin, _seen=_seen) for x in obj], taint_origin=taint_origin)
-    # Recursively taint user-defined object attributes (e.g., OpenAIObject)
+        print(f"[taint_wrap] Wrapping list-like: {repr(obj)} with origin {taint_origin}")
+        return TaintList([taint_wrap(x, taint_origin=taint_origin, _seen=_seen) for x in obj], taint_origin=taint_origin)
     if hasattr(obj, "__dict__") and not isinstance(obj, type):
+        print(f"[taint_wrap] Wrapping object with __dict__: {repr(obj)} with origin {taint_origin}")
         for attr in list(vars(obj)):
             try:
                 setattr(obj, attr, taint_wrap(getattr(obj, attr), taint_origin=taint_origin, _seen=_seen))
@@ -175,6 +251,7 @@ def taint_wrap(obj, taint_origin=None, _seen=None):
                 pass
         return obj
     if hasattr(obj, "__slots__"):
+        print(f"[taint_wrap] Wrapping object with __slots__: {repr(obj)} with origin {taint_origin}")
         for slot in obj.__slots__:
             try:
                 val = getattr(obj, slot)
@@ -182,9 +259,4 @@ def taint_wrap(obj, taint_origin=None, _seen=None):
             except Exception:
                 pass
         return obj
-    # If it's an OpenAI response (or fallback for unknown types), wrap it:
-    if is_openai_response(obj):
-        return TaintedOpenAIResponse(obj, taint_origin=taint_origin)
-    # fallback: if you want to taint all unknown objects, uncomment below
-    # return TaintedOpenAIResponse(obj, taint_origin=taint_origin)
     return obj 

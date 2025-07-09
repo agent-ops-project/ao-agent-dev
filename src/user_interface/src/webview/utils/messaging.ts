@@ -3,10 +3,7 @@ import { NodeUpdateMessage, GraphNode } from '../types';
 declare const vscode: any;
 
 export function sendMessage(message: any) {
-    console.log("[UI] sendMessage called with:", message);
-    console.log("[UI] About to call vscode.postMessage with:", message);
     vscode.postMessage(message);
-    console.log("[UI] vscode.postMessage called successfully");
 }
 
 export function sendNodeUpdate(nodeId: string, field: keyof GraphNode, value: string, session_id?: string) {
@@ -17,7 +14,6 @@ export function sendNodeUpdate(nodeId: string, field: keyof GraphNode, value: st
         value,
         session_id
     };
-    console.log('[UI] Sending node update message:', msg);
     sendMessage(msg);
 }
 

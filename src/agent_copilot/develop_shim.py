@@ -146,6 +146,10 @@ class DevelopShim:
         env['AGENT_COPILOT_SERVER_HOST'] = HOST
         env['AGENT_COPILOT_SERVER_PORT'] = str(PORT)
         
+        # Pass the session id to the child process
+        if self.session_id:
+            env['AGENT_COPILOT_SESSION_ID'] = self.session_id
+        
         return env
     
     def _ensure_server_running(self) -> None:

@@ -29,7 +29,13 @@ This is the wrapper arond the user's python command. It works like this:
 
 ALTERNATIVELY: If the user doesn't run `develop script.py` from terminal but from a debugger, things work similarly but there's small changes into how the child process is started and restarted by the orchestrator.
 
-### Dev
+Below is an overview:
+
+![Running develop command](/media/develop_spawn.png)
+
+
+## Develop server
+
 
 ...
 

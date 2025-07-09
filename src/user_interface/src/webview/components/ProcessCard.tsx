@@ -34,7 +34,7 @@ export const ProcessCard: React.FC<ProcessCardProps> = React.memo(({ process, is
       tabIndex={0}
     >
       <div className={styles.title}>
-        {process.timestamp ? `${process.timestamp} (${process.session_id.substring(0, 8)}...)` : process.script_name}
+        {process.timestamp ? `${process.timestamp} (${process.session_id.substring(0, 8)}...)` : `Session ${process.session_id.substring(0, 8)}...`}
       </div>
     </div>
   );

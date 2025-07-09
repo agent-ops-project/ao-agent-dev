@@ -3,11 +3,8 @@ import { useIsVsCodeDarkTheme } from '../utils/themeUtils';
 import { ProcessCard } from './ProcessCard';
 
 export interface ProcessInfo {
-  pid: number;
-  script_name: string;
   session_id: string;
   status: string;
-  role?: string;
   timestamp?: string;
 }
 
@@ -64,11 +61,11 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ runningProcess
         <>
           <div style={titleStyle}>Running</div>
           {runningProcesses.map((process) => {
-            const cardId = `running-${process.pid}`;
+            const cardId = `running-${process.session_id}`;
             const isHovered = hoveredCards.has(cardId);
             return (
               <ProcessCard
-                key={process.pid}
+                key={process.session_id}
                 process={process}
                 isHovered={isHovered}
                 isDarkTheme={isDarkTheme}
@@ -88,11 +85,11 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ runningProcess
         <>
           <div style={{ ...titleStyle, marginTop: runningProcesses.length > 0 ? 32 : 0 }}>Finished</div>
           {finishedProcesses.map((process) => {
-            const cardId = `finished-${process.pid}`;
+            const cardId = `finished-${process.session_id}`;
             const isHovered = hoveredCards.has(cardId);
             return (
               <ProcessCard
-                key={process.pid}
+                key={process.session_id}
                 process={process}
                 isHovered={isHovered}
                 isDarkTheme={isDarkTheme}

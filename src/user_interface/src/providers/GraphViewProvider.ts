@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { EditDialogProvider } from './EditDialogProvider';
-import { relative } from 'path';
 import { PythonServerClient } from './PythonServerClient';
 
 export class GraphViewProvider implements vscode.WebviewViewProvider {
@@ -71,8 +70,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                     pythonClient.sendMessage(data);
                     break;
                 case 'ready':
-                    // Webview is ready, send initial graph data if available
-                    this._sendInitialData();
+                    // Webview is ready - server will send graph data automatically
                     break;
                 case 'navigateToCode':
                     // Handle code navigation
@@ -101,15 +99,6 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    public addNode(nodeData: any) {
-        if (this._view) {
-            this._view.webview.postMessage({
-                type: 'addNode',
-                payload: nodeData
-            });
-        }
-    }
-
     private _sendCurrentTheme() {
         const isDark = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark;
         this._view?.webview.postMessage({
@@ -118,88 +107,6 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                 theme: isDark ? 'vscode-dark' : 'vscode-light',
             },
         });
-    }
-
-    private _sendInitialData() {
-        // Send initial graph data to webview
-        if (this._view) {
-            const baseFilePath = '/Users/ferdi/Downloads/fundraising_crm_tree_src/assistant_codegen/plans/database/db_operations.py';
-            
-            // Sample data with various node types and connections
-            const initialNodes = [
-                {
-                    id: '1',
-                    input: 'User input data',
-                    output: 'Processed user data',
-                    codeLocation: `${baseFilePath}:15`,
-                    label: 'User Input Handler',
-                    border_color: '#ff3232' // Red border color
-                },
-                {
-                    id: '2',
-                    input: 'Processed user data',
-                    output: 'Validated data',
-                    codeLocation: `${baseFilePath}:42`,
-                    label: 'Data Validator',
-                    border_color: '#00c542'
-                },
-                {
-                    id: '3',
-                    input: 'Validated data',
-                    output: 'Database query',
-                    codeLocation: `${baseFilePath}:78`,
-                    label: 'Query Builder',
-                    border_color: '#ffba0c'
-                },
-                {
-                    id: '4',
-                    input: 'Database query',
-                    output: 'Query results',
-                    codeLocation: `${baseFilePath}:23`,
-                    label: 'Query Executor',
-                    border_color: '#ffba0c'
-                },
-                {
-                    id: '5',
-                    input: 'Query results',
-                    output: 'Formatted response',
-                    codeLocation: `${baseFilePath}:56`,
-                    label: 'Response Formatter',
-                    border_color: '#00c542'
-                },
-                {
-                    id: '6',
-                    input: 'Validated data',
-                    output: 'Cache key',
-                    codeLocation: `${baseFilePath}:12`,
-                    label: 'Cache Key Generator',
-                    border_color: '#ff3232'
-                },
-                {
-                    id: '7',
-                    input: 'Cache key',
-                    output: 'Cache status',
-                    codeLocation: `${baseFilePath}:34`,
-                    label: 'Cache Manager',
-                    border_color: '#00c542'
-                }
-            ];
-
-            const initialEdges = [
-                { id: 'e1-2', source: '1', target: '2' },
-                { id: 'e2-3', source: '2', target: '3' },
-                { id: 'e3-4', source: '3', target: '4' },
-                { id: 'e4-5', source: '4', target: '5' },
-                { id: 'e2-6', source: '2', target: '6' },
-                { id: 'e6-7', source: '6', target: '7' },
-                { id: 'e7-5', source: '7', target: '5' }
-            ];
-
-            this._view.webview.postMessage({
-                type: 'setGraph',
-                payload: { nodes: initialNodes, edges: initialEdges }
-            });
-        }
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {

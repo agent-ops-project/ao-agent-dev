@@ -32,7 +32,7 @@ def test_process_list():
                 try:
                     msg = json.loads(line.strip())
                     print(f"[UI] Received message: {msg}")
-                    if msg.get("type") == "process_list":
+                    if msg.get("type") == "experiment_list":
                         processes = msg.get("processes", [])
                         print(f"[UI] Process list received: {len(processes)} processes")
                         for proc in processes:
