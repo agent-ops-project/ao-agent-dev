@@ -239,13 +239,21 @@ def v1_openai_patch(server_conn):
         line_no = caller.f_lineno if caller else -1
 
         # Check cache
-        cached_out = CACHE.get_output(file_name, line_no, original_create, args, kwargs)
+        cache_key_args = extract_key_args(original_create, args, kwargs, ["model", "messages"])
+        model, messages = cache_key_args
+        # Use get_raw if present
+        if hasattr(model, 'get_raw'):
+            model = model.get_raw()
+        if hasattr(messages, 'get_raw'):
+            messages = messages.get_raw()
+        cache_key_args = (model, messages)
+        cached_out = CACHE.get_output(file_name, line_no, original_create, cache_key_args, {})
         from_cache = cached_out is not None
         if from_cache:
             result = cached_out
         else:
             result = original_create(*args, **kwargs)
-            CACHE.cache_output(result, file_name, line_no, original_create, args, kwargs)
+            CACHE.cache_output(result, file_name, line_no, original_create, cache_key_args, {})
 
         # Check for taint in inputs
         def check_taint(val):
@@ -293,6 +301,12 @@ def v2_openai_patch(server_conn):
             # Extract cache key arguments
             cache_key_args = extract_key_args(original_create, args, kwargs, ["model", "input"])
             model, input_text = cache_key_args
+            # Use get_raw if present
+            if hasattr(model, 'get_raw'):
+                model = model.get_raw()
+            if hasattr(input_text, 'get_raw'):
+                input_text = input_text.get_raw()
+            cache_key_args = (model, input_text)
 
             # Check cache
             cached_out = CACHE.get_output(file_name, line_no, original_create, cache_key_args, {})

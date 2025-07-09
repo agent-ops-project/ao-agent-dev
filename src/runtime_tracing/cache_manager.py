@@ -36,11 +36,11 @@ class CacheManager:
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)["cache_config"]
 
-        # cache_dir = rel_path_to_abs(__file__, config["cache_location"])
+        cache_dir = config["cache_location"]
         size_limit = config["size_limit"]
         ttl = config["time_to_live"]
         self.ttl = None if ttl == -1 else ttl
-        self.cache = dc.Cache(size_limit=size_limit)
+        self.cache = dc.Cache(cache_dir, size_limit=size_limit)
 
         self.input_overwrites = {} # "file:line_no" -> string
         self.output_overwrites = {} # "file:line_no" -> string

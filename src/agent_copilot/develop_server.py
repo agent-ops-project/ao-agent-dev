@@ -172,8 +172,6 @@ class DevelopServer:
                 with self.lock:
                     if session_id not in self.sessions:
                         self.sessions[session_id] = Session(session_id)
-                        print(f"[develop_server] Added session: {session_id}")
-                        print(f"[develop_server] All sessions now: {list(self.sessions.keys())}")
                     session = self.sessions[session_id]
                 with session.lock:
                     session.shim_conn = conn

@@ -59,6 +59,9 @@ class TaintStr(str):
         result = str.__getitem__(self, key)
         return TaintStr(result, self._taint_origin)
 
+    def get_raw(self):
+        return str(self)
+
 class TaintInt(int):
     def __new__(cls, value, taint_origin=None):
         obj = int.__new__(cls, value)
@@ -87,6 +90,9 @@ class TaintInt(int):
         nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
         return TaintInt(result, {'origin_nodes': list(nodes)})
 
+    def get_raw(self):
+        return int(self)
+
 class TaintFloat(float):
     def __new__(cls, value, taint_origin=None):
         obj = float.__new__(cls, value)
@@ -114,6 +120,9 @@ class TaintFloat(float):
         result = float.__add__(other, self)
         nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
         return TaintFloat(result, {'origin_nodes': list(nodes)})
+
+    def get_raw(self):
+        return float(self)
 
 class TaintList(list):
     def __init__(self, value, taint_origin=None):
@@ -144,6 +153,9 @@ class TaintList(list):
         for item in items:
             self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(item)))
 
+    def get_raw(self):
+        return [x.get_raw() if hasattr(x, 'get_raw') else x for x in self]
+
 class TaintDict(dict):
     def __init__(self, value, taint_origin=None):
         dict.__init__(self, value)
@@ -167,6 +179,9 @@ class TaintDict(dict):
     def __setitem__(self, key, value):
         dict.__setitem__(self, key, value)
         self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(value)))
+
+    def get_raw(self):
+        return {k: v.get_raw() if hasattr(v, 'get_raw') else v for k, v in self.items()}
 
 class TaintedOpenAIResponse:
     """
@@ -210,6 +225,9 @@ class TaintedOpenAIResponse:
 
     def __contains__(self, item):
         return item in self._wrapped
+
+    def get_raw(self):
+        return self._wrapped
 
 def taint_wrap(obj, taint_origin=None, _seen=None):
     if _seen is None:
