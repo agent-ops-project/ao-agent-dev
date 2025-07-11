@@ -21,21 +21,38 @@ export const App: React.FC = () => {
 
     const isDarkTheme = useIsVsCodeDarkTheme();
 
-    const handleNodeUpdate = (nodeId: string, field: string, value: string) => {
-        if (selectedExperiment) {
-            const sessionId = selectedExperiment.session_id;
-            setExperimentGraphs(prev => {
-                const prevGraph = prev[sessionId];
-                if (!prevGraph) {
-                    console.warn(`[App] No graph found for session: ${sessionId}`);
-                    return prev;
-                }
-                const updatedNodes = prevGraph.nodes.map(node =>
-                    node.id === nodeId ? { ...node, [field]: value } : node
-                );
-                const updatedGraph = { ...prevGraph, nodes: updatedNodes };
-                
-                // Send update to backend
+    // Updated handleNodeUpdate to send edit_input/edit_output for input/output edits
+    const handleNodeUpdate = (nodeId: string, field: string, value: string, sessionId?: string) => {
+        console.log('[App] handleNodeUpdate field value:', field, 'sessionId:', sessionId);
+        if (sessionId) {
+            if (field === 'input') {
+                console.log('[App] Sending edit_input message:', {
+                    type: 'edit_input',
+                    session_id: sessionId,
+                    node_id: nodeId,
+                    value
+                });
+                vscode.postMessage({
+                    type: 'edit_input',
+                    session_id: sessionId,
+                    node_id: nodeId,
+                    value
+                });
+            } else if (field === 'output') {
+                console.log('[App] Sending edit_output message:', {
+                    type: 'edit_output',
+                    session_id: sessionId,
+                    node_id: nodeId,
+                    value
+                });
+                vscode.postMessage({
+                    type: 'edit_output',
+                    session_id: sessionId,
+                    node_id: nodeId,
+                    value
+                });
+            } else {
+                // For label or other fields, keep old updateNode logic
                 vscode.postMessage({
                     type: 'updateNode',
                     session_id: sessionId,
@@ -43,8 +60,7 @@ export const App: React.FC = () => {
                     field,
                     value
                 });
-                return { ...prev, [sessionId]: updatedGraph };
-            });
+            }
         }
     };
 
@@ -66,9 +82,12 @@ export const App: React.FC = () => {
                 }
                 case 'updateNode':
                     // Handle node update from extension's EditDialog
+                    console.log('[App] Received updateNode message:', message);
                     if (message.payload) {
-                        const { nodeId, field, value } = message.payload;
-                        handleNodeUpdate(nodeId, field, value);
+                        const { nodeId, field, value, session_id } = message.payload;
+                        console.log('[App] updateNode payload session_id:', session_id);
+                        console.log('[App] Calling handleNodeUpdate with:', { nodeId, field, value, session_id });
+                        handleNodeUpdate(nodeId, field, value, session_id);
                     }
                     break;
                 case 'experiment_list':

@@ -9,6 +9,9 @@ import uuid
 import time
 from datetime import datetime
 from typing import Dict, Any, Optional, Set, Tuple
+from workflow_edits.edit_manager import EDIT
+from workflow_edits.cache_manager import CACHE
+from workflow_edits import db
 
 # Configuration constants
 HOST = '127.0.0.1'
@@ -227,6 +230,13 @@ class DevelopServer:
                     elif msg.get("type") == "addNode":
                         sid = msg["session_id"]
                         node = msg["node"]
+                        # Ensure model, node_id, and api_type are present in node dict
+                        if "model" not in node:
+                            node["model"] = None
+                        if "id" not in node:
+                            node["id"] = str(uuid.uuid4())
+                        if "api_type" not in node:
+                            node["api_type"] = None
                         graph = self.session_graphs.setdefault(sid, {"nodes": [], "edges": []})
                         # Update or add node
                         for i, n in enumerate(graph["nodes"]):
@@ -257,6 +267,73 @@ class DevelopServer:
                             "session_id": sid,
                             "payload": {"nodes": graph["nodes"], "edges": graph["edges"]}
                         })
+                        continue
+                    # --- Handle UI edit messages ---
+                    elif msg.get("type") == "edit_input":
+                        print(f"[SERVER] Received edit_input: {msg}")
+                        session_id = msg["session_id"]
+                        node_id = msg["node_id"]
+                        new_input = msg["value"]
+                        print(f"[SERVER] Looking up node in DB: session_id={session_id}, node_id={node_id}")
+                        row = db.query_one(
+                            "SELECT model, input FROM nodes WHERE session_id=? AND node_id=?",
+                            (session_id, node_id)
+                        )
+                        print(f"[SERVER] DB lookup for (session_id={session_id}, node_id={node_id}): {row}")
+                        if row:
+                            model = row["model"]
+                            input_val = row["input"]
+                            print(f"[SERVER] Calling EDIT.set_input_overwrite({session_id}, {model}, {input_val}, {new_input})")
+                            EDIT.set_input_overwrite(session_id, model, input_val, new_input)
+                            print(f"[SERVER] Input overwrite completed")
+                        else:
+                            print(f"[SERVER] No DB row found for node_id={node_id}")
+                        continue
+                    elif msg.get("type") == "edit_output":
+                        print(f"[SERVER] Received edit_output: {msg}")
+                        session_id = msg["session_id"]
+                        node_id = msg["node_id"]
+                        new_output = msg["value"]
+                        print(f"[SERVER] Looking up node in DB: session_id={session_id}, node_id={node_id}")
+                        row = db.query_one(
+                            "SELECT model, input, api_type FROM nodes WHERE session_id=? AND node_id=?",
+                            (session_id, node_id)
+                        )
+                        print(f"[SERVER] DB lookup for (session_id={session_id}, node_id={node_id}): {row}")
+                        if row:
+                            model = row["model"]
+                            input_val = row["input"]
+                            api_type = row["api_type"]
+                            print(f"[SERVER] Calling EDIT.set_output_overwrite({session_id}, {model}, {input_val}, {new_output}, api_type={api_type})")
+                            # Pass api_type to EditManager (for now, just pass it through)
+                            EDIT.set_output_overwrite(session_id, model, input_val, new_output, api_type=api_type)
+                            print(f"[SERVER] Output overwrite completed")
+                        else:
+                            print(f"[SERVER] No DB row found for node_id={node_id}")
+                        continue
+                    elif msg.get("type") == "remove_input_edit":
+                        session_id = msg["session_id"]
+                        node_id = msg["node_id"]
+                        row = db.query_one(
+                            "SELECT model, input FROM nodes WHERE session_id=? AND node_id=?",
+                            (session_id, node_id)
+                        )
+                        if row:
+                            model = row["model"]
+                            input_val = row["input"]
+                            EDIT.remove_input_overwrite(session_id, model, input_val)
+                        continue
+                    elif msg.get("type") == "remove_output_edit":
+                        session_id = msg["session_id"]
+                        node_id = msg["node_id"]
+                        row = db.query_one(
+                            "SELECT model, input FROM nodes WHERE session_id=? AND node_id=?",
+                            (session_id, node_id)
+                        )
+                        if row:
+                            model = row["model"]
+                            input_val = row["input"]
+                            EDIT.remove_output_overwrite(session_id, model, input_val)
                         continue
                     else:
                         self.route_message(conn, msg)

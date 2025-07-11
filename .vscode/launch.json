@@ -9,7 +9,7 @@
       "type": "debugpy",
       "request": "launch",
       "module": "agent_copilot.develop",
-      "args": ["${workspaceFolder}/testing/user_commands/user_script.py"],
+      "args": ["${workspaceFolder}/testing/tracing/dynamic_taint_prop.py"],
       "console": "integratedTerminal",
       "justMyCode": false
     },

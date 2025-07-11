@@ -70,15 +70,19 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
     const routedEdges = routeEdges(initialEdges, positions);
 
-    const flowNodes: Node[] = initialNodes.map((node) => ({
-      id: node.id,
-      type: "custom",
-      position: positions.get(node.id) || { x: 0, y: 0 },
-      data: {
-        ...node,
-        onUpdate: handleNodeUpdate,
-      },
-    }));
+    const flowNodes: Node[] = initialNodes.map((node) => {
+      console.log('GraphView: Creating node', node.id, 'with session_id:', session_id);
+      return {
+        id: node.id,
+        type: "custom",
+        position: positions.get(node.id) || { x: 0, y: 0 },
+        data: {
+          ...node,
+          onUpdate: handleNodeUpdate,
+          session_id, // pass session_id to node data
+        },
+      };
+    });
 
     const flowEdges: Edge[] = routedEdges.map((edge) => ({
       id: edge.id,
@@ -100,6 +104,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     handleNodeUpdate,
     setNodes,
     setEdges,
+    session_id,
   ]);
 
   useEffect(() => {

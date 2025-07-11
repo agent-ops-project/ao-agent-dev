@@ -16,6 +16,18 @@ def get_taint_origin(obj):
         return obj._taint_origin
     return None
 
+def check_taint(val):
+    # TODO: Isn't the return type either origin_list, or [origin_list], or {k: origin_list}, (or None). But it should always just be origin_list
+    # Is tainted?
+    if get_origin_nodes(val):
+        return get_origin_nodes(val)
+    # Is list or tuple with tainted entries?
+    if isinstance(val, (list, tuple)):
+        return [check_taint(v) for v in val]
+    if isinstance(val, dict):
+        return {k: check_taint(v) for k, v in val.items()}
+    return None
+
 def is_openai_response(obj):
     # Heuristic: check for OpenAIObject or openai module, or fallback to user config
     cls = obj.__class__

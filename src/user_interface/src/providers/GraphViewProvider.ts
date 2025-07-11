@@ -9,6 +9,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     private _pendingEdit?: {
         nodeId: string;
         field: string;
+        session_id?: string; // Added session_id to pendingEdit
     };
 
     constructor(private readonly _extensionUri: vscode.Uri) {}
@@ -19,12 +20,14 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
     public handleEditDialogSave(value: string): void {
         if (this._pendingEdit && this._view) {
+            console.log('GraphViewProvider: Sending updateNode for node', this._pendingEdit.nodeId, 'with session_id:', this._pendingEdit.session_id);
             this._view.webview.postMessage({
                 type: 'updateNode',
                 payload: {
                     nodeId: this._pendingEdit.nodeId,
                     field: this._pendingEdit.field,
-                    value
+                    value,
+                    session_id: this._pendingEdit.session_id, // should be present!
                 }
             });
             this._pendingEdit = undefined;
@@ -61,6 +64,10 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
         // Handle messages from the webview
         webviewView.webview.onDidReceiveMessage(data => {
+            console.log(`GraphViewProvider: Received message from webview: ${data.type}`, data);
+            if (data.type === 'showEditDialog') {
+                console.log('GraphViewProvider: Received showEditDialog for node', data.payload.nodeId, 'with session_id:', data.payload.session_id);
+            }
             if (data.type === 'restart') {
                 if (!data.session_id) {
                     console.error('Restart message missing session_id! Not forwarding to Python server.');
@@ -71,6 +78,16 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
             switch (data.type) {
                 case 'updateNode':
                     // Forward the updateNode message to the develop server
+                    pythonClient.sendMessage(data);
+                    break;
+                case 'edit_input':
+                    console.log('GraphViewProvider: Forwarding edit_input to Python server:', data);
+                    // Forward the edit_input message to the develop server
+                    pythonClient.sendMessage(data);
+                    break;
+                case 'edit_output':
+                    console.log('GraphViewProvider: Forwarding edit_output to Python server:', data);
+                    // Forward the edit_output message to the develop server
                     pythonClient.sendMessage(data);
                     break;
                 case 'ready':
@@ -91,7 +108,8 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                     if (this._editDialogProvider) {
                         this._pendingEdit = {
                             nodeId: data.payload.nodeId,
-                            field: data.payload.field
+                            field: data.payload.field,
+                            session_id: data.payload.session_id,
                         };
                         this._editDialogProvider.show(
                             `${data.payload.label} ${data.payload.field === 'input' ? 'Input' : 'Output'}`,

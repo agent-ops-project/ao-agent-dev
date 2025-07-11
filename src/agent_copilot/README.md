@@ -30,3 +30,55 @@ This is the wrapper arond the user's python command. It works like this:
 3. Child installs monkey patches. It registers to the develop_server as "shim-runner". It runs the actual python code from the user. It communicates with the server about inputs and outputs to LLM calls (etc). Its stdin, stdout, stderr, etc. will be forwarded to the user's terminal as is.
 
 ALTERNATIVELY: If the user doesn't run `develop script.py` from terminal but from a debugger, things work similarly but there's small changes into how the child process is started and restarted by the orchestrator.
+
+### Editing and caching
+
+#### Goal
+
+Overall, we want the following user experience:
+
+ - We have our dataflow graph in the UI where each node is an LLM call. The user can click edit input and output and the develop epxeriment will rerun using cached LLM calls (so things are quick) but then apply the user edits.
+ - If there are past runs, the user can see the graph and it's inputs and ouputs but not re-run (we can leave the dialogs, and all UI the same, we just need to remember what the graph looked like and what input, output, colors and labels were).
+
+We want to supachieve this with the following functionality:
+
+1. For any past run, we can display the graph and all the inputs, outputs, labels and colors like when it was executed. This must also work if VS Code is closed and restarted again.
+2. LLM calls are cached so calls with the same prompt to the same model can be replayed.
+3. The user can overwrite LLM inputs and ouputs. 
+
+
+#### Design
+
+We use a SQLite DB to cache LLM results and store user overwrites. We have the following 2 tables:
+
+```
+CREATE TABLE graph_topology (
+    session_id TEXT PRIMARY KEY,
+    graph_topology TEXT,
+    timestamp TEXT DEFAULT (datetime('now'))
+);
+```
+
+```
+CREATE TABLE nodes (
+    session_id TEXT,
+    node_id TEXT,
+    model TEXT,
+    input TEXT,
+    input_hash TEXT,
+    input_overwrite TEXT,
+    output TEXT,
+    color TEXT,
+    label TEXT,
+    PRIMARY KEY (session_id, node_id)
+);
+CREATE INDEX llm_call ON nodes(session_id, model, input_hash);
+```
+
+The graph topology is a string defining nodes and their IDs and edges.
+
+During runtime, we check if the input to an LLM for the given session is present (i.e., if (session_id, input_hash) is present). If so, we use the cached output value or the overwritten input value. If they aren't set of the key is not present, we normally call the LLM.
+
+CacheManager is responsible for the look ups in the DB.
+
+EditManager is responible for updating the DB.

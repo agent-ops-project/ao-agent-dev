@@ -18,6 +18,7 @@ const HANDLE_SOURCE_POSITION = 50 + SIDE_HANDLE_OFFSET; // 65% from top
 
 interface CustomNodeData extends GraphNode {
   onUpdate: (nodeId: string, field: string, value: string) => void;
+  session_id?: string;
 }
 
 export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
@@ -62,6 +63,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
   const handleAction = (action: string) => {
     switch (action) {
       case "editInput":
+        console.log('CustomNode: Sending showEditDialog for node', id, 'with session_id:', data.session_id);
         vscode.postMessage({
           type: "showEditDialog",
           payload: {
@@ -69,10 +71,12 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
             field: "input",
             value: data.input,
             label: data.label,
+            session_id: data.session_id, // include session_id
           },
         });
         break;
       case "editOutput":
+        console.log('CustomNode: Sending showEditDialog for node', id, 'with session_id:', data.session_id);
         vscode.postMessage({
           type: "showEditDialog",
           payload: {
@@ -80,6 +84,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
             field: "output",
             value: data.output,
             label: data.label,
+            session_id: data.session_id, // include session_id
           },
         });
         break;
