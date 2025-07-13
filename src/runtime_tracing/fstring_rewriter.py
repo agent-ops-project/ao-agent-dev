@@ -23,6 +23,18 @@ def taint_fstring_join(*args):
         return TaintStr(result, {'origin_nodes': list(all_origins)})
     return result
 
+def taint_format_string(format_string, *args, **kwargs):
+    from runtime_tracing.taint_wrappers import TaintStr, get_origin_nodes
+    result = format_string.format(*args, **kwargs)
+    all_origins = set()
+    for a in args:
+        all_origins.update(get_origin_nodes(a))
+    for v in kwargs.values():
+        all_origins.update(get_origin_nodes(v))
+    if all_origins:
+        return TaintStr(result, {'origin_nodes': list(all_origins)})
+    return result
+
 class FStringTransformer(ast.NodeTransformer):
     def visit_JoinedStr(self, node):
         print(f"[DEBUG] Transforming f-string at line {getattr(node, 'lineno', '?')}")
@@ -33,6 +45,30 @@ class FStringTransformer(ast.NodeTransformer):
             keywords=[]
         )
         return ast.copy_location(new_node, node)
+    
+    def visit_Call(self, node):
+        # Check if this is a .format() call
+        if (isinstance(node.func, ast.Attribute) and 
+            isinstance(node.func.value, ast.Constant) and 
+            isinstance(node.func.value.value, str) and
+            node.func.attr == 'format'):
+            
+            print(f"[DEBUG] Transforming .format() call at line {getattr(node, 'lineno', '?')}")
+            
+            # Extract the format string and arguments
+            format_string = node.func.value.value
+            format_args = node.args
+            format_kwargs = node.keywords
+            
+            # Create a call to taint_format_string
+            new_node = ast.Call(
+                func=ast.Name(id='taint_format_string', ctx=ast.Load()),
+                args=[ast.Constant(value=format_string)] + format_args,
+                keywords=format_kwargs
+            )
+            return ast.copy_location(new_node, node)
+        
+        return self.generic_visit(node)
 
 class FStringImportLoader(importlib.abc.SourceLoader):
     def __init__(self, fullname, path):
@@ -71,6 +107,7 @@ class FStringImportFinder(importlib.abc.MetaPathFinder):
 def install_fstring_rewriter():
     if not any(isinstance(f, FStringImportFinder) for f in sys.meta_path):
         sys.meta_path.insert(0, FStringImportFinder())
-    # Make taint_fstring_join globally available
+    # Make taint functions globally available
     import builtins
-    builtins.taint_fstring_join = taint_fstring_join 
+    builtins.taint_fstring_join = taint_fstring_join
+    builtins.taint_format_string = taint_format_string 
