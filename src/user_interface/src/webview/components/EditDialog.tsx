@@ -3,16 +3,31 @@ import React, { useState, useEffect } from 'react';
 interface EditDialogProps {
     title: string;
     value: string;
-    onSave: (value: string) => void;
+    nodeId: string;
+    field: 'input' | 'output';
+    sessionId: string;
+    onSave: (nodeId: string, field: 'input' | 'output', sessionId: string, value: string) => void;
     onCancel: () => void;
 }
 
-export const EditDialog: React.FC<EditDialogProps> = ({ title, value, onSave, onCancel }) => {
+export const EditDialog: React.FC<EditDialogProps> = ({ 
+    title, 
+    value, 
+    nodeId, 
+    field, 
+    sessionId, 
+    onSave, 
+    onCancel 
+}) => {
     const [text, setText] = useState(value);
 
     useEffect(() => {
         setText(value);
     }, [value]);
+
+    const handleSave = () => {
+        onSave(nodeId, field, sessionId, text);
+    };
 
     return (
         <div
@@ -28,7 +43,7 @@ export const EditDialog: React.FC<EditDialogProps> = ({ title, value, onSave, on
                 justifyContent: 'center',
                 zIndex: 1000,
             }}
-            onClick={(e) => {
+            onClick={(e: React.MouseEvent) => {
                 if (e.target === e.currentTarget) {
                     onCancel();
                 }
@@ -46,14 +61,14 @@ export const EditDialog: React.FC<EditDialogProps> = ({ title, value, onSave, on
                     flexDirection: 'column',
                     gap: '16px',
                 }}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e: React.MouseEvent) => e.stopPropagation()}
             >
                 <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff' }}>
                     {title}
                 </div>
                 <textarea
                     value={text}
-                    onChange={(e) => setText(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setText(e.target.value)}
                     style={{
                         width: '100%',
                         height: '300px',
@@ -83,7 +98,7 @@ export const EditDialog: React.FC<EditDialogProps> = ({ title, value, onSave, on
                         Cancel
                     </button>
                     <button
-                        onClick={() => onSave(text)}
+                        onClick={handleSave}
                         style={{
                             padding: '8px 16px',
                             backgroundColor: '#007acc',

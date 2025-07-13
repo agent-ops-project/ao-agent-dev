@@ -8,8 +8,8 @@ def setup_logging():
 
     # This attaches a default StreamHandler to stderr
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s — %(message)s",
+        level=logging.WARNING,
+        format="%(message)s",
     )
 
     return root
@@ -21,5 +21,5 @@ def main():
     logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.WARNING)
     main()

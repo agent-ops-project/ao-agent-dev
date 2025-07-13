@@ -3,6 +3,9 @@ import importlib.abc
 import importlib.util
 import sys
 import os
+from common.logging_config import setup_logging
+
+logger = setup_logging()
 
 _user_py_files = set()
 _user_file_to_module = dict()
@@ -37,7 +40,7 @@ def taint_format_string(format_string, *args, **kwargs):
 
 class FStringTransformer(ast.NodeTransformer):
     def visit_JoinedStr(self, node):
-        print(f"[DEBUG] Transforming f-string at line {getattr(node, 'lineno', '?')}")
+        logger.debug(f"Transforming f-string at line {getattr(node, 'lineno', '?')}")
         # Replace f-string with a call to taint_fstring_join
         new_node = ast.Call(
             func=ast.Name(id='taint_fstring_join', ctx=ast.Load()),
@@ -53,7 +56,7 @@ class FStringTransformer(ast.NodeTransformer):
             isinstance(node.func.value.value, str) and
             node.func.attr == 'format'):
             
-            print(f"[DEBUG] Transforming .format() call at line {getattr(node, 'lineno', '?')}")
+            logger.debug(f"Transforming .format() call at line {getattr(node, 'lineno', '?')}")
             
             # Extract the format string and arguments
             format_string = node.func.value.value
@@ -83,7 +86,7 @@ class FStringImportLoader(importlib.abc.SourceLoader):
             return f.read()
 
     def source_to_code(self, data, path, *, _optimize=-1):
-        print(f"[DEBUG] Rewriting AST for {self.fullname} at {path}")
+        logger.debug(f"Rewriting AST for {self.fullname} at {path}")
         tree = ast.parse(data, filename=path)
         tree = FStringTransformer().visit(tree)
         ast.fix_missing_locations(tree)
@@ -91,17 +94,20 @@ class FStringImportLoader(importlib.abc.SourceLoader):
 
 class FStringImportFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path, target=None):
-        print(f"[DEBUG] find_spec called for: {fullname}")
-        print(f"[DEBUG] Current _user_file_to_module mapping:")
-        for file_path, mod_name in _user_file_to_module.items():
-            print(f"  {mod_name}: {file_path}")
-        
         # Only handle modules that correspond to user files
-        for file_path, mod_name in _user_file_to_module.items():
-            if mod_name == fullname:
-                print(f"[DEBUG] Will rewrite: {fullname} from {file_path}")
+        # Skip standard library modules and third-party packages
+        if fullname in _user_file_to_module.values():
+            file_path = None
+            for fp, mod_name in _user_file_to_module.items():
+                if mod_name == fullname:
+                    file_path = fp
+                    break
+            
+            if file_path:
+                logger.debug(f"Will rewrite: {fullname} from {file_path}")
                 return importlib.util.spec_from_loader(fullname, FStringImportLoader(fullname, file_path))
-        print(f"[DEBUG] No match found for: {fullname}")
+        
+        # For all other modules, return None to let other finders handle them
         return None
 
 def install_fstring_rewriter():

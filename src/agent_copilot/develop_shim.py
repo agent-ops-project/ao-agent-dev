@@ -11,6 +11,9 @@ import tempfile
 import runpy
 from typing import Optional, List
 from runtime_tracing.apply_monkey_patches import apply_all_monkey_patches
+from common.logging_config import setup_logging
+
+logger = setup_logging()
 
 # Configuration constants
 HOST = '127.0.0.1'
@@ -119,13 +122,13 @@ class DevelopShim:
     
     def _handle_server_message(self, msg: dict) -> None:
         """Handle incoming server messages."""
-        print(f"[shim-control] Received message from server: {msg}")
+        logger.info(f"[shim-control] Received message from server: {msg}")
         msg_type = msg.get("type")
         if msg_type == "restart":
-            print(f"[shim-control] Received restart message: {msg}")
+            logger.info(f"[shim-control] Received restart message: {msg}")
             self.restart_event.set()
         elif msg_type == "shutdown":
-            print(f"[shim-control] Received shutdown message: {msg}")
+            logger.info(f"[shim-control] Received shutdown message: {msg}")
             self.shutdown_flag = True
     
     def _setup_monkey_patching_env(self) -> dict:
@@ -138,6 +141,13 @@ class DevelopShim:
         
         # Find project root to add to PYTHONPATH
         def find_project_root(start_path):
+            # TODO: Replace with config-based approach later
+            # For now, hardcode the agent-copilot project root
+            agent_copilot_root = "/Users/ferdi/Documents/try"
+            if os.path.exists(agent_copilot_root):
+                return agent_copilot_root
+            
+            # Fallback to original logic
             current = os.path.abspath(start_path)
             while current != os.path.dirname(current):  # Stop at filesystem root
                 # Check for common project root markers
@@ -151,7 +161,7 @@ class DevelopShim:
             return os.getcwd()
         
         project_root = find_project_root(self.script_path)
-        print(f"[DEBUG] Adding project root to PYTHONPATH: {project_root}")
+        # print(f"[DEBUG] Adding project root to PYTHONPATH: {project_root}")
         
         # Add to PYTHONPATH: project_root first, then runtime_tracing_dir
         if 'PYTHONPATH' in env:
@@ -167,7 +177,7 @@ class DevelopShim:
         # Pass the session id to the child process
         if self.session_id:
             env['AGENT_COPILOT_SESSION_ID'] = self.session_id
-            print(f"[DEBUG] Set AGENT_COPILOT_SESSION_ID={self.session_id} in subprocess env")
+            # print(f"[DEBUG] Set AGENT_COPILOT_SESSION_ID={self.session_id} in subprocess env")
         
         return env
     
@@ -180,13 +190,13 @@ class DevelopShim:
             try:
                 subprocess.Popen([sys.executable, server_py, "start"])
             except Exception as e:
-                print(f"Error: Failed to start develop server ({e})")
+                logger.error(f"Failed to start develop server ({e})")
                 sys.exit(1)
             time.sleep(SERVER_START_WAIT)
             try:
                 socket.create_connection((HOST, PORT), timeout=CONNECTION_TIMEOUT).close()
             except Exception:
-                print("Error: Develop server did not start.")
+                logger.error("Develop server did not start.")
                 sys.exit(1)
     
     def _connect_to_server(self) -> None:
@@ -194,7 +204,7 @@ class DevelopShim:
         try:
             self.server_conn = socket.create_connection((HOST, PORT), timeout=CONNECTION_TIMEOUT)
         except Exception as e:
-            print(f"Error: Cannot connect to develop server ({e})")
+            logger.error(f"Cannot connect to develop server ({e})")
             sys.exit(1)
         # Send handshake to server
         handshake = {
@@ -211,7 +221,7 @@ class DevelopShim:
                 try:
                     session_msg = json.loads(session_line.strip())
                     self.session_id = session_msg.get("session_id")
-                    print(f"[shim-control] Registered with session_id: {self.session_id}")
+                    logger.info(f"[shim-control] Registered with session_id: {self.session_id}")
                 except Exception:
                     pass
         except Exception:
@@ -219,21 +229,28 @@ class DevelopShim:
     
     def _convert_and_run_as_module(self, script_path: str, script_args: List[str]) -> Optional[int]:
         """Convert script execution to module import for AST rewriting."""
-        print(f"[DEBUG] _convert_and_run_as_module called with script_path: {script_path}")
+        # print(f"[DEBUG] _convert_and_run_as_module called with script_path: {script_path}")
         abs_path = os.path.abspath(script_path)
         script_dir = os.path.dirname(abs_path)
         
-        print(f"[DEBUG] abs_path: {abs_path}")
-        print(f"[DEBUG] script_dir: {script_dir}")
+        # print(f"[DEBUG] abs_path: {abs_path}")
+        # print(f"[DEBUG] script_dir: {script_dir}")
         
         # Install the f-string rewriter in the current process
-        print("[DEBUG] Installing f-string rewriter in current process")
+        # print("[DEBUG] Installing f-string rewriter in current process")
         
         # Set up file scanning and mapping in current process
         from runtime_tracing.fstring_rewriter import install_fstring_rewriter, set_user_py_files
         
         def find_project_root(start_path):
             """Find the project root by looking for common markers."""
+            # TODO: Replace with config-based approach later
+            # For now, hardcode the user's project root
+            user_project_root = "/Users/ferdi/Documents/try"
+            if os.path.exists(user_project_root):
+                return user_project_root
+            
+            # Fallback to original logic
             current = os.path.abspath(start_path)
             while current != os.path.dirname(current):  # Stop at filesystem root
                 # Check for common project root markers
@@ -264,20 +281,22 @@ class DevelopShim:
         
         # Find project root dynamically
         project_root = find_project_root(script_path)
-        print(f"[DEBUG] Detected project root: {project_root}")
+        # print(f"[DEBUG] Detected project root: {project_root}")
         
-        # Scan for all .py files in the project root
+        # Scan for all .py files in the user's project root
+        # This ensures AST rewriting works for the user's code
         user_py_files, file_to_module = scan_user_py_files_and_modules(project_root)
-        print(f"[DEBUG] Found {len(user_py_files)} Python files")
-        print(f"[DEBUG] File to module mapping:")
-        for file_path, mod_name in file_to_module.items():
-            print(f"  {mod_name}: {file_path}")
+        
+        # print(f"[DEBUG] Found {len(user_py_files)} Python files total")
+        # print(f"[DEBUG] File to module mapping:")
+        # for file_path, mod_name in file_to_module.items():
+        #     print(f"  {mod_name}: {file_path}")
         set_user_py_files(user_py_files, file_to_module)
         
         install_fstring_rewriter()
         
         # Apply monkey patches in the current process
-        print("[DEBUG] Applying monkey patches in current process")
+        # print("[DEBUG] Applying monkey patches in current process")
         from runtime_tracing.apply_monkey_patches import apply_all_monkey_patches
         apply_all_monkey_patches(self.server_conn)
         
@@ -292,19 +311,26 @@ class DevelopShim:
             # Set up argv for the script
             sys.argv = [script_path] + script_args
             
-            # Compute module name as relative path from project root
+            # Compute module name as absolute path from project root
+            # Since the project is installed with pip install -e, we can use absolute module names
             rel_path = os.path.relpath(abs_path, project_root)
-            module_name = rel_path[:-3].replace(os.sep, '.')  # strip .py, convert / to .
-            print(f"[DEBUG] computed module_name: {module_name}")
+            if rel_path.startswith('..'):
+                # If the file is outside the project root, use the filename as module name
+                module_name = os.path.splitext(os.path.basename(abs_path))[0]
+                # print(f"[DEBUG] File outside project root, using filename: {module_name}")
+            else:
+                # Convert relative path to module name
+                module_name = rel_path[:-3].replace(os.sep, '.')  # strip .py, convert / to .
+                # print(f"[DEBUG] computed module_name: {module_name}")
             
             # Import and run as module (this triggers AST rewriting)
-            print(f"[DEBUG] Calling runpy.run_module with module_name: {module_name}")
+            # print(f"[DEBUG] Calling runpy.run_module with module_name: {module_name}")
             runpy.run_module(module_name, run_name='__main__')
             return 0
         except SystemExit as e:
             return e.code if e.code is not None else 0
         except Exception as e:
-            print(f"Error running script as module: {e}")
+            logger.error(f"Error running script as module: {e}")
             return 1
         finally:
             # Restore original state
@@ -319,10 +345,17 @@ class DevelopShim:
         else:
             abs_path = os.path.abspath(script_path)
         
-        print(f"[DEBUG] Converting file path: {script_path} -> {abs_path}")
+        # print(f"[DEBUG] Converting file path: {script_path} -> {abs_path}")
         
         # Find project root by looking for common markers
         def find_project_root(start_path):
+            # TODO: Replace with config-based approach later
+            # For now, hardcode the user's project root
+            user_project_root = "/Users/ferdi/Documents/try"
+            if os.path.exists(user_project_root):
+                return user_project_root
+            
+            # Fallback to original logic
             current = os.path.abspath(start_path)
             while current != os.path.dirname(current):  # Stop at filesystem root
                 # Check for common project root markers
@@ -337,11 +370,17 @@ class DevelopShim:
         
         # Find the project root that contains this file
         project_root = find_project_root(abs_path)
-        print(f"[DEBUG] Detected project root: {project_root}")
+        # print(f"[DEBUG] Detected project root: {project_root}")
         
-        # Compute module name as relative path from project root
+        # Compute module name, handling files outside the project root
         try:
             rel_path = os.path.relpath(abs_path, project_root)
+            
+            if rel_path.startswith('..'):
+                # If the file is outside the project root, use the filename as module name
+                module_name = os.path.splitext(os.path.basename(abs_path))[0]
+                # print(f"[DEBUG] File outside project root, using filename: {module_name}")
+                return module_name
             
             # Remove .py extension
             if rel_path.endswith('.py'):
@@ -358,12 +397,12 @@ class DevelopShim:
             if not module_name:
                 module_name = os.path.splitext(os.path.basename(abs_path))[0]
             
-            print(f"[DEBUG] Converted {script_path} to module name: {module_name}")
+            # print(f"[DEBUG] Converted {script_path} to module name: {module_name}")
             return module_name
             
         except ValueError as e:
             # If the file is not relative to the project root, use filename
-            print(f"[DEBUG] File not relative to project root, using filename")
+            # print(f"[DEBUG] File not relative to project root, using filename")
             base_name = os.path.splitext(os.path.basename(abs_path))[0]
             return base_name
 
@@ -373,14 +412,51 @@ class DevelopShim:
 import sys
 import os
 import runpy
-sys.path.insert(0, {repr(project_root)})
+
+# Force load sitecustomize.py for AST patching
+runtime_tracing_dir = {repr(os.path.join(os.path.dirname(__file__), "..", "runtime_tracing"))}
+if runtime_tracing_dir not in sys.path:
+    sys.path.insert(0, runtime_tracing_dir)
+
+# Add project root to path
+project_root = {repr(project_root)}
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Set up AST rewriting
+from runtime_tracing.fstring_rewriter import install_fstring_rewriter, set_user_py_files
+
+def scan_user_py_files_and_modules(root_dir):
+    user_py_files = set()
+    file_to_module = dict()
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        for filename in filenames:
+            if filename.endswith('.py'):
+                abs_path = os.path.abspath(os.path.join(dirpath, filename))
+                user_py_files.add(abs_path)
+                # Compute module name relative to root_dir
+                rel_path = os.path.relpath(abs_path, root_dir)
+                mod_name = rel_path[:-3].replace(os.sep, '.')  # strip .py, convert / to .
+                if mod_name.endswith(".__init__"):
+                    mod_name = mod_name[:-9]  # remove .__init__
+                file_to_module[abs_path] = mod_name
+    return user_py_files, file_to_module
+
+# Scan and set up file mapping for the user's project root
+user_py_files, file_to_module = scan_user_py_files_and_modules(project_root)
+# print(f"[DEBUG] File wrapper: Found {{len(user_py_files)}} Python files in {{project_root}}")
+# print(f"[DEBUG] File wrapper: File to module mapping:")
+set_user_py_files(user_py_files, file_to_module)
+install_fstring_rewriter()
+
+# Set up argv and run the module
 sys.argv = [{repr(module_name)}] + {repr(script_args)}
 runpy.run_module({repr(module_name)}, run_name='__main__')
 """
         fd, temp_path = tempfile.mkstemp(suffix='.py', prefix='develop_runpy_wrapper_')
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             f.write(wrapper_code)
-        print(f"[DEBUG] Created wrapper script: {temp_path}")
+        # print(f"[DEBUG] Created wrapper script: {temp_path}")
         return temp_path
 
     def _run_user_script_subprocess(self) -> Optional[int]:
@@ -399,11 +475,11 @@ runpy.run_module({repr(module_name)}, run_name='__main__')
                 current = os.path.dirname(current)
             return os.getcwd()
         project_root = find_project_root(self.script_path)
-        print(f"[DEBUG] Project root for wrapper: {project_root}")
+        # print(f"[DEBUG] Project root for wrapper: {project_root}")
         
         if self.is_module_execution:
             # For module execution, create a wrapper that sets up AST rewriting and resolves module names
-            print(f"[DEBUG] Running module with hook installation wrapper")
+            # print(f"[DEBUG] Running module with hook installation wrapper")
             wrapper_code = f"""
 import sys
 import os
@@ -439,8 +515,10 @@ def scan_user_py_files_and_modules(root_dir):
                 file_to_module[abs_path] = mod_name
     return user_py_files, file_to_module
 
-# Scan and set up file mapping
+# Scan and set up file mapping for the user's project root
 user_py_files, file_to_module = scan_user_py_files_and_modules(project_root)
+# print(f"[DEBUG] Subprocess: Found {{len(user_py_files)}} Python files in {{project_root}}")
+# print(f"[DEBUG] Subprocess: File to module mapping:")
 set_user_py_files(user_py_files, file_to_module)
 install_fstring_rewriter()
 
@@ -448,28 +526,33 @@ install_fstring_rewriter()
 module_name = {repr(self.script_path)}
 sys.argv = [module_name] + {repr(self.script_args)}
 
-# Find the correct module name from the file mapping
-correct_module_name = None
-for file_path, mapped_name in file_to_module.items():
-    if mapped_name == module_name:
-        correct_module_name = mapped_name
-        break
-    # Also check if the module name is a suffix of the mapped name
-    elif mapped_name.endswith('.' + module_name):
-        correct_module_name = mapped_name
-        break
+# For files outside the project root, just use the module name as-is
+# For files inside the project root, find the correct module name from the file mapping
+if module_name and not module_name.startswith('..'):
+    correct_module_name = None
+    for file_path, mapped_name in file_to_module.items():
+        if mapped_name == module_name:
+            correct_module_name = mapped_name
+            break
+        # Also check if the module name is a suffix of the mapped name
+        elif mapped_name.endswith('.' + module_name):
+            correct_module_name = mapped_name
+            break
 
-if correct_module_name:
-    print(f"[DEBUG] Resolved {{module_name}} to {{correct_module_name}}")
-    runpy.run_module(correct_module_name, run_name='__main__')
+    if correct_module_name:
+        # print(f"[DEBUG] Resolved {{module_name}} to {{correct_module_name}}")
+        runpy.run_module(correct_module_name, run_name='__main__')
+    else:
+        # print(f"[DEBUG] Could not resolve {{module_name}}, trying as-is")
+        runpy.run_module(module_name, run_name='__main__')
 else:
-    print(f"[DEBUG] Could not resolve {{module_name}}, trying as-is")
+    # print(f"[DEBUG] Using module name as-is: {{module_name}}")
     runpy.run_module(module_name, run_name='__main__')
 """
             fd, temp_path = tempfile.mkstemp(suffix='.py', prefix='develop_module_wrapper_')
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 f.write(wrapper_code)
-            print(f"[DEBUG] Created module wrapper: {temp_path}")
+            # print(f"[DEBUG] Created module wrapper: {temp_path}")
             
             self.proc = subprocess.Popen([sys.executable, temp_path], env=env)
             # Store the wrapper path for cleanup later
@@ -477,7 +560,7 @@ else:
         else:
             # For file execution, convert to module name and use wrapper
             module_name = self._convert_file_to_module_name(self.script_path)
-            print(f"[DEBUG] Will run file as module: {module_name}")
+            # print(f"[DEBUG] Will run file as module: {module_name}")
             wrapper_path = self._create_runpy_wrapper(module_name, self.script_args, project_root)
             self.proc = subprocess.Popen([sys.executable, wrapper_path], env=env)
             # Store the wrapper path for cleanup later
@@ -487,14 +570,14 @@ else:
         try:
             while self.proc.poll() is None:
                 if self.restart_event.is_set():
-                    print("[shim-control] Restart event detected. Terminating user process.")
+                    logger.info("[shim-control] Restart event detected. Terminating user process.")
                     self.proc.terminate()
                     try:
                         self.proc.wait(timeout=PROCESS_TERMINATE_TIMEOUT)
                     except subprocess.TimeoutExpired:
                         self.proc.kill()
                         self.proc.wait()
-                    print("[shim-control] User process terminated. Will restart.")
+                    logger.info("[shim-control] User process terminated. Will restart.")
                     return None
                 time.sleep(MESSAGE_POLL_INTERVAL)
             self.proc.wait()
@@ -531,7 +614,7 @@ else:
         except SystemExit as e:
             return e.code if e.code is not None else 0
         except Exception as e:
-            print(f"Error running script: {e}")
+            logger.error(f"Error running script: {e}")
             return 1
         finally:
             # Restore original argv
@@ -559,14 +642,14 @@ else:
     
     def _run_debug_mode(self) -> None:
         """Run the script in debug mode."""
-        print("Debug mode detected. Running script in debug context.")
-        print("Running script in debug mode...")
+        logger.info("Debug mode detected. Running script in debug context.")
+        logger.info("Running script in debug mode...")
         
         returncode = self._run_user_script_debug_mode()
         
         # If restart was requested during execution, handle it
         if returncode is None:
-            print("Restart requested during execution, restarting script...")
+            logger.info("Restart requested during execution, restarting script...")
             self.restart_event.clear()
             # Run the script again
             self._run_user_script_debug_mode()
@@ -574,18 +657,18 @@ else:
     def _run_normal_mode(self) -> None:
         """Run the script in normal mode with restart handling."""
         while not self.shutdown_flag:
-            print("[shim-control] Starting user script subprocess.")
+            logger.info("[shim-control] Starting user script subprocess.")
             returncode = self._run_user_script_subprocess()
             if self.shutdown_flag:
                 break
             # Check if restart was requested during execution
             if returncode is None:
-                print("[shim-control] Restart requested, restarting script...")
+                logger.info("[shim-control] Restart requested, restarting script...")
                 self.restart_event.clear()
                 continue
             # Check if restart was requested after completion
             if returncode is not None and self.restart_event.is_set():
-                print("[shim-control] Restart requested, restarting script...")
+                logger.info("[shim-control] Restart requested, restarting script...")
                 self.restart_event.clear()
                 continue
             # No restart requested, exit
@@ -631,15 +714,15 @@ else:
 def main():
     """Entry point for the develop command."""
     if len(sys.argv) < 2:
-        print("Usage: develop <script.py> [script args...] or develop -m <module> [module args...]")
+        logger.error("Usage: develop <script.py> [script args...] or develop -m <module> [module args...]")
         sys.exit(1)
     
     # Check if user is running as module (-m flag)
     is_module_execution = False
     if sys.argv[1] == '-m':
         if len(sys.argv) < 3:
-            print("Error: No module specified after -m")
-            print("Usage: develop -m <module> [module args...]")
+            logger.error("No module specified after -m")
+            logger.error("Usage: develop -m <module> [module args...]")
             sys.exit(1)
         # Module execution: pass through to subprocess
         script_path = sys.argv[2]  # This will be the module name

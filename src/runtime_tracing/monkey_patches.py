@@ -106,7 +106,7 @@ session_id = None
 def set_session_id(sid):
     global session_id
     session_id = sid
-    print(f"[DEBUG] set_session_id called with: {sid}")
+    # # print(f"[DEBUG] set_session_id called with: {sid}")
 
 
 # ===========================================================
@@ -119,7 +119,7 @@ def _send_graph_node_and_edges(server_conn, node_id, input_obj, output, source_n
     codeLocation = f"{file_name}:{line_no}" if file_name and line_no else "unknown:0"
     
     # Debug print for session_id and node info
-    print(f"[DEBUG] _send_graph_node_and_edges: session_id={session_id}, node_id={node_id}, model={model}, file={file_name}, line={line_no}")
+    # # print(f"[DEBUG] _send_graph_node_and_edges: session_id={session_id}, node_id={node_id}, model={model}, file={file_name}, line={line_no}")
     # Send node
     node_msg = {
         "type": "addNode",
@@ -129,13 +129,13 @@ def _send_graph_node_and_edges(server_conn, node_id, input_obj, output, source_n
             "input": input_obj,
             "output": extract_output_text(output, api_type),
             "border_color": "#00c542",
-            "label": f"{model} Call",
+            "label": f"{model}",
             "codeLocation": codeLocation,
             "model": model,
             "api_type": api_type,
         }
     }
-    print(f"[DEBUG] Sending node_msg: {json.dumps(node_msg)[:200]}...")
+    # # print(f"[DEBUG] Sending node_msg: {json.dumps(node_msg)[:200]}...")
     try:
         server_conn.sendall((json.dumps(node_msg) + "\n").encode("utf-8"))
     except Exception as e:
@@ -149,7 +149,7 @@ def _send_graph_node_and_edges(server_conn, node_id, input_obj, output, source_n
                 "session_id": session_id,
                 "edge": {"source": src, "target": node_id}
             }
-            print(f"[DEBUG] Sending edge_msg: {json.dumps(edge_msg)}")
+            # # print(f"[DEBUG] Sending edge_msg: {json.dumps(edge_msg)}")
             try:
                 server_conn.sendall((json.dumps(edge_msg) + "\n").encode("utf-8"))
             except Exception as e:
@@ -186,7 +186,7 @@ def _taint_and_log_openai_result(result, file_name, line_no, from_cache, server_
 
     TODO: Refactor. This does too much. Also should be more general than OAI.
     """
-    print("in taint")
+    # print("in taint")
     # Use cached node ID if available, otherwise generate new one
     node_id = cached_node_id if cached_node_id else str(uuid.uuid4())
     
@@ -194,7 +194,7 @@ def _taint_and_log_openai_result(result, file_name, line_no, from_cache, server_
     source_node_ids = _extract_source_node_ids(input_taint)
     
     if any_input_tainted:
-        logger.warning("OpenAI called with tainted input!")
+        logger.debug("OpenAI called with tainted input!")
     
     # Wrap output as new taint source
     result = taint_wrap(result, {'origin_nodes': [node_id]})
@@ -224,9 +224,9 @@ def _taint_and_log_openai_result(result, file_name, line_no, from_cache, server_
     }
     try:
         server_conn.sendall((json.dumps(message) + "\n").encode("utf-8"))
-        print("Sent")
+        # print("Sent")
     except Exception as e:
-        print("Exception", e)
+        # print("Exception", e)
         pass  # best-effort only
 
     # Send graph updates (addNode/addEdge) with model
@@ -263,9 +263,9 @@ def v1_openai_patch(server_conn):
             messages = messages.get_raw()
         # Use persistent cache/edits
         input_to_use, output_to_use, cached_node_id = CACHE.get_in_out(session_id, model, str(messages))
-        from_cache = output_to_use is not None
+        from_cache = output_to_use is not None and output_to_use
         new_node_id = None
-        if output_to_use is not None:
+        if output_to_use is not None and output_to_use:
             result = output_to_use
         else:
             # Call real LLM with possibly edited input
@@ -304,8 +304,19 @@ def response_to_json(response: Response) -> str:
 
 def json_to_response(json_str: str) -> Response:
     """Deserialize a JSON string from the DB to a Response object."""
-    data = json.loads(json_str)
-    return Response(**data)
+    logger.debug(f"json_to_response called with: {repr(json_str)}")
+    logger.debug(f"json_str type: {type(json_str)}")
+    logger.debug(f"json_str length: {len(json_str) if json_str else 0}")
+    if not json_str:
+        logger.debug("json_str is empty or None, returning None")
+        return None
+    try:
+        data = json.loads(json_str)
+        return Response(**data)
+    except json.JSONDecodeError as e:
+        logger.debug(f"JSON decode error: {e}")
+        logger.debug(f"Failed to parse: {repr(json_str)}")
+        raise
 
 def inject_output_text(response_dict: dict, new_text: str) -> dict:
     """Inject new_text into the correct place in the response dict."""
@@ -333,31 +344,32 @@ def v2_openai_patch(server_conn):
         original_create = self.responses.create
 
         def patched_create(*args, **kwargs):
-            print("="*20)
+            # print("="*20)
             # Get model and input_text.
             model = kwargs.get("model", args[0] if args else None)
             input = kwargs.get("input", args[1] if len(args) > 1 else None)
             
             # Get raw values if input is wrapped.
-            print("INPUT TYPE", type(input))
+            # print("INPUT TYPE", type(input))
             if hasattr(model, 'get_raw'):
                 model = model.get_raw()
-                print("MODEL IS OBJECT")
+                # print("MODEL IS OBJECT")
             if hasattr(input, 'get_raw'):
                 input_text = input.get_raw()
-                print("INPUT IS OBJECT")
+                # print("INPUT IS OBJECT")
             else:
                 input_text = input
 
             # Check if there's a cached / edited input/output.
             input_to_use, output_to_use, cached_node_id = CACHE.get_in_out(session_id, model, str(input_text))
-            from_cache = output_to_use is not None
+            logger.debug(f"Cache lookup result: input_to_use={repr(input_to_use)}, output_to_use={repr(output_to_use)}, cached_node_id={cached_node_id}")
+            from_cache = output_to_use is not None and output_to_use
             new_node_id = None
 
             # Produce output.
-            if output_to_use is not None:
+            if output_to_use is not None and output_to_use:
                 # Use cached output.
-                print("Using cached response")
+                # print("Using cached response")
                 result = json_to_response(output_to_use)
                 # For cached results, we need to preserve the original taint structure
                 # The result should already be taint-wrapped from the original call
@@ -373,26 +385,26 @@ def v2_openai_patch(server_conn):
                 else:
                     result = original_create(*args, **new_kwargs)
 
-                print("[DEBUG] After LLM call, before taint_wrap:")
-                print("  type:", type(result))
-                # print("  repr:", repr(result))
+                # # print("[DEBUG] After LLM call, before taint_wrap:")
+                # print("  type:", type(result))
+                # # print("  repr:", repr(result))
                 
                 # Generate node ID for new result
                 new_node_id = str(uuid.uuid4())
                 # Cache.
                 CACHE.cache_output(session_id, model, str(input_to_use), result, 'openai_v2', new_node_id)
                 result = taint_wrap(result, {'origin_nodes': [new_node_id]})
-                print("[DEBUG] After taint_wrap:")
-                print("  type:", type(result))
-                # print("  repr:", repr(result))
-                print("  get_origin_nodes:", get_origin_nodes(result))
+                # # print("[DEBUG] After taint_wrap:")
+                # print("  type:", type(result))
+                # # print("  repr:", repr(result))
+                # print("  get_origin_nodes:", get_origin_nodes(result))
 
             # TODO: The check for taint should be in the log openai result.
             # I think input text is "untainted."
             # input_obj = input_text
             input_taint = check_taint(input)
             any_input_tainted = input_taint is not None and input_taint != {} and input_taint != []
-            print("any input tainted:", any_input_tainted)
+            # print("any input tainted:", any_input_tainted)
             # Get caller location
             frame = inspect.currentframe()
             caller = frame and frame.f_back

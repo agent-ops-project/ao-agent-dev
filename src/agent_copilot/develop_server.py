@@ -12,6 +12,9 @@ from typing import Dict, Any, Optional, Set, Tuple
 from workflow_edits.edit_manager import EDIT
 from workflow_edits.cache_manager import CACHE
 from workflow_edits import db
+from common.logging_config import setup_logging
+
+logger = setup_logging()
 
 # Configuration constants
 HOST = '127.0.0.1'
@@ -44,7 +47,7 @@ class DevelopServer:
         try:
             conn.sendall((json.dumps(msg) + "\n").encode("utf-8"))
         except Exception as e:
-            print(f"[develop_server] Error sending JSON: {e}")
+            logger.error(f"Error sending JSON: {e}")
     
     def broadcast_to_all_uis(self, msg: dict) -> None:
         """Broadcast a message to all UI connections."""
@@ -52,7 +55,7 @@ class DevelopServer:
             try:
                 self.send_json(ui_conn, msg)
             except Exception as e:
-                print(f"[develop_server] Error broadcasting to UI: {e}")
+                logger.error(f"Error broadcasting to UI: {e}")
                 self.ui_connections.discard(ui_conn)
     
     def broadcast_experiment_list_to_all_uis(self) -> None:
@@ -93,29 +96,29 @@ class DevelopServer:
     
     def handle_shutdown(self) -> None:
         """Handle shutdown command by closing all connections."""
-        print("[develop_server] Shutdown command received. Closing all connections.")
+        logger.info("Shutdown command received. Closing all connections.")
         # Close all client sockets
         for s in list(self.conn_info.keys()):
-            print(f"Closing socket: {s}")
+            logger.debug(f"Closing socket: {s}")
             try:
                 s.close()
             except Exception as e:
-                print(f"Error closing socket: {e}")
+                logger.error(f"Error closing socket: {e}")
         os._exit(0)
     
     def handle_restart_message(self, msg: dict) -> bool:
         if msg.get("type") == "restart":
             session_id = msg.get("session_id")
             if not session_id:
-                print("[develop_server] ERROR: Restart message missing session_id. Ignoring.")
+                logger.error("Restart message missing session_id. Ignoring.")
                 return False
-            print(f"[develop_server] Received restart request for session_id: {session_id}")
+            logger.info(f"Received restart request for session_id: {session_id}")
             session = self.sessions.get(session_id)
             if session:
-                print(f"[develop_server] session.shim_conn: {session.shim_conn}")
+                logger.debug(f"session.shim_conn: {session.shim_conn}")
                 # Immediately broadcast an empty graph to all UIs for fast clearing
                 self.session_graphs[session_id] = {"nodes": [], "edges": []}
-                print(f"[develop_server] (pre-restart) Graph reset for session_id: {session_id}")
+                logger.debug(f"(pre-restart) Graph reset for session_id: {session_id}")
                 self.broadcast_to_all_uis({
                     "type": "graph_update",
                     "session_id": session_id,
@@ -123,16 +126,16 @@ class DevelopServer:
                 })
                 if session.shim_conn:
                     restart_msg = {"type": "restart", "session_id": session_id}
-                    print(f"[develop_server] Sending restart to shim-control for session_id: {session_id} with message: {restart_msg}")
+                    logger.debug(f"Sending restart to shim-control for session_id: {session_id} with message: {restart_msg}")
                     try:
                         self.send_json(session.shim_conn, restart_msg)
                     except Exception as e:
-                        print(f"[develop_server] Error sending restart: {e}")
+                        logger.error(f"Error sending restart: {e}")
                     return True
                 else:
-                    print(f"[develop_server] No shim_conn for session_id: {session_id}")
+                    logger.warning(f"No shim_conn for session_id: {session_id}")
             else:
-                print(f"[develop_server] No session found for session_id: {session_id}")
+                logger.warning(f"No session found for session_id: {session_id}")
         return False
     
     def handle_deregister_message(self, msg: dict) -> bool:
@@ -201,21 +204,22 @@ class DevelopServer:
             
             self.conn_info[conn] = {"role": role, "session_id": session_id}
             self.send_json(conn, {"type": "session_id", "session_id": session_id})
-            print(f"[develop_server] Sent session_id {session_id} to conn {conn}")
+            logger.debug(f"Sent session_id {session_id} to conn {conn}")
             
             # Main message loop
             try:
                 for line in file_obj:
                     try:
                         msg = json.loads(line.strip())
+                        logger.info(f"[SERVER] Received message: {msg}")
                     except Exception as e:
-                        print(f"[develop_server] Error parsing JSON: {e}")
+                        logger.error(f"Error parsing JSON: {e}")
                         continue
                     
                     # Print message type (with error handling)
                     try:
                         msg_type = msg.get("type", "unknown")
-                        print(f"[develop_server] Received message type: {msg_type}")
+                        logger.debug(f"Received message type: {msg_type}")
                     except Exception:
                         pass  # Skip printing if there's a key error
                     
@@ -276,7 +280,7 @@ class DevelopServer:
                         continue
                     # --- Handle UI edit messages ---
                     elif msg.get("type") == "edit_input":
-                        print(f"[SERVER] Received edit_input: {msg}")
+                        logger.debug(f"Received edit_input: {msg}")
                         session_id = msg["session_id"]
                         node_id = msg["node_id"]  # Use this directly
                         new_input = msg["value"]
@@ -293,7 +297,7 @@ class DevelopServer:
                                 # Node not found in memory, skip
                                 continue
                         
-                        print(f"[SERVER] Calling EDIT.set_input_overwrite({session_id}, {model}, {input_val}, {new_input})")
+                        logger.debug(f"Calling EDIT.set_input_overwrite({session_id}, {model}, {input_val}, {new_input})")
                         EDIT.set_input_overwrite(session_id, model, input_val, new_input)
                         
                         # Update in-memory graph data
@@ -310,10 +314,10 @@ class DevelopServer:
                                 "payload": self.session_graphs[session_id]
                             })
                         
-                        print(f"[SERVER] Input overwrite completed")
+                        logger.debug("Input overwrite completed")
                         continue
                     elif msg.get("type") == "edit_output":
-                        print(f"[SERVER] Received edit_output: {msg}")
+                        logger.debug(f"Received edit_output: {msg}")
                         session_id = msg["session_id"]
                         node_id = msg["node_id"]  # Use this directly
                         new_output = msg["value"]
@@ -331,7 +335,7 @@ class DevelopServer:
                                 # Node not found in memory, skip
                                 continue
                         
-                        print(f"[SERVER] Calling EDIT.set_output_overwrite({session_id}, {model}, {input_val}, {new_output}, api_type={api_type})")
+                        logger.debug(f"Calling EDIT.set_output_overwrite({session_id}, {model}, {input_val}, {new_output}, api_type={api_type})")
                         EDIT.set_output_overwrite(session_id, model, input_val, new_output, api_type=api_type)
                         
                         # Update in-memory graph data
@@ -348,7 +352,7 @@ class DevelopServer:
                                 "payload": self.session_graphs[session_id]
                             })
                         
-                        print(f"[SERVER] Output overwrite completed")
+                        logger.debug("Output overwrite completed")
                         continue
                     elif msg.get("type") == "remove_input_edit":
                         # TODO: Haven't checked.
@@ -381,7 +385,7 @@ class DevelopServer:
                         self.route_message(conn, msg)
                         
             except (ConnectionResetError, OSError) as e:
-                print(f"[develop_server] Connection closed: {e}")
+                logger.info(f"Connection closed: {e}")
         finally:
             # Clean up connection
             info = self.conn_info.pop(conn, None)
@@ -399,7 +403,7 @@ class DevelopServer:
             try:
                 conn.close()
             except Exception as e:
-                print(f"[develop_server] Error closing connection: {e}")
+                logger.error(f"Error closing connection: {e}")
     
     def run_server(self) -> None:
         """Main server loop: accept clients and spawn handler threads."""
@@ -407,7 +411,7 @@ class DevelopServer:
         self.server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_sock.bind((HOST, PORT))
         self.server_sock.listen()
-        print(f"Develop server listening on {HOST}:{PORT}")
+        logger.info(f"Develop server listening on {HOST}:{PORT}")
         
         try:
             while True:
@@ -422,7 +426,7 @@ class DevelopServer:
             pass
         finally:
             self.server_sock.close()
-            print("Develop server stopped.")
+            logger.info("Develop server stopped.")
 
 def main():
     """CLI entry point."""
@@ -435,14 +439,14 @@ def main():
         # If server is already running, do not start another
         try:
             socket.create_connection((HOST, PORT), timeout=1).close()
-            print("Develop server is already running.")
+            logger.info("Develop server is already running.")
             return
         except Exception:
             pass
         # Launch the server as a detached background process (POSIX)
         subprocess.Popen([sys.executable, __file__, "--serve"],
                         close_fds=True, start_new_session=True)
-        print("Develop server started.")
+        logger.info("Develop server started.")
         
     elif args.command == 'stop':
         # Connect to the server and send a shutdown command
@@ -454,9 +458,9 @@ def main():
             # Send shutdown message
             sock.sendall((json.dumps({"type": "shutdown"}) + "\n").encode('utf-8'))
             sock.close()
-            print("Develop server stop signal sent.")
+            logger.info("Develop server stop signal sent.")
         except Exception:
-            print("No running server found.")
+            logger.warning("No running server found.")
             sys.exit(1)
             
     elif args.command == 'restart':
@@ -467,14 +471,14 @@ def main():
             sock.sendall((json.dumps(handshake) + "\n").encode('utf-8'))
             sock.sendall((json.dumps({"type": "shutdown"}) + "\n").encode('utf-8'))
             sock.close()
-            print("Develop server stop signal sent (for restart). Waiting for shutdown...")
+            logger.info("Develop server stop signal sent (for restart). Waiting for shutdown...")
             time.sleep(SHUTDOWN_WAIT)
         except Exception:
-            print("No running server found. Proceeding to start.")
+            logger.info("No running server found. Proceeding to start.")
         # Start the server
         subprocess.Popen([sys.executable, __file__, "--serve"],
                         close_fds=True, start_new_session=True)
-        print("Develop server restarted.")
+        logger.info("Develop server restarted.")
         
     elif args.command == '--serve':
         # Internal: run the server loop (not meant to be called by users directly)
@@ -487,5 +491,5 @@ if __name__ == "__main__":
         server = DevelopServer()
         server.run_server()
     else:
-        print(f"[develop_server] Starting server on {HOST}:{PORT}, PID={os.getpid()}")
+        logger.info(f"Starting server on {HOST}:{PORT}, PID={os.getpid()}")
         main()
