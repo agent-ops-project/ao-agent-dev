@@ -68,7 +68,6 @@ class TaintStr(str):
         return TaintStr(result, {'origin_nodes': list(nodes)})
 
     def __format__(self, format_spec):
-        # Handle f-string interpolation by preserving taint information
         result = str.__format__(self, format_spec)
         return TaintStr(result, self._taint_origin)
 
@@ -76,8 +75,106 @@ class TaintStr(str):
         result = str.__getitem__(self, key)
         return TaintStr(result, self._taint_origin)
 
+    def __mod__(self, other):
+        # Support for % formatting
+        try:
+            result = str.__mod__(self, other)
+        except Exception:
+            # fallback to original behavior
+            return NotImplemented
+        # Collect taint from self and all args
+        nodes = set(get_origin_nodes(self))
+        if isinstance(other, (tuple, list)):
+            for o in other:
+                nodes.update(get_origin_nodes(o))
+        else:
+            nodes.update(get_origin_nodes(other))
+        return TaintStr(result, {'origin_nodes': list(nodes)})
+
+    def __rmod__(self, other):
+        # Support for % formatting with TaintStr on right
+        try:
+            result = str.__mod__(other, self)
+        except Exception:
+            return NotImplemented
+        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
+        return TaintStr(result, {'origin_nodes': list(nodes)})
+
+    def encode(self, *args, **kwargs):
+        # Return bytes, taint cannot be propagated, but don't crash
+        return str(self).encode(*args, **kwargs)
+
+    def decode(self, *args, **kwargs):
+        # Not meaningful for str, but for compatibility
+        return str(self).decode(*args, **kwargs)
+
+    def join(self, iterable):
+        # Join with taint propagation
+        joined = str(self).join([str(x) for x in iterable])
+        nodes = set(get_origin_nodes(self))
+        for x in iterable:
+            nodes.update(get_origin_nodes(x))
+        return TaintStr(joined, {'origin_nodes': list(nodes)})
+
+    def __str__(self):
+        # Ensure str(TaintStr) returns a raw string for C-libs compatibility
+        return str.__str__(self)
+
+    def __repr__(self):
+        return f"TaintStr({super().__repr__()}, taint_origin={self._taint_origin})"
+
     def get_raw(self):
         return str(self)
+
+    # Add more methods for compatibility
+    def upper(self, *args, **kwargs):
+        return TaintStr(str.upper(self, *args, **kwargs), self._taint_origin)
+    def lower(self, *args, **kwargs):
+        return TaintStr(str.lower(self, *args, **kwargs), self._taint_origin)
+    def strip(self, *args, **kwargs):
+        return TaintStr(str.strip(self, *args, **kwargs), self._taint_origin)
+    def lstrip(self, *args, **kwargs):
+        return TaintStr(str.lstrip(self, *args, **kwargs), self._taint_origin)
+    def rstrip(self, *args, **kwargs):
+        return TaintStr(str.rstrip(self, *args, **kwargs), self._taint_origin)
+    def replace(self, old, new, *args, **kwargs):
+        # Propagate taint from new as well
+        result = str.replace(self, old, new, *args, **kwargs)
+        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(new))
+        return TaintStr(result, {'origin_nodes': list(nodes)})
+    def split(self, *args, **kwargs):
+        # Return list of TaintStr
+        return [TaintStr(s, self._taint_origin) for s in str.split(self, *args, **kwargs)]
+    def capitalize(self, *args, **kwargs):
+        return TaintStr(str.capitalize(self, *args, **kwargs), self._taint_origin)
+    def title(self, *args, **kwargs):
+        return TaintStr(str.title(self, *args, **kwargs), self._taint_origin)
+    def startswith(self, *args, **kwargs):
+        return str.startswith(self, *args, **kwargs)
+    def endswith(self, *args, **kwargs):
+        return str.endswith(self, *args, **kwargs)
+    def find(self, *args, **kwargs):
+        return str.find(self, *args, **kwargs)
+    def index(self, *args, **kwargs):
+        return str.index(self, *args, **kwargs)
+    def count(self, *args, **kwargs):
+        return str.count(self, *args, **kwargs)
+    def isdigit(self, *args, **kwargs):
+        return str.isdigit(self, *args, **kwargs)
+    def isalpha(self, *args, **kwargs):
+        return str.isalpha(self, *args, **kwargs)
+    def isalnum(self, *args, **kwargs):
+        return str.isalnum(self, *args, **kwargs)
+    def isnumeric(self, *args, **kwargs):
+        return str.isnumeric(self, *args, **kwargs)
+    def islower(self, *args, **kwargs):
+        return str.islower(self, *args, **kwargs)
+    def isupper(self, *args, **kwargs):
+        return str.isupper(self, *args, **kwargs)
+    def isspace(self, *args, **kwargs):
+        return str.isspace(self, *args, **kwargs)
+    def __hash__(self):
+        return str.__hash__(self)
 
 class TaintInt(int):
     def __new__(cls, value, taint_origin=None):
@@ -97,15 +194,123 @@ class TaintInt(int):
             raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
         return obj
 
+    def _propagate_taint(self, other):
+        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
+        return {'origin_nodes': list(nodes)}
+
+    # Arithmetic operators
     def __add__(self, other):
         result = int.__add__(self, other)
-        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
-        return TaintInt(result, {'origin_nodes': list(nodes)})
-
+        return TaintInt(result, self._propagate_taint(other))
     def __radd__(self, other):
         result = int.__add__(other, self)
-        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
-        return TaintInt(result, {'origin_nodes': list(nodes)})
+        return TaintInt(result, self._propagate_taint(other))
+    def __sub__(self, other):
+        result = int.__sub__(self, other)
+        return TaintInt(result, self._propagate_taint(other))
+    def __rsub__(self, other):
+        result = int.__sub__(other, self)
+        return TaintInt(result, self._propagate_taint(other))
+    def __mul__(self, other):
+        result = int.__mul__(self, other)
+        return TaintInt(result, self._propagate_taint(other))
+    def __rmul__(self, other):
+        result = int.__mul__(other, self)
+        return TaintInt(result, self._propagate_taint(other))
+    def __floordiv__(self, other):
+        result = int.__floordiv__(self, other)
+        return TaintInt(result, self._propagate_taint(other))
+    def __rfloordiv__(self, other):
+        result = int.__floordiv__(other, self)
+        return TaintInt(result, self._propagate_taint(other))
+    def __truediv__(self, other):
+        result = int.__truediv__(self, other)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __rtruediv__(self, other):
+        result = int.__truediv__(other, self)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __mod__(self, other):
+        result = int.__mod__(self, other)
+        return TaintInt(result, self._propagate_taint(other))
+    def __rmod__(self, other):
+        result = int.__mod__(other, self)
+        return TaintInt(result, self._propagate_taint(other))
+    def __pow__(self, other, modulo=None):
+        result = int.__pow__(self, other, modulo) if modulo is not None else int.__pow__(self, other)
+        return TaintInt(result, self._propagate_taint(other))
+    def __rpow__(self, other, modulo=None):
+        result = int.__pow__(other, self, modulo) if modulo is not None else int.__pow__(other, self)
+        return TaintInt(result, self._propagate_taint(other))
+    def __neg__(self):
+        return TaintInt(int.__neg__(self), get_origin_nodes(self))
+    def __pos__(self):
+        return TaintInt(int.__pos__(self), get_origin_nodes(self))
+    def __abs__(self):
+        return TaintInt(int.__abs__(self), get_origin_nodes(self))
+    def __invert__(self):
+        return TaintInt(int.__invert__(self), get_origin_nodes(self))
+    def __and__(self, other):
+        result = int.__and__(self, other)
+        return TaintInt(result, self._propagate_taint(other))
+    def __rand__(self, other):
+        result = int.__and__(other, self)
+        return TaintInt(result, self._propagate_taint(other))
+    def __or__(self, other):
+        result = int.__or__(self, other)
+        return TaintInt(result, self._propagate_taint(other))
+    def __ror__(self, other):
+        result = int.__or__(other, self)
+        return TaintInt(result, self._propagate_taint(other))
+    def __xor__(self, other):
+        result = int.__xor__(self, other)
+        return TaintInt(result, self._propagate_taint(other))
+    def __rxor__(self, other):
+        result = int.__xor__(other, self)
+        return TaintInt(result, self._propagate_taint(other))
+    def __lshift__(self, other):
+        result = int.__lshift__(self, other)
+        return TaintInt(result, self._propagate_taint(other))
+    def __rlshift__(self, other):
+        result = int.__lshift__(other, self)
+        return TaintInt(result, self._propagate_taint(other))
+    def __rshift__(self, other):
+        result = int.__rshift__(self, other)
+        return TaintInt(result, self._propagate_taint(other))
+    def __rrshift__(self, other):
+        result = int.__rshift__(other, self)
+        return TaintInt(result, self._propagate_taint(other))
+    def __matmul__(self, other):
+        result = int.__matmul__(self, other)
+        return TaintInt(result, self._propagate_taint(other))
+    def __rmatmul__(self, other):
+        result = int.__matmul__(other, self)
+        return TaintInt(result, self._propagate_taint(other))
+
+    # Conversion and index
+    def __int__(self):
+        return int(self)
+    def __float__(self):
+        return float(self)
+    def __index__(self):
+        return int(self)
+
+    # Comparison operators (return bool)
+    def __eq__(self, other):
+        return int.__eq__(self, other)
+    def __ne__(self, other):
+        return int.__ne__(self, other)
+    def __lt__(self, other):
+        return int.__lt__(self, other)
+    def __le__(self, other):
+        return int.__le__(self, other)
+    def __gt__(self, other):
+        return int.__gt__(self, other)
+    def __ge__(self, other):
+        return int.__ge__(self, other)
+
+    # Boolean context
+    def __bool__(self):
+        return int.__bool__(self)
 
     def get_raw(self):
         return int(self)
@@ -128,15 +333,85 @@ class TaintFloat(float):
             raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
         return obj
 
+    def _propagate_taint(self, other):
+        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
+        return {'origin_nodes': list(nodes)}
+
+    # Arithmetic operators
     def __add__(self, other):
         result = float.__add__(self, other)
-        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
-        return TaintFloat(result, {'origin_nodes': list(nodes)})
-
+        return TaintFloat(result, self._propagate_taint(other))
     def __radd__(self, other):
         result = float.__add__(other, self)
-        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
-        return TaintFloat(result, {'origin_nodes': list(nodes)})
+        return TaintFloat(result, self._propagate_taint(other))
+    def __sub__(self, other):
+        result = float.__sub__(self, other)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __rsub__(self, other):
+        result = float.__sub__(other, self)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __mul__(self, other):
+        result = float.__mul__(self, other)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __rmul__(self, other):
+        result = float.__mul__(other, self)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __floordiv__(self, other):
+        result = float.__floordiv__(self, other)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __rfloordiv__(self, other):
+        result = float.__floordiv__(other, self)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __truediv__(self, other):
+        result = float.__truediv__(self, other)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __rtruediv__(self, other):
+        result = float.__truediv__(other, self)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __mod__(self, other):
+        result = float.__mod__(self, other)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __rmod__(self, other):
+        result = float.__mod__(other, self)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __pow__(self, other, modulo=None):
+        result = float.__pow__(self, other, modulo) if modulo is not None else float.__pow__(self, other)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __rpow__(self, other, modulo=None):
+        result = float.__pow__(other, self, modulo) if modulo is not None else float.__pow__(other, self)
+        return TaintFloat(result, self._propagate_taint(other))
+    def __neg__(self):
+        return TaintFloat(float.__neg__(self), get_origin_nodes(self))
+    def __pos__(self):
+        return TaintFloat(float.__pos__(self), get_origin_nodes(self))
+    def __abs__(self):
+        return TaintFloat(float.__abs__(self), get_origin_nodes(self))
+
+    # Conversion and index
+    def __int__(self):
+        return int(self)
+    def __float__(self):
+        return float(self)
+    def __index__(self):
+        return int(self)
+
+    # Comparison operators (return bool)
+    def __eq__(self, other):
+        return float.__eq__(self, other)
+    def __ne__(self, other):
+        return float.__ne__(self, other)
+    def __lt__(self, other):
+        return float.__lt__(self, other)
+    def __le__(self, other):
+        return float.__le__(self, other)
+    def __gt__(self, other):
+        return float.__gt__(self, other)
+    def __ge__(self, other):
+        return float.__ge__(self, other)
+
+    # Boolean context
+    def __bool__(self):
+        return float.__bool__(self)
 
     def get_raw(self):
         return float(self)
@@ -161,14 +436,63 @@ class TaintList(list):
         for v in value:
             self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(v)))
 
+    def _merge_taint_from(self, items):
+        for v in items:
+            self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(v)))
+
     def append(self, item):
         list.append(self, item)
-        self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(item)))
+        self._merge_taint_from([item])
 
     def extend(self, items):
         list.extend(self, items)
-        for item in items:
-            self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(item)))
+        self._merge_taint_from(items)
+
+    def __setitem__(self, key, value):
+        list.__setitem__(self, key, value)
+        # key can be int or slice
+        if isinstance(key, slice):
+            self._merge_taint_from(value)
+        else:
+            self._merge_taint_from([value])
+
+    def __delitem__(self, key):
+        list.__delitem__(self, key)
+        # Recompute taint from all items
+        self._taint_origin['origin_nodes'] = []
+        self._merge_taint_from(self)
+
+    def insert(self, index, item):
+        list.insert(self, index, item)
+        self._merge_taint_from([item])
+
+    def pop(self, index=-1):
+        item = list.pop(self, index)
+        # Recompute taint from all items
+        self._taint_origin['origin_nodes'] = []
+        self._merge_taint_from(self)
+        return item
+
+    def remove(self, value):
+        list.remove(self, value)
+        # Recompute taint from all items
+        self._taint_origin['origin_nodes'] = []
+        self._merge_taint_from(self)
+
+    def clear(self):
+        list.clear(self)
+        self._taint_origin['origin_nodes'] = []
+
+    def __iadd__(self, other):
+        list.__iadd__(self, other)
+        self._merge_taint_from(other)
+        return self
+
+    def __imul__(self, other):
+        # Multiplying a list by n doesn't add new taint, but just repeat
+        list.__imul__(self, other)
+        # No new taint to add
+        return self
 
     def get_raw(self):
         return [x.get_raw() if hasattr(x, 'get_raw') else x for x in self]
@@ -193,9 +517,53 @@ class TaintDict(dict):
         for v in value.values():
             self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(v)))
 
+    def _merge_taint_from(self, values):
+        for v in values:
+            self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(v)))
+
     def __setitem__(self, key, value):
         dict.__setitem__(self, key, value)
-        self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(value)))
+        self._merge_taint_from([value])
+
+    def __delitem__(self, key):
+        dict.__delitem__(self, key)
+        # Recompute taint from all values
+        self._taint_origin['origin_nodes'] = []
+        self._merge_taint_from(self.values())
+
+    def update(self, *args, **kwargs):
+        dict.update(self, *args, **kwargs)
+        # Merge taint from all new values
+        if args:
+            if isinstance(args[0], dict):
+                self._merge_taint_from(args[0].values())
+            else:
+                self._merge_taint_from([v for k, v in args[0]])
+        if kwargs:
+            self._merge_taint_from(kwargs.values())
+
+    def setdefault(self, key, default=None):
+        if key not in self:
+            self._merge_taint_from([default])
+        return dict.setdefault(self, key, default)
+
+    def pop(self, key, *args):
+        value = dict.pop(self, key, *args)
+        # Recompute taint from all values
+        self._taint_origin['origin_nodes'] = []
+        self._merge_taint_from(self.values())
+        return value
+
+    def popitem(self):
+        item = dict.popitem(self)
+        # Recompute taint from all values
+        self._taint_origin['origin_nodes'] = []
+        self._merge_taint_from(self.values())
+        return item
+
+    def clear(self):
+        dict.clear(self)
+        self._taint_origin['origin_nodes'] = []
 
     def get_raw(self):
         return {k: v.get_raw() if hasattr(v, 'get_raw') else v for k, v in self.items()}

@@ -38,6 +38,22 @@ def taint_format_string(format_string, *args, **kwargs):
         return TaintStr(result, {'origin_nodes': list(all_origins)})
     return result
 
+def taint_percent_format(format_string, values):
+    from runtime_tracing.taint_wrappers import TaintStr, get_origin_nodes
+    try:
+        result = format_string % values
+    except Exception:
+        return format_string % values  # fallback, may raise
+    all_origins = set(get_origin_nodes(format_string))
+    if isinstance(values, (tuple, list)):
+        for v in values:
+            all_origins.update(get_origin_nodes(v))
+    else:
+        all_origins.update(get_origin_nodes(values))
+    if all_origins:
+        return TaintStr(result, {'origin_nodes': list(all_origins)})
+    return result
+
 class FStringTransformer(ast.NodeTransformer):
     def visit_JoinedStr(self, node):
         logger.debug(f"Transforming f-string at line {getattr(node, 'lineno', '?')}")
@@ -71,6 +87,21 @@ class FStringTransformer(ast.NodeTransformer):
             )
             return ast.copy_location(new_node, node)
         
+        return self.generic_visit(node)
+
+    def visit_BinOp(self, node):
+        # Add support for string % formatting
+        if (isinstance(node.op, ast.Mod) and
+            ((isinstance(node.left, ast.Constant) and isinstance(node.left.value, str)) or
+             (isinstance(node.left, ast.Str)))):
+            logger.debug(f"Transforming % formatting at line {getattr(node, 'lineno', '?')}")
+            # Replace with taint_percent_format(format_string, right)
+            new_node = ast.Call(
+                func=ast.Name(id='taint_percent_format', ctx=ast.Load()),
+                args=[node.left, node.right],
+                keywords=[]
+            )
+            return ast.copy_location(new_node, node)
         return self.generic_visit(node)
 
 class FStringImportLoader(importlib.abc.SourceLoader):
