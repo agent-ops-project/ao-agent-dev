@@ -1,5 +1,6 @@
 import os
 import inspect
+import yaml
 
 
 def rel_path_to_abs(abs_file_path, rel_to_file):
@@ -40,3 +41,44 @@ def extract_key_args(fn, args, kwargs, key_names):
         # Fallback: try to get from kwargs only
         return tuple(kwargs.get(k) for k in key_names)
     return tuple(bound.arguments.get(k) for k in key_names)
+
+
+def ensure_project_root_in_copilot_yaml(config_path, default_root=None):
+    """
+    Ensure that copilot.yaml has a project_root entry. If not, set it using default_root or dynamic logic.
+    Returns the project_root path.
+    Throws a clear error if project root cannot be determined.
+    """
+    # Load YAML config
+    if not os.path.exists(config_path):
+        config = {}
+    else:
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f) or {}
+
+    if 'project_root' in config and config['project_root']:
+        return config['project_root']
+
+    # Compute default if not provided
+    if default_root is None:
+        # Dynamic logic: look for pyproject.toml, .git
+        current = os.getcwd()
+        found = False
+        while current != os.path.dirname(current):
+            if (os.path.exists(os.path.join(current, 'pyproject.toml')) or
+                os.path.exists(os.path.join(current, '.git'))):
+                default_root = current
+                found = True
+                break
+            current = os.path.dirname(current)
+        if not found:
+            raise RuntimeError(
+                "Could not determine project root. Please create a pyproject.toml or .git in your project root, "
+                "or set 'project_root' manually in configs/copilot.yaml."
+            )
+
+    config['project_root'] = default_root
+    # Write back to YAML
+    with open(config_path, 'w') as f:
+        yaml.safe_dump(config, f)
+    return default_root

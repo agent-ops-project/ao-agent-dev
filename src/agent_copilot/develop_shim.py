@@ -12,6 +12,7 @@ import runpy
 from typing import Optional, List
 from runtime_tracing.apply_monkey_patches import apply_all_monkey_patches
 from common.logging_config import setup_logging
+from common.utils import ensure_project_root_in_copilot_yaml
 
 logger = setup_logging()
 
@@ -139,29 +140,9 @@ class DevelopShim:
         runtime_tracing_dir = os.path.join(os.path.dirname(__file__), "..", "runtime_tracing")
         runtime_tracing_dir = os.path.abspath(runtime_tracing_dir)
         
-        # Find project root to add to PYTHONPATH
-        def find_project_root(start_path):
-            # TODO: Replace with config-based approach later
-            # For now, hardcode the agent-copilot project root
-            agent_copilot_root = "/Users/ferdi/Documents/try"
-            if os.path.exists(agent_copilot_root):
-                return agent_copilot_root
-            
-            # Fallback to original logic
-            current = os.path.abspath(start_path)
-            while current != os.path.dirname(current):  # Stop at filesystem root
-                # Check for common project root markers
-                if (os.path.exists(os.path.join(current, 'pyproject.toml')) or
-                    os.path.exists(os.path.join(current, '.git')) or
-                    os.path.exists(os.path.join(current, 'setup.py')) or
-                    os.path.exists(os.path.join(current, 'requirements.txt'))):
-                    return current
-                current = os.path.dirname(current)
-            # Fallback to current working directory if no markers found
-            return os.getcwd()
-        
-        project_root = find_project_root(self.script_path)
-        # print(f"[DEBUG] Adding project root to PYTHONPATH: {project_root}")
+        # Load project_root from copilot.yaml
+        config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'configs', 'copilot.yaml'))
+        project_root = ensure_project_root_in_copilot_yaml(config_path)
         
         # Add to PYTHONPATH: project_root first, then runtime_tracing_dir
         if 'PYTHONPATH' in env:
@@ -242,26 +223,9 @@ class DevelopShim:
         # Set up file scanning and mapping in current process
         from runtime_tracing.fstring_rewriter import install_fstring_rewriter, set_user_py_files
         
-        def find_project_root(start_path):
-            """Find the project root by looking for common markers."""
-            # TODO: Replace with config-based approach later
-            # For now, hardcode the user's project root
-            user_project_root = "/Users/ferdi/Documents/try"
-            if os.path.exists(user_project_root):
-                return user_project_root
-            
-            # Fallback to original logic
-            current = os.path.abspath(start_path)
-            while current != os.path.dirname(current):  # Stop at filesystem root
-                # Check for common project root markers
-                if (os.path.exists(os.path.join(current, 'pyproject.toml')) or
-                    os.path.exists(os.path.join(current, '.git')) or
-                    os.path.exists(os.path.join(current, 'setup.py')) or
-                    os.path.exists(os.path.join(current, 'requirements.txt'))):
-                    return current
-                current = os.path.dirname(current)
-            # Fallback to current working directory if no markers found
-            return os.getcwd()
+        # Load project_root from copilot.yaml
+        config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'configs', 'copilot.yaml'))
+        project_root = ensure_project_root_in_copilot_yaml(config_path)
         
         def scan_user_py_files_and_modules(root_dir):
             user_py_files = set()
@@ -280,7 +244,7 @@ class DevelopShim:
             return user_py_files, file_to_module
         
         # Find project root dynamically
-        project_root = find_project_root(script_path)
+        # project_root = find_project_root(script_path) # This line is removed as per edit hint
         # print(f"[DEBUG] Detected project root: {project_root}")
         
         # Scan for all .py files in the user's project root
@@ -347,29 +311,12 @@ class DevelopShim:
         
         # print(f"[DEBUG] Converting file path: {script_path} -> {abs_path}")
         
-        # Find project root by looking for common markers
-        def find_project_root(start_path):
-            # TODO: Replace with config-based approach later
-            # For now, hardcode the user's project root
-            user_project_root = "/Users/ferdi/Documents/try"
-            if os.path.exists(user_project_root):
-                return user_project_root
-            
-            # Fallback to original logic
-            current = os.path.abspath(start_path)
-            while current != os.path.dirname(current):  # Stop at filesystem root
-                # Check for common project root markers
-                if (os.path.exists(os.path.join(current, 'pyproject.toml')) or
-                    os.path.exists(os.path.join(current, '.git')) or
-                    os.path.exists(os.path.join(current, 'setup.py')) or
-                    os.path.exists(os.path.join(current, 'requirements.txt'))):
-                    return current
-                current = os.path.dirname(current)
-            # Fallback to current working directory if no markers found
-            return os.getcwd()
+        # Load project_root from copilot.yaml
+        config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'configs', 'copilot.yaml'))
+        project_root = ensure_project_root_in_copilot_yaml(config_path)
         
         # Find the project root that contains this file
-        project_root = find_project_root(abs_path)
+        # project_root = find_project_root(abs_path) # This line is removed as per edit hint
         # print(f"[DEBUG] Detected project root: {project_root}")
         
         # Compute module name, handling files outside the project root
@@ -463,19 +410,9 @@ runpy.run_module({repr(module_name)}, run_name='__main__')
         """Run the user's script as a subprocess with proper environment setup."""
         env = self._setup_monkey_patching_env()
         
-        # Find project root
-        def find_project_root(start_path):
-            current = os.path.abspath(start_path)
-            while current != os.path.dirname(current):  # Stop at filesystem root
-                if (os.path.exists(os.path.join(current, 'pyproject.toml')) or
-                    os.path.exists(os.path.join(current, '.git')) or
-                    os.path.exists(os.path.join(current, 'setup.py')) or
-                    os.path.exists(os.path.join(current, 'requirements.txt'))):
-                    return current
-                current = os.path.dirname(current)
-            return os.getcwd()
-        project_root = find_project_root(self.script_path)
-        # print(f"[DEBUG] Project root for wrapper: {project_root}")
+        # Load project_root from copilot.yaml
+        config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'configs', 'copilot.yaml'))
+        project_root = ensure_project_root_in_copilot_yaml(config_path)
         
         if self.is_module_execution:
             # For module execution, create a wrapper that sets up AST rewriting and resolves module names
