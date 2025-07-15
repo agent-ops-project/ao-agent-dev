@@ -356,11 +356,11 @@ class TaintFloat(float):
         result = float.__pow__(other, self, modulo) if modulo is not None else float.__pow__(other, self)
         return TaintFloat(result, self._propagate_taint(other))
     def __neg__(self):
-        return TaintFloat(float.__neg__(self), get_origin_nodes(self))
+        return TaintFloat(float.__neg__(self), get_taint_origins(self))
     def __pos__(self):
-        return TaintFloat(float.__pos__(self), get_origin_nodes(self))
+        return TaintFloat(float.__pos__(self), get_taint_origins(self))
     def __abs__(self):
-        return TaintFloat(float.__abs__(self), get_origin_nodes(self))
+        return TaintFloat(float.__abs__(self), get_taint_origins(self))
 
     # Conversion and index
     def __int__(self):

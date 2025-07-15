@@ -10,9 +10,9 @@ This is basically the core of the tool. All analysis happens here. It receives m
 
 Manually start, stop, restart server:
 
- - `python develop_server.py start` 
- - `python develop_server.py stop`
- - `python develop_server.py restart`
+ - `server start` 
+ - `server stop`
+ - `server restart`
 
 Some basics: 
 
@@ -25,15 +25,15 @@ Some basics:
 
 This is the wrapper arond the user's python command. It works like this:
 
-1. User types `develop script.py` (instead of `develop script.py`)
+1. User types `develop script.py` (instead of `python script.py`)
 2. This drops into an "orchestrator". It registers to the develop_server as "shim-control". It's needed for restarting (i.e., managing the lifecycle of the actual process running the user's code) It's communication with develop_server is about things like receiving "restart" or "shutdown" commands. Orchestrator spawns a child with `Popen` that will run the monkey-patched user code. 
 3. Child installs monkey patches. It registers to the develop_server as "shim-runner". It runs the actual python code from the user. It communicates with the server about inputs and outputs to LLM calls (etc). Its stdin, stdout, stderr, etc. will be forwarded to the user's terminal as is.
 
 ALTERNATIVELY: If the user doesn't run `develop script.py` from terminal but from a debugger, things work similarly but there's small changes into how the child process is started and restarted by the orchestrator.
 
-### Editing and caching
+## Editing and caching
 
-#### Goal
+### Goal
 
 Overall, we want the following user experience:
 
@@ -47,38 +47,45 @@ We want to supachieve this with the following functionality:
 3. The user can overwrite LLM inputs and ouputs. 
 
 
-#### Design
+### Database
 
 We use a SQLite DB to cache LLM results and store user overwrites. We have the following 2 tables:
 
 ```
-CREATE TABLE graph_topology (
+CREATE TABLE experiments (
     session_id TEXT PRIMARY KEY,
     graph_topology TEXT,
-    timestamp TEXT DEFAULT (datetime('now'))
-);
+    timestamp TEXT DEFAULT (datetime('now')),
+    cwd TEXT,
+    command TEXT,
+    code_hash TEXT
+)
 ```
 
+and
+
 ```
-CREATE TABLE nodes (
+CREATE TABLE llm_calls (
     session_id TEXT,
     node_id TEXT,
     model TEXT,
     input TEXT,
     input_hash TEXT,
     input_overwrite TEXT,
+    input_overwrite_hash TEXT,
     output TEXT,
     color TEXT,
     label TEXT,
+    api_type TEXT,
+    timestamp TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (session_id, node_id)
-);
-CREATE INDEX llm_call ON nodes(session_id, model, input_hash);
+)
 ```
 
-The graph topology is a string defining nodes and their IDs and edges.
+The `graph_topology` in the `experiments` table is a dict representation of the graph, that is used inside the develop server. I.e., the develop server can dump and reconstruct in-memory graph representations from that column.
 
-During runtime, we check if the input to an LLM for the given session is present (i.e., if (session_id, input_hash) is present). If so, we use the cached output value or the overwritten input value. If they aren't set of the key is not present, we normally call the LLM.
+When we run a workflow, new nodes with new node_ids are created (the graph may change based on an edited input). So instead of querying the cache based on node_id, we query based on input_hash.
 
-CacheManager is responsible for the look ups in the DB.
+CacheManager is responsible for look ups in the DB.
 
 EditManager is responible for updating the DB.

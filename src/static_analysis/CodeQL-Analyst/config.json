@@ -1,0 +1,32 @@
+{
+  "codeql": {
+    "version": "2.22.0",
+    "search_paths": [
+      "codeql-repo"
+    ]
+  },
+  "analysis": {
+    "languages": ["python"],
+    "queries": [
+      "queries/llm-taint.ql"
+    ],
+    "output_formats": ["sarif", "json"]
+  },
+  "llm_apis": {
+    "openai": {
+      "modules": ["openai"],
+      "clients": ["OpenAI"],
+      "methods": ["chat.completions.create", "completions.create", "embeddings.create"]
+    },
+    "anthropic": {
+      "modules": ["anthropic"],
+      "clients": ["Anthropic"],
+      "methods": ["messages.create", "completions.create"]
+    }
+  },
+  "output": {
+    "show_flow_paths": true,
+    "include_source_code": false,
+    "timestamp_results": true
+  }
+} 

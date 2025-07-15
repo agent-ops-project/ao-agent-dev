@@ -1,22 +1,13 @@
-# Parse a Python code base
+# Static analysis
 
+Static analysis to compute data flow between LLM calls. This doesn't fully work yet on very complex code bases, so it is messy. On simpler code bases it works fine.
 
-## Static analysis
+I tried two frameworks:
 
-### Pysa pitfalls
+## Pyre
 
-We use Pysa (from Pyre) for the static analysis. Some pitfalls:
+From Meta. Supports incremental update, so it is faster. This is my preferred framework. `pyre_analysis` is the one to look at, I'm keeping the other dir around just for reference.
 
- - `ƛ Invalid configuration: Cannot find any source files to analyze. Either source_directories or targets must be specified.`: Try to add `__init__.py__` to the porject repo (and parent). Maybe this is always needed? But I would like to not make any modifications to the repos, so I'll loo into this more.
+## CodeQL
 
- - Sometimes you need to `export PYRE_VERSION=client_and_binary`, the error message will state that clearly.
-
- - When you run from command line directly (`pyre analyze --save-results-to=here`), you need to be inside `src/parser/pyre_static_analysis`. Also, `src/parser/pyre_static_analysis/.pyre_configuration` contains which repo you parse.
-
-### Hacky implementation
-
-We use stub implementations for the analysis (i.e., for the analysis, we import fake openAI calls etc.)
-
-In the future, I need to figure out how we can treat a repo as "read-only", i.e., analyze it without modifying it. But for now we need to copy stubs and taint config into it.
-
-TODO Command
+From github, idea is to have a query language over code. Learning the language is kind of complicated but once you get it, it's kind of cool. A big problem is that there are no incremental updates like for Pyre, so it takes long to perform the analysis on big code bases.
