@@ -7,14 +7,15 @@ import threading
 import subprocess
 import uuid
 import time
+import subprocess
+import shlex
 from datetime import datetime
 from typing import Dict, Any, Optional, Set, Tuple
 from workflow_edits.edit_manager import EDIT
 from workflow_edits.cache_manager import CACHE
 from workflow_edits import db
-from common.logging_config import setup_logging
+from common.logger import logger
 
-logger = setup_logging()
 
 # Configuration constants
 HOST = '127.0.0.1'
@@ -83,30 +84,9 @@ class DevelopServer:
     # Handle message types.
     # ============================================================
 
-    def route_message(self, sender: socket.socket, msg: dict) -> None:
-        """Route a message based on sender role."""
-        # TODO: Refactor to only handle "call"
-        info = self.conn_info.get(sender)
-        if not info:
-            return
-        role = info["role"]
-        session_id = info["session_id"]
-        session = self.sessions.get(session_id)
-        if not session:
-            return
-
-        # Route based on sender role
-        if role == "ui":
-            # UI → Shim
-            if session.shim_conn:
-                send_json(session.shim_conn, msg)
-        elif role == "shim-control":
-            # Shim → all UIs
-            self.broadcast_to_all_uis(msg)
-
     def load_finished_runs(self):
         # Load only session_id and timestamp for finished runs
-        rows = db.query_all("SELECT session_id, timestamp FROM experiments", ())
+        rows = CACHE.get_finished_runs()
         for row in rows:
             session_id = row["session_id"]
             timestamp = row["timestamp"]
@@ -120,7 +100,7 @@ class DevelopServer:
 
     def handle_graph_request(self, conn, session_id):
         # Query graph_topology for the session and reconstruct the in-memory graph
-        row = db.query_one("SELECT graph_topology FROM experiments WHERE session_id=?", (session_id,))
+        row = CACHE.get_graph(session_id)
         if row and row["graph_topology"]:
             graph = json.loads(row["graph_topology"])
             self.session_graphs[session_id] = graph
@@ -265,20 +245,16 @@ class DevelopServer:
                 # For finished rerun, store the session_id for the next shim-control
                 self.pending_rerun_session_id = session_id
                 # Rerun for finished session: launch new shim-control with same session_id
-                import subprocess
-                import shlex
-                row = db.query_one("SELECT cwd, command FROM experiments WHERE session_id=?", (session_id,))
-                if not row:
-                    logger.error(f"No experiment found for session_id: {session_id}")
+                cwd, command = CACHE.get_exec_command(session_id)
+                if not cwd:
                     return False
-                cwd = row["cwd"]
-                command = row["command"]
+
                 logger.info(f"Rerunning finished session {session_id} with cwd={cwd} and command={command}")
                 try:
                     # Insert session_id into environment so shim-control uses the same session_id
                     env = os.environ.copy()
                     env["AGENT_COPILOT_SESSION_ID"] = session_id
-                    # Use shlex.split to handle quoted args
+                    # Rerun the original command. This starts the shim-control, which starts the shim-runner.
                     args = shlex.split(command)
                     subprocess.Popen(args, cwd=cwd, env=env, close_fds=True, start_new_session=True)
                     # Immediately broadcast an empty graph to all UIs for fast clearing
@@ -355,8 +331,6 @@ class DevelopServer:
             self.handle_remove_output_edit(msg)
         elif msg_type == "get_graph":
             self.handle_get_graph(msg, conn)
-        elif msg_type == "call":
-            self.route_message(conn, msg)
         else:
             logger.error(f"Unknown message type. Message:\n{msg}")
     

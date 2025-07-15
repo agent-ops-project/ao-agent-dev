@@ -82,3 +82,25 @@ def ensure_project_root_in_copilot_yaml(config_path, default_root=None):
     with open(config_path, 'w') as f:
         yaml.safe_dump(config, f)
     return default_root
+
+
+def scan_user_py_files_and_modules(root_dir):
+    """
+    Scan a directory for all .py files and return:
+      - user_py_files: set of absolute file paths
+      - file_to_module: mapping from file path to module name (relative to root_dir)
+    """
+    user_py_files = set()
+    file_to_module = dict()
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        for filename in filenames:
+            if filename.endswith('.py'):
+                abs_path = os.path.abspath(os.path.join(dirpath, filename))
+                user_py_files.add(abs_path)
+                # Compute module name relative to root_dir
+                rel_path = os.path.relpath(abs_path, root_dir)
+                mod_name = rel_path[:-3].replace(os.sep, '.')  # strip .py, convert / to .
+                if mod_name.endswith(".__init__"):
+                    mod_name = mod_name[:-9]  # remove .__init__
+                file_to_module[abs_path] = mod_name
+    return user_py_files, file_to_module

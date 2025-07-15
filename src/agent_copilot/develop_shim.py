@@ -12,11 +12,10 @@ import runpy
 from typing import Optional, List
 from runtime_tracing.fstring_rewriter import install_fstring_rewriter, set_user_py_files
 from runtime_tracing.apply_monkey_patches import apply_all_monkey_patches
-from common.logging_config import setup_logging
-from common.utils import ensure_project_root_in_copilot_yaml
+from common.logger import logger
+from common.utils import ensure_project_root_in_copilot_yaml, scan_user_py_files_and_modules
 from agent_copilot.launch_scripts import SCRIPT_WRAPPER_TEMPLATE, MODULE_WRAPPER_TEMPLATE
 
-logger = setup_logging()
 
 # Configuration constants
 HOST = '127.0.0.1'
@@ -234,22 +233,6 @@ class DevelopShim:
         # Load project_root from copilot.yaml
         project_root = get_project_root()
         
-        def scan_user_py_files_and_modules(root_dir):
-            user_py_files = set()
-            file_to_module = dict()
-            for dirpath, dirnames, filenames in os.walk(root_dir):
-                for filename in filenames:
-                    if filename.endswith('.py'):
-                        abs_path = os.path.abspath(os.path.join(dirpath, filename))
-                        user_py_files.add(abs_path)
-                        # Compute module name relative to root_dir
-                        rel_path = os.path.relpath(abs_path, root_dir)
-                        mod_name = rel_path[:-3].replace(os.sep, '.')  # strip .py, convert / to .
-                        if mod_name.endswith(".__init__"):
-                            mod_name = mod_name[:-9]  # remove .__init__
-                        file_to_module[abs_path] = mod_name
-            return user_py_files, file_to_module
-                
         # Scan for all .py files in the user's project root
         # This ensures AST rewriting works for the user's code
         user_py_files, file_to_module = scan_user_py_files_and_modules(project_root)

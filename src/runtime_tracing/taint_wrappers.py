@@ -8,30 +8,25 @@ def untaint_if_needed(val):
         return val.get_raw()
     return val
 
-def get_origin_nodes(val):
-    if hasattr(val, '_taint_origin') and val._taint_origin:
-        return val._taint_origin.get('origin_nodes', [])
-    return []
-
 def is_tainted(obj):
-    return hasattr(obj, '_taint_origin') and bool(get_origin_nodes(obj))
+    return hasattr(obj, '_taint_origin') and bool(get_taint_origins(obj))
 
-def get_taint_origin(obj):
-    if hasattr(obj, '_taint_origin'):
-        return obj._taint_origin
-    return None
-
-def check_taint(val):
-    # TODO: Isn't the return type either origin_list, or [origin_list], or {k: origin_list}, (or None). But it should always just be origin_list
-    # Is tainted?
-    if get_origin_nodes(val):
-        return get_origin_nodes(val)
-    # Is list or tuple with tainted entries?
-    if isinstance(val, (list, tuple)):
-        return [check_taint(v) for v in val]
-    if isinstance(val, dict):
-        return {k: check_taint(v) for k, v in val.items()}
-    return None
+def get_taint_origins(val):
+    # Return a flat list of all taint origins for the input.
+    if hasattr(val, '_taint_origin') and val._taint_origin is not None:
+        return list(val._taint_origin)
+    elif isinstance(val, (list, tuple, set)):
+        origins = set()
+        for v in val:
+            origins.update(get_taint_origins(v))
+        return list(origins)
+    elif isinstance(val, dict):
+        origins = set()
+        for v in val.values():
+            origins.update(get_taint_origins(v))
+        return list(origins)
+    else:
+        return []
 
 def is_openai_response(obj):
     # Heuristic: check for OpenAIObject or openai module, or fallback to user config
@@ -48,29 +43,24 @@ class TaintStr(str):
     def __new__(cls, value, taint_origin=None):
         obj = str.__new__(cls, value)
         if taint_origin is None:
-            obj._taint_origin = {'origin_nodes': []}
-        elif isinstance(taint_origin, dict):
-            nodes = taint_origin.get('origin_nodes', [])
-            if not isinstance(nodes, list):
-                raise TypeError('origin_nodes must be a list')
-            obj._taint_origin = dict(taint_origin)
+            obj._taint_origin = []
         elif isinstance(taint_origin, (int, str)):
-            obj._taint_origin = {'origin_nodes': [taint_origin]}
+            obj._taint_origin = [taint_origin]
         elif isinstance(taint_origin, list):
-            obj._taint_origin = {'origin_nodes': list(taint_origin)}
+            obj._taint_origin = list(taint_origin)
         else:
             raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
         return obj
 
     def __add__(self, other):
         result = str.__add__(self, other)
-        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
-        return TaintStr(result, {'origin_nodes': list(nodes)})
+        nodes = set(get_taint_origins(self)) | set(get_taint_origins(other))
+        return TaintStr(result, list(nodes))
 
     def __radd__(self, other):
         result = str.__add__(other, self)
-        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
-        return TaintStr(result, {'origin_nodes': list(nodes)})
+        nodes = set(get_taint_origins(self)) | set(get_taint_origins(other))
+        return TaintStr(result, list(nodes))
 
     def __format__(self, format_spec):
         result = str.__format__(self, format_spec)
@@ -81,48 +71,40 @@ class TaintStr(str):
         return TaintStr(result, self._taint_origin)
 
     def __mod__(self, other):
-        # Support for % formatting
         try:
             result = str.__mod__(self, other)
         except Exception:
-            # fallback to original behavior
             return NotImplemented
-        # Collect taint from self and all args
-        nodes = set(get_origin_nodes(self))
+        nodes = set(get_taint_origins(self))
         if isinstance(other, (tuple, list)):
             for o in other:
-                nodes.update(get_origin_nodes(o))
+                nodes.update(get_taint_origins(o))
         else:
-            nodes.update(get_origin_nodes(other))
-        return TaintStr(result, {'origin_nodes': list(nodes)})
+            nodes.update(get_taint_origins(other))
+        return TaintStr(result, list(nodes))
 
     def __rmod__(self, other):
-        # Support for % formatting with TaintStr on right
         try:
             result = str.__mod__(other, self)
         except Exception:
             return NotImplemented
-        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
-        return TaintStr(result, {'origin_nodes': list(nodes)})
+        nodes = set(get_taint_origins(self)) | set(get_taint_origins(other))
+        return TaintStr(result, list(nodes))
 
     def encode(self, *args, **kwargs):
-        # Return bytes, taint cannot be propagated, but don't crash
         return str(self).encode(*args, **kwargs)
 
     def decode(self, *args, **kwargs):
-        # Not meaningful for str, but for compatibility
         return str(self).decode(*args, **kwargs)
 
     def join(self, iterable):
-        # Join with taint propagation
         joined = str(self).join([str(x) for x in iterable])
-        nodes = set(get_origin_nodes(self))
+        nodes = set(get_taint_origins(self))
         for x in iterable:
-            nodes.update(get_origin_nodes(x))
-        return TaintStr(joined, {'origin_nodes': list(nodes)})
+            nodes.update(get_taint_origins(x))
+        return TaintStr(joined, list(nodes))
 
     def __str__(self):
-        # Ensure str(TaintStr) returns a raw string for C-libs compatibility
         return str.__str__(self)
 
     def __repr__(self):
@@ -143,12 +125,10 @@ class TaintStr(str):
     def rstrip(self, *args, **kwargs):
         return TaintStr(str.rstrip(self, *args, **kwargs), self._taint_origin)
     def replace(self, old, new, *args, **kwargs):
-        # Propagate taint from new as well
         result = str.replace(self, old, new, *args, **kwargs)
-        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(new))
-        return TaintStr(result, {'origin_nodes': list(nodes)})
+        nodes = set(get_taint_origins(self)) | set(get_taint_origins(new))
+        return TaintStr(result, list(nodes))
     def split(self, *args, **kwargs):
-        # Return list of TaintStr
         return [TaintStr(s, self._taint_origin) for s in str.split(self, *args, **kwargs)]
     def capitalize(self, *args, **kwargs):
         return TaintStr(str.capitalize(self, *args, **kwargs), self._taint_origin)
@@ -185,23 +165,18 @@ class TaintInt(int):
     def __new__(cls, value, taint_origin=None):
         obj = int.__new__(cls, value)
         if taint_origin is None:
-            obj._taint_origin = {'origin_nodes': []}
-        elif isinstance(taint_origin, dict):
-            nodes = taint_origin.get('origin_nodes', [])
-            if not isinstance(nodes, list):
-                raise TypeError('origin_nodes must be a list')
-            obj._taint_origin = dict(taint_origin)
+            obj._taint_origin = []
         elif isinstance(taint_origin, (int, str)):
-            obj._taint_origin = {'origin_nodes': [taint_origin]}
+            obj._taint_origin = [taint_origin]
         elif isinstance(taint_origin, list):
-            obj._taint_origin = {'origin_nodes': list(taint_origin)}
+            obj._taint_origin = list(taint_origin)
         else:
             raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
         return obj
 
     def _propagate_taint(self, other):
-        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
-        return {'origin_nodes': list(nodes)}
+        nodes = set(get_taint_origins(self)) | set(get_taint_origins(other))
+        return list(nodes)
 
     # Arithmetic operators
     def __add__(self, other):
@@ -247,13 +222,13 @@ class TaintInt(int):
         result = int.__pow__(other, self, modulo) if modulo is not None else int.__pow__(other, self)
         return TaintInt(result, self._propagate_taint(other))
     def __neg__(self):
-        return TaintInt(int.__neg__(self), get_origin_nodes(self))
+        return TaintInt(int.__neg__(self), get_taint_origins(self))
     def __pos__(self):
-        return TaintInt(int.__pos__(self), get_origin_nodes(self))
+        return TaintInt(int.__pos__(self), get_taint_origins(self))
     def __abs__(self):
-        return TaintInt(int.__abs__(self), get_origin_nodes(self))
+        return TaintInt(int.__abs__(self), get_taint_origins(self))
     def __invert__(self):
-        return TaintInt(int.__invert__(self), get_origin_nodes(self))
+        return TaintInt(int.__invert__(self), get_taint_origins(self))
     def __and__(self, other):
         result = int.__and__(self, other)
         return TaintInt(result, self._propagate_taint(other))
@@ -324,23 +299,18 @@ class TaintFloat(float):
     def __new__(cls, value, taint_origin=None):
         obj = float.__new__(cls, value)
         if taint_origin is None:
-            obj._taint_origin = {'origin_nodes': []}
-        elif isinstance(taint_origin, dict):
-            nodes = taint_origin.get('origin_nodes', [])
-            if not isinstance(nodes, list):
-                raise TypeError('origin_nodes must be a list')
-            obj._taint_origin = dict(taint_origin)
+            obj._taint_origin = []
         elif isinstance(taint_origin, (int, str)):
-            obj._taint_origin = {'origin_nodes': [taint_origin]}
+            obj._taint_origin = [taint_origin]
         elif isinstance(taint_origin, list):
-            obj._taint_origin = {'origin_nodes': list(taint_origin)}
+            obj._taint_origin = list(taint_origin)
         else:
             raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
         return obj
 
     def _propagate_taint(self, other):
-        nodes = set(get_origin_nodes(self)) | set(get_origin_nodes(other))
-        return {'origin_nodes': list(nodes)}
+        nodes = set(get_taint_origins(self)) | set(get_taint_origins(other))
+        return list(nodes)
 
     # Arithmetic operators
     def __add__(self, other):
@@ -425,25 +395,20 @@ class TaintList(list):
     def __init__(self, value, taint_origin=None):
         list.__init__(self, value)
         if taint_origin is None:
-            self._taint_origin = {'origin_nodes': []}
-        elif isinstance(taint_origin, dict):
-            nodes = taint_origin.get('origin_nodes', [])
-            if not isinstance(nodes, list):
-                raise TypeError('origin_nodes must be a list')
-            self._taint_origin = dict(taint_origin)
+            self._taint_origin = []
         elif isinstance(taint_origin, (int, str)):
-            self._taint_origin = {'origin_nodes': [taint_origin]}
+            self._taint_origin = [taint_origin]
         elif isinstance(taint_origin, list):
-            self._taint_origin = {'origin_nodes': list(taint_origin)}
+            self._taint_origin = list(taint_origin)
         else:
             raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
         # Merge in taint from all items
         for v in value:
-            self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(v)))
+            self._taint_origin = list(set(self._taint_origin) | set(get_taint_origins(v)))
 
     def _merge_taint_from(self, items):
         for v in items:
-            self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(v)))
+            self._taint_origin = list(set(self._taint_origin) | set(get_taint_origins(v)))
 
     def append(self, item):
         list.append(self, item)
@@ -464,7 +429,7 @@ class TaintList(list):
     def __delitem__(self, key):
         list.__delitem__(self, key)
         # Recompute taint from all items
-        self._taint_origin['origin_nodes'] = []
+        self._taint_origin = []
         self._merge_taint_from(self)
 
     def insert(self, index, item):
@@ -474,19 +439,19 @@ class TaintList(list):
     def pop(self, index=-1):
         item = list.pop(self, index)
         # Recompute taint from all items
-        self._taint_origin['origin_nodes'] = []
+        self._taint_origin = []
         self._merge_taint_from(self)
         return item
 
     def remove(self, value):
         list.remove(self, value)
         # Recompute taint from all items
-        self._taint_origin['origin_nodes'] = []
+        self._taint_origin = []
         self._merge_taint_from(self)
 
     def clear(self):
         list.clear(self)
-        self._taint_origin['origin_nodes'] = []
+        self._taint_origin = []
 
     def __iadd__(self, other):
         list.__iadd__(self, other)
@@ -506,25 +471,20 @@ class TaintDict(dict):
     def __init__(self, value, taint_origin=None):
         dict.__init__(self, value)
         if taint_origin is None:
-            self._taint_origin = {'origin_nodes': []}
-        elif isinstance(taint_origin, dict):
-            nodes = taint_origin.get('origin_nodes', [])
-            if not isinstance(nodes, list):
-                raise TypeError('origin_nodes must be a list')
-            self._taint_origin = dict(taint_origin)
+            self._taint_origin = []
         elif isinstance(taint_origin, (int, str)):
-            self._taint_origin = {'origin_nodes': [taint_origin]}
+            self._taint_origin = [taint_origin]
         elif isinstance(taint_origin, list):
-            self._taint_origin = {'origin_nodes': list(taint_origin)}
+            self._taint_origin = list(taint_origin)
         else:
             raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
         # Merge in taint from all values
         for v in value.values():
-            self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(v)))
+            self._taint_origin = list(set(self._taint_origin) | set(get_taint_origins(v)))
 
     def _merge_taint_from(self, values):
         for v in values:
-            self._taint_origin['origin_nodes'] = list(set(self._taint_origin['origin_nodes']) | set(get_origin_nodes(v)))
+            self._taint_origin = list(set(self._taint_origin) | set(get_taint_origins(v)))
 
     def __setitem__(self, key, value):
         dict.__setitem__(self, key, value)
@@ -533,7 +493,7 @@ class TaintDict(dict):
     def __delitem__(self, key):
         dict.__delitem__(self, key)
         # Recompute taint from all values
-        self._taint_origin['origin_nodes'] = []
+        self._taint_origin = []
         self._merge_taint_from(self.values())
 
     def update(self, *args, **kwargs):
@@ -555,20 +515,20 @@ class TaintDict(dict):
     def pop(self, key, *args):
         value = dict.pop(self, key, *args)
         # Recompute taint from all values
-        self._taint_origin['origin_nodes'] = []
+        self._taint_origin = []
         self._merge_taint_from(self.values())
         return value
 
     def popitem(self):
         item = dict.popitem(self)
         # Recompute taint from all values
-        self._taint_origin['origin_nodes'] = []
+        self._taint_origin = []
         self._merge_taint_from(self.values())
         return item
 
     def clear(self):
         dict.clear(self)
-        self._taint_origin['origin_nodes'] = []
+        self._taint_origin = []
 
     def get_raw(self):
         return {k: v.get_raw() if hasattr(v, 'get_raw') else v for k, v in self.items()}
@@ -580,16 +540,11 @@ class TaintedOpenAIResponse:
     def __init__(self, wrapped, taint_origin=None):
         self._wrapped = wrapped
         if taint_origin is None:
-            self._taint_origin = {'origin_nodes': []}
-        elif isinstance(taint_origin, dict):
-            nodes = taint_origin.get('origin_nodes', [])
-            if not isinstance(nodes, list):
-                raise TypeError('origin_nodes must be a list')
-            self._taint_origin = dict(taint_origin)
+            self._taint_origin = []
         elif isinstance(taint_origin, (int, str)):
-            self._taint_origin = {'origin_nodes': [taint_origin]}
+            self._taint_origin = [taint_origin]
         elif isinstance(taint_origin, list):
-            self._taint_origin = {'origin_nodes': list(taint_origin)}
+            self._taint_origin = list(taint_origin)
         else:
             raise TypeError(f'Unsupported taint_origin type: {type(taint_origin)}')
 
@@ -681,9 +636,7 @@ class TaintStringContext:
     def add_taint(self, taint_origin):
         """Add taint origin to current context."""
         if self._taint_stack:
-            if isinstance(taint_origin, dict) and 'origin_nodes' in taint_origin:
-                self._taint_stack[-1].update(taint_origin['origin_nodes'])
-            elif isinstance(taint_origin, (list, tuple)):
+            if isinstance(taint_origin, (list, tuple)):
                 self._taint_stack[-1].update(taint_origin)
             elif isinstance(taint_origin, (str, int)):
                 self._taint_stack[-1].add(taint_origin)
@@ -697,28 +650,23 @@ class TaintStringContext:
 def taint_format(template, *args, **kwargs):
     """
     Taint-aware string formatting that preserves taint information.
-    
     Usage:
-        tainted = TaintStr("42", {'origin_nodes': ['node1']})
+        tainted = TaintStr("42", ["node1"])
         result = taint_format("The answer is {}", tainted)
         # result is a TaintStr with taint from 'node1'
     """
     # Collect all taint origins from args and kwargs
     all_origins = set()
-    
     for arg in args:
-        origins = get_origin_nodes(arg)
+        origins = get_taint_origins(arg)
         all_origins.update(origins)
-    
     for value in kwargs.values():
-        origins = get_origin_nodes(value)
+        origins = get_taint_origins(value)
         all_origins.update(origins)
-    
     # Format the string normally
     formatted = template.format(*args, **kwargs)
-    
     # Return as TaintStr with combined origins
-    return TaintStr(formatted, {'origin_nodes': list(all_origins)}) 
+    return TaintStr(formatted, list(all_origins))
 
 def taint_format_advanced(template, *args, **kwargs):
     """
@@ -727,13 +675,10 @@ def taint_format_advanced(template, *args, **kwargs):
     with TaintStringContext() as ctx:
         # Add taint from all arguments
         for arg in args:
-            ctx.add_taint(get_origin_nodes(arg))
-        
+            ctx.add_taint(get_taint_origins(arg))
         for value in kwargs.values():
-            ctx.add_taint(get_origin_nodes(value))
-        
+            ctx.add_taint(get_taint_origins(value))
         # Format the string
         result = template.format(*args, **kwargs)
-        
         # Return with combined taint
-        return TaintStr(result, {'origin_nodes': ctx.get_current_taint()}) 
+        return TaintStr(result, ctx.get_current_taint()) 

@@ -3,9 +3,9 @@ import importlib.abc
 import importlib.util
 import sys
 import os
-from common.logging_config import setup_logging
+from common.logger import logger
+from runtime_tracing.taint_wrappers import TaintStr, get_taint_origins
 
-logger = setup_logging()
 
 _user_py_files = set()
 _user_file_to_module = dict()
@@ -17,41 +17,38 @@ def set_user_py_files(py_files, file_to_module=None):
         _user_file_to_module = file_to_module
 
 def taint_fstring_join(*args):
-    from runtime_tracing.taint_wrappers import TaintStr, get_origin_nodes
     result = ''.join(str(a) for a in args)
     all_origins = set()
     for a in args:
-        all_origins.update(get_origin_nodes(a))
+        all_origins.update(get_taint_origins(a))
     if all_origins:
-        return TaintStr(result, {'origin_nodes': list(all_origins)})
+        return TaintStr(result, list(all_origins))
     return result
 
 def taint_format_string(format_string, *args, **kwargs):
-    from runtime_tracing.taint_wrappers import TaintStr, get_origin_nodes
     result = format_string.format(*args, **kwargs)
     all_origins = set()
     for a in args:
-        all_origins.update(get_origin_nodes(a))
+        all_origins.update(get_taint_origins(a))
     for v in kwargs.values():
-        all_origins.update(get_origin_nodes(v))
+        all_origins.update(get_taint_origins(v))
     if all_origins:
-        return TaintStr(result, {'origin_nodes': list(all_origins)})
+        return TaintStr(result, list(all_origins))
     return result
 
 def taint_percent_format(format_string, values):
-    from runtime_tracing.taint_wrappers import TaintStr, get_origin_nodes
     try:
         result = format_string % values
     except Exception:
         return format_string % values  # fallback, may raise
-    all_origins = set(get_origin_nodes(format_string))
+    all_origins = set(get_taint_origins(format_string))
     if isinstance(values, (tuple, list)):
         for v in values:
-            all_origins.update(get_origin_nodes(v))
+            all_origins.update(get_taint_origins(v))
     else:
-        all_origins.update(get_origin_nodes(values))
+        all_origins.update(get_taint_origins(values))
     if all_origins:
-        return TaintStr(result, {'origin_nodes': list(all_origins)})
+        return TaintStr(result, list(all_origins))
     return result
 
 class FStringTransformer(ast.NodeTransformer):

@@ -7,8 +7,7 @@ from typing import Dict, Set, Tuple, Optional
 import networkx as nx
 import matplotlib.pyplot as plt
 
-from common.logging_config import setup_logging
-logger = setup_logging()
+from common.logger import logger
 
 
 def path_to_id(path):
