@@ -2,12 +2,17 @@ import functools
 import uuid
 import collections.abc
 
+# Utility functions
+def untaint_if_needed(val):
+    if hasattr(val, 'get_raw'):
+        return val.get_raw()
+    return val
+
 def get_origin_nodes(val):
     if hasattr(val, '_taint_origin') and val._taint_origin:
         return val._taint_origin.get('origin_nodes', [])
     return []
 
-# Utility functions
 def is_tainted(obj):
     return hasattr(obj, '_taint_origin') and bool(get_origin_nodes(obj))
 

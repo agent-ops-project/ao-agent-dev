@@ -33,6 +33,10 @@ export const App: React.FC = () => {
                 case 'graph_update': {
                     const sid = message.session_id;
                     const payload = message.payload;
+                    // Debug: print received node data
+                    if (payload && payload.nodes) {
+                        console.log(`[UI] Received graph_update for session_id=${sid}:`, payload.nodes.map((n: any) => ({id: n.id, input: n.input})));
+                    }
                     setExperimentGraphs(prev => ({
                         ...prev,
                         [sid]: payload

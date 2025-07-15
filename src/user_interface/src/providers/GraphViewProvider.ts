@@ -16,12 +16,23 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
         // Removed _pendingEdit
     }
 
+    // Robustly show or reveal the webview
+    public showWebview(context: vscode.ExtensionContext) {
+        if (!this._view || (this._view as any)._disposed) {
+            // Create new webview view
+            vscode.commands.executeCommand('workbench.view.extension.graphExtension-sidebar');
+            // The view will be resolved via resolveWebviewView
+        } else {
+            this._view.show?.(true);
+        }
+    }
+
     public setEditDialogProvider(provider: EditDialogProvider): void {
         this._editDialogProvider = provider;
     }
 
     public handleEditDialogSave(value: string, context: { nodeId: string; field: string; session_id?: string }): void {
-        if (this._view) {
+        if (this._view && !(this._view as any)._disposed) {
             console.log('GraphViewProvider: Sending updateNode for node', context.nodeId, 'with session_id:', context.session_id);
             this._view.webview.postMessage({
                 type: 'updateNode',
@@ -32,6 +43,8 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                     session_id: context.session_id, // should be present!
                 }
             });
+        } else {
+            console.warn('Tried to send message to disposed or missing webview');
         }
     }
 
@@ -42,9 +55,16 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     ) {
         this._view = webviewView;
 
+        // Clean up reference when disposed
+        webviewView.onDidDispose(() => {
+            this._view = undefined;
+        });
+
         // Flush any pending messages to the webview
         this._pendingMessages.forEach(msg => {
-            this._view!.webview.postMessage(msg);
+            if (this._view && !(this._view as any)._disposed) {
+                this._view.webview.postMessage(msg);
+            }
         });
         this._pendingMessages = [];
 

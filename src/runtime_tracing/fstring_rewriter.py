@@ -130,7 +130,6 @@ class FStringImportFinder(importlib.abc.MetaPathFinder):
             if mod_name == fullname:
                 logger.debug(f"Will rewrite: {fullname} from {file_path}")
                 return importlib.util.spec_from_loader(fullname, FStringImportLoader(fullname, file_path))
-        logger.debug(f"No match found for: {fullname}")
         return None
 
 def install_fstring_rewriter():

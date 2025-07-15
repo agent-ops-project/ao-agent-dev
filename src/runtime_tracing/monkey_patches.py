@@ -7,7 +7,7 @@ import uuid
 import logging
 from workflow_edits.cache_manager import CACHE
 from common.logging_config import setup_logging
-from workflow_edits.utils import extract_output_text
+from workflow_edits.utils import extract_output_text, json_to_response
 logger = setup_logging()
 from common.utils import extract_key_args
 from runtime_tracing.taint_wrappers import check_taint, taint_wrap, get_origin_nodes
@@ -106,7 +106,6 @@ session_id = None
 def set_session_id(sid):
     global session_id
     session_id = sid
-    # # print(f"[DEBUG] set_session_id called with: {sid}")
 
 
 # ===========================================================
@@ -118,8 +117,6 @@ def _send_graph_node_and_edges(server_conn, node_id, input_obj, output, source_n
     # Construct codeLocation from file_name and line_no
     codeLocation = f"{file_name}:{line_no}" if file_name and line_no else "unknown:0"
     
-    # Debug print for session_id and node info
-    # # print(f"[DEBUG] _send_graph_node_and_edges: session_id={session_id}, node_id={node_id}, model={model}, file={file_name}, line={line_no}")
     # Send node
     node_msg = {
         "type": "addNode",
@@ -135,7 +132,7 @@ def _send_graph_node_and_edges(server_conn, node_id, input_obj, output, source_n
             "api_type": api_type,
         }
     }
-    # # print(f"[DEBUG] Sending node_msg: {json.dumps(node_msg)[:200]}...")
+
     try:
         server_conn.sendall((json.dumps(node_msg) + "\n").encode("utf-8"))
     except Exception as e:
@@ -149,7 +146,6 @@ def _send_graph_node_and_edges(server_conn, node_id, input_obj, output, source_n
                 "session_id": session_id,
                 "edge": {"source": src, "target": node_id}
             }
-            # # print(f"[DEBUG] Sending edge_msg: {json.dumps(edge_msg)}")
             try:
                 server_conn.sendall((json.dumps(edge_msg) + "\n").encode("utf-8"))
             except Exception as e:
@@ -186,7 +182,6 @@ def _taint_and_log_openai_result(result, file_name, line_no, from_cache, server_
 
     TODO: Refactor. This does too much. Also should be more general than OAI.
     """
-    # print("in taint")
     # Use cached node ID if available, otherwise generate new one
     node_id = cached_node_id if cached_node_id else str(uuid.uuid4())
     
@@ -224,9 +219,7 @@ def _taint_and_log_openai_result(result, file_name, line_no, from_cache, server_
     }
     try:
         server_conn.sendall((json.dumps(message) + "\n").encode("utf-8"))
-        # print("Sent")
     except Exception as e:
-        # print("Exception", e)
         pass  # best-effort only
 
     # Send graph updates (addNode/addEdge) with model
@@ -297,25 +290,6 @@ def v1_openai_patch(server_conn):
 
     openai.ChatCompletion.create = patched_create
 
-
-def response_to_json(response: Response) -> str:
-    """Serialize a Response object to a JSON string for storage."""
-    return json.dumps(response.model_dump())
-
-def json_to_response(json_str: str) -> Response:
-    """Deserialize a JSON string from the DB to a Response object."""
-    data = json.loads(json_str)
-    return Response(**data)
-
-def inject_output_text(response_dict: dict, new_text: str) -> dict:
-    """Inject new_text into the correct place in the response dict."""
-    try:
-        response_dict["output"][0]["content"][0]["text"] = new_text
-    except Exception as e:
-        raise ValueError(f"Failed to inject output text: {e}")
-    return response_dict
-
-
 def v2_openai_patch(server_conn):
     """
     Patch OpenAI().responses.create (v2/client API) to use persistent cache and edits.
@@ -333,19 +307,15 @@ def v2_openai_patch(server_conn):
         original_create = self.responses.create
 
         def patched_create(*args, **kwargs):
-            # print("="*20)
             # Get model and input_text.
             model = kwargs.get("model", args[0] if args else None)
             input = kwargs.get("input", args[1] if len(args) > 1 else None)
             
             # Get raw values if input is wrapped.
-            # print("INPUT TYPE", type(input))
             if hasattr(model, 'get_raw'):
                 model = model.get_raw()
-                # print("MODEL IS OBJECT")
             if hasattr(input, 'get_raw'):
                 input_text = input.get_raw()
-                # print("INPUT IS OBJECT")
             else:
                 input_text = input
 
@@ -357,8 +327,7 @@ def v2_openai_patch(server_conn):
             # Produce output.
             if output_to_use is not None:
                 # Use cached output.
-                # print("Using cached response")
-                result = json_to_response(output_to_use)
+                result = json_to_response(output_to_use, "openai_v2")
                 # For cached results, we need to preserve the original taint structure
                 # The result should already be taint-wrapped from the original call
                 # We don't re-wrap it here to avoid creating new node IDs
@@ -367,32 +336,22 @@ def v2_openai_patch(server_conn):
                 # Call LLM.
                 new_kwargs = dict(kwargs)
                 new_kwargs["input"] = input_to_use
-                # TODO: Test below, is this really the way to go?
+
                 if len(args) == 1 and isinstance(args[0], Responses):
                     result = original_create(**new_kwargs)
                 else:
                     result = original_create(*args, **new_kwargs)
-
-                # # print("[DEBUG] After LLM call, before taint_wrap:")
-                # print("  type:", type(result))
-                # # print("  repr:", repr(result))
                 
                 # Generate node ID for new result
                 new_node_id = str(uuid.uuid4())
                 # Cache.
                 CACHE.cache_output(session_id, model, str(input_to_use), result, 'openai_v2', new_node_id)
                 result = taint_wrap(result, {'origin_nodes': [new_node_id]})
-                # # print("[DEBUG] After taint_wrap:")
-                # print("  type:", type(result))
-                # # print("  repr:", repr(result))
-                # print("  get_origin_nodes:", get_origin_nodes(result))
 
-            # TODO: The check for taint should be in the log openai result.
-            # I think input text is "untainted."
-            # input_obj = input_text
+            # Check if tainted
             input_taint = check_taint(input)
             any_input_tainted = input_taint is not None and input_taint != {} and input_taint != []
-            # print("any input tainted:", any_input_tainted)
+            
             # Get caller location
             frame = inspect.currentframe()
             caller = frame and frame.f_back

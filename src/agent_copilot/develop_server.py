@@ -58,7 +58,6 @@ class DevelopServer:
     # Utils
     # ============================================================
 
-    
     def broadcast_to_all_uis(self, msg: dict) -> None:
         """Broadcast a message to all UI connections."""
         for ui_conn in list(self.ui_connections):
@@ -83,6 +82,27 @@ class DevelopServer:
     # ============================================================
     # Handle message types.
     # ============================================================
+
+    def route_message(self, sender: socket.socket, msg: dict) -> None:
+        """Route a message based on sender role."""
+        # TODO: Refactor to only handle "call"
+        info = self.conn_info.get(sender)
+        if not info:
+            return
+        role = info["role"]
+        session_id = info["session_id"]
+        session = self.sessions.get(session_id)
+        if not session:
+            return
+
+        # Route based on sender role
+        if role == "ui":
+            # UI → Shim
+            if session.shim_conn:
+                send_json(session.shim_conn, msg)
+        elif role == "shim-control":
+            # Shim → all UIs
+            self.broadcast_to_all_uis(msg)
 
     def load_finished_runs(self):
         # Load only session_id and timestamp for finished runs
@@ -110,44 +130,109 @@ class DevelopServer:
                 "payload": graph
             })
     
-    def run_server(self) -> None:
-        """Main server loop: accept clients and spawn handler threads."""
-        self.server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_sock.bind((HOST, PORT))
-        self.server_sock.listen()
-        logger.info(f"Develop server listening on {HOST}:{PORT}")
+    # Handler methods for each message type
+    def handle_add_node(self, msg: dict) -> None:
+        sid = msg["session_id"]
+        node = msg["node"]
+        if "model" not in node:
+            node["model"] = None
+        if "id" not in node:
+            node["id"] = str(uuid.uuid4())
+        if "api_type" not in node:
+            node["api_type"] = None
+        graph = self.session_graphs.setdefault(sid, {"nodes": [], "edges": []})
+        for i, n in enumerate(graph["nodes"]):
+            if n["id"] == node["id"]:
+                graph["nodes"][i] = node
+                break
+        else:
+            graph["nodes"].append(node)
+        self.broadcast_to_all_uis({
+            "type": "graph_update",
+            "session_id": sid,
+            "payload": {"nodes": graph["nodes"], "edges": graph["edges"]}
+        })
+        EDIT.update_graph_topology(sid, graph)
 
-        # Load finished runs on startup
-        self.load_finished_runs()
+    def handle_add_edge(self, msg: dict) -> None:
+        sid = msg["session_id"]
+        edge = msg["edge"]
+        graph = self.session_graphs.setdefault(sid, {"nodes": [], "edges": []})
+        if not any(e["source"] == edge["source"] and e["target"] == edge["target"] for e in graph["edges"]):
+            edge_id = f"e{edge['source']}-{edge['target']}"
+            edge_with_id = {"id": edge_id, **edge}
+            graph["edges"].append(edge_with_id)
+        self.broadcast_to_all_uis({
+            "type": "graph_update",
+            "session_id": sid,
+            "payload": {"nodes": graph["nodes"], "edges": graph["edges"]}
+        })
+        EDIT.update_graph_topology(sid, graph)
 
-        try:
-            while True:
-                conn, addr = self.server_sock.accept()
-                threading.Thread(
-                    target=self.handle_client,
-                    args=(conn,),
-                    daemon=True
-                ).start()
-        except OSError:
-            # This will be triggered when server_sock is closed (on shutdown)
-            pass
-        finally:
-            self.server_sock.close()
-            logger.info("Develop server stopped.")
-    
-    def handle_shutdown(self) -> None:
-        """Handle shutdown command by closing all connections."""
-        logger.info("Shutdown command received. Closing all connections.")
-        # Close all client sockets
-        for s in list(self.conn_info.keys()):
-            logger.debug(f"Closing socket: {s}")
-            try:
-                s.close()
-            except Exception as e:
-                logger.error(f"Error closing socket: {e}")
-        os._exit(0)
-    
+    def handle_edit_input(self, msg: dict) -> None:
+        logger.debug(f"Received edit_input: {msg}")
+        session_id = msg["session_id"]
+        node_id = msg["node_id"]
+        new_input = msg["value"]
+        EDIT.set_input_overwrite(session_id, node_id, new_input)
+        if session_id in self.session_graphs:
+            for node in self.session_graphs[session_id]["nodes"]:
+                if node["id"] == node_id:
+                    node["input"] = new_input
+                    break
+            self.broadcast_to_all_uis({
+                "type": "graph_update",
+                "session_id": session_id,
+                "payload": self.session_graphs[session_id]
+            })
+        logger.debug("Input overwrite completed")
+
+    def handle_edit_output(self, msg: dict) -> None:
+        logger.debug(f"Received edit_output: {msg}")
+        session_id = msg["session_id"]
+        node_id = msg["node_id"]
+        new_output = msg["value"]
+        EDIT.set_output_overwrite(session_id, node_id, new_output)
+        if session_id in self.session_graphs:
+            for node in self.session_graphs[session_id]["nodes"]:
+                if node["id"] == node_id:
+                    node["output"] = new_output
+                    break
+            self.broadcast_to_all_uis({
+                "type": "graph_update",
+                "session_id": session_id,
+                "payload": self.session_graphs[session_id]
+            })
+        logger.debug("Output overwrite completed")
+
+    def handle_remove_input_edit(self, msg: dict) -> None:
+        session_id = msg["session_id"]
+        node_id = msg["node_id"]
+        row = db.query_one(
+            "SELECT model, input FROM llm_calls WHERE session_id=? AND node_id=?",
+            (session_id, node_id)
+        )
+        if row:
+            model = row["model"]
+            input_val = row["input"]
+            EDIT.remove_input_overwrite(session_id, model, input_val)
+
+    def handle_remove_output_edit(self, msg: dict) -> None:
+        session_id = msg["session_id"]
+        node_id = msg["node_id"]
+        row = db.query_one(
+            "SELECT model, input FROM llm_calls WHERE session_id=? AND node_id=?",
+            (session_id, node_id)
+        )
+        if row:
+            model = row["model"]
+            input_val = row["input"]
+            EDIT.remove_output_overwrite(session_id, model, input_val)
+
+    def handle_get_graph(self, msg: dict, conn: socket.socket) -> None:
+        self.handle_graph_request(conn, msg["session_id"])
+
+    # The following handlers are unchanged, but now assume the message type is correct
     def handle_restart_message(self, msg: dict) -> bool:
         if msg.get("type") == "restart":
             session_id = msg.get("session_id")
@@ -230,10 +315,51 @@ class DevelopServer:
             return True
         return False
     
+    def handle_shutdown(self) -> None:
+        """Handle shutdown command by closing all connections."""
+        logger.info("Shutdown command received. Closing all connections.")
+        # Close all client sockets
+        for s in list(self.conn_info.keys()):
+            logger.debug(f"Closing socket: {s}")
+            try:
+                s.close()
+            except Exception as e:
+                logger.error(f"Error closing socket: {e}")
+        os._exit(0)
+
     # ============================================================
     # Message rounting logic.
     # ============================================================
 
+    def process_message(self, msg: dict, conn: socket.socket) -> None:
+        msg_type = msg.get("type")
+        if msg_type == "shutdown":
+            self.handle_shutdown()
+        elif msg_type == "restart":
+            self.handle_restart_message(msg)
+        elif msg_type == "deregister":
+            self.handle_deregister_message(msg)
+        elif msg_type == "debugger_restart":
+            self.handle_debugger_restart_message(msg)
+        elif msg_type == "addNode":
+            self.handle_add_node(msg)
+        elif msg_type == "addEdge":
+            self.handle_add_edge(msg)
+        elif msg_type == "edit_input":
+            self.handle_edit_input(msg)
+        elif msg_type == "edit_output":
+            self.handle_edit_output(msg)
+        elif msg_type == "remove_input_edit":
+            self.handle_remove_input_edit(msg)
+        elif msg_type == "remove_output_edit":
+            self.handle_remove_output_edit(msg)
+        elif msg_type == "get_graph":
+            self.handle_get_graph(msg, conn)
+        elif msg_type == "call":
+            self.route_message(conn, msg)
+        else:
+            logger.error(f"Unknown message type. Message:\n{msg}")
+    
     def handle_client(self, conn: socket.socket) -> None:
         """Handle a new client connection in a separate thread."""
         file_obj = conn.makefile(mode='r')
@@ -322,170 +448,7 @@ class DevelopServer:
                     if "session_id" not in msg:
                         msg["session_id"] = session_id
                     
-                    # Handle message types
-                    # TODO: Refactor this, I don't like the "elif self.handle_restart" etc.
-                    if msg.get("type") == "shutdown":
-                        self.handle_shutdown()
-                    elif self.handle_restart_message(msg):
-                        continue  # Don't route to all shims
-                    elif self.handle_deregister_message(msg):
-                        continue
-                    elif self.handle_debugger_restart_message(msg):
-                        continue
-                    elif msg.get("type") == "addNode":
-                        sid = msg["session_id"]
-                        node = msg["node"]
-                        # Ensure model, node_id, and api_type are present in node dict
-                        # TODO: I think we should just crash here.
-                        if "model" not in node:
-                            node["model"] = None
-                        if "id" not in node:
-                            node["id"] = str(uuid.uuid4())
-                        if "api_type" not in node:
-                            node["api_type"] = None
-                        graph = self.session_graphs.setdefault(sid, {"nodes": [], "edges": []})
-                        # Update or add node
-                        for i, n in enumerate(graph["nodes"]):
-                            if n["id"] == node["id"]:
-                                graph["nodes"][i] = node
-                                break
-                        else:
-                            graph["nodes"].append(node)
-                        # Broadcast updated graph to all UIs
-                        self.broadcast_to_all_uis({
-                            "type": "graph_update",
-                            "session_id": sid,
-                            "payload": {"nodes": graph["nodes"], "edges": graph["edges"]}
-                        })
-                        # After updating or adding a node, persist the graph topology
-                        EDIT.update_graph_topology(sid, graph)
-                        continue
-                    elif msg.get("type") == "addEdge":
-                        sid = msg["session_id"]
-                        edge = msg["edge"]
-                        graph = self.session_graphs.setdefault(sid, {"nodes": [], "edges": []})
-                        # Only add edge if not already present
-                        if not any(e["source"] == edge["source"] and e["target"] == edge["target"] for e in graph["edges"]):
-                            edge_id = f"e{edge['source']}-{edge['target']}"
-                            edge_with_id = {"id": edge_id, **edge}
-                            graph["edges"].append(edge_with_id)
-                        # Broadcast updated graph to all UIs
-                        self.broadcast_to_all_uis({
-                            "type": "graph_update",
-                            "session_id": sid,
-                            "payload": {"nodes": graph["nodes"], "edges": graph["edges"]}
-                        })
-                        # After adding an edge, persist the graph topology
-                        EDIT.update_graph_topology(sid, graph)
-                        continue
-                    # --- Handle UI edit messages ---
-                    elif msg.get("type") == "edit_input":
-                        logger.debug(f"Received edit_input: {msg}")
-                        session_id = msg["session_id"]
-                        node_id = msg["node_id"]  # Use this directly
-                        new_input = msg["value"]
-                        
-                        # Get model and input from the message or derive from existing node data
-                        if session_id in self.session_graphs:
-                            # Find the node in memory to get model and input
-                            for node in self.session_graphs[session_id]["nodes"]:
-                                if node["id"] == node_id:
-                                    model = node.get("model")
-                                    input_val = node.get("input")
-                                    break
-                            else:
-                                # Node not found in memory, skip
-                                continue
-                        
-                        logger.debug(f"Calling EDIT.set_input_overwrite({session_id}, {model}, {input_val}, {new_input})")
-                        EDIT.set_input_overwrite(session_id, model, input_val, new_input)
-                        
-                        # Update in-memory graph data
-                        if session_id in self.session_graphs:
-                            for node in self.session_graphs[session_id]["nodes"]:
-                                if node["id"] == node_id:
-                                    node["input"] = new_input
-                                    break
-                            
-                            # Broadcast updated graph to all UIs
-                            self.broadcast_to_all_uis({
-                                "type": "graph_update",
-                                "session_id": session_id,
-                                "payload": self.session_graphs[session_id]
-                            })
-                        
-                        logger.debug("Input overwrite completed")
-                        continue
-                    elif msg.get("type") == "edit_output":
-                        logger.debug(f"Received edit_output: {msg}")
-                        session_id = msg["session_id"]
-                        node_id = msg["node_id"]  # Use this directly
-                        new_output = msg["value"]
-                        
-                        # Get model and input from the message or derive from existing node data
-                        if session_id in self.session_graphs:
-                            # Find the node in memory to get model and input
-                            for node in self.session_graphs[session_id]["nodes"]:
-                                if node["id"] == node_id:
-                                    model = node.get("model")
-                                    input_val = node.get("input")
-                                    api_type = node.get("api_type")
-                                    break
-                            else:
-                                # Node not found in memory, skip
-                                continue
-                        
-                        logger.debug(f"Calling EDIT.set_output_overwrite({session_id}, {model}, {input_val}, {new_output}, api_type={api_type})")
-                        EDIT.set_output_overwrite(session_id, model, input_val, new_output, api_type=api_type)
-                        
-                        # Update in-memory graph data
-                        if session_id in self.session_graphs:
-                            for node in self.session_graphs[session_id]["nodes"]:
-                                if node["id"] == node_id:
-                                    node["output"] = new_output
-                                    break
-                            
-                            # Broadcast updated graph to all UIs
-                            self.broadcast_to_all_uis({
-                                "type": "graph_update",
-                                "session_id": session_id,
-                                "payload": self.session_graphs[session_id]
-                            })
-                        
-                        logger.debug("Output overwrite completed")
-                        continue
-                    elif msg.get("type") == "remove_input_edit":
-                        # TODO: Haven't checked.
-                        session_id = msg["session_id"]
-                        node_id = msg["node_id"]
-                        row = db.query_one(
-                            "SELECT model, input FROM llm_calls WHERE session_id=? AND node_id=?",
-                            (session_id, node_id)
-                        )
-                        if row:
-                            model = row["model"]
-                            input_val = row["input"]
-                            EDIT.remove_input_overwrite(session_id, model, input_val)
-                        continue
-                    elif msg.get("type") == "remove_output_edit":
-                        # TODO: Haven't checked.
-                        session_id = msg["session_id"]
-                        node_id = msg["node_id"]
-                        row = db.query_one(
-                            "SELECT model, input FROM llm_calls WHERE session_id=? AND node_id=?",
-                            (session_id, node_id)
-                        )
-                        if row:
-                            model = row["model"]
-                            input_val = row["input"]
-                            EDIT.remove_output_overwrite(session_id, model, input_val)
-                        continue
-                    elif msg.get("type") == "get_graph":
-                        # UI requests to view a specific run's graph
-                        self.handle_graph_request(conn, msg["session_id"])
-                        continue
-                    else:
-                        logger.error(f"Unknown message type. Message:\n{msg}")
+                    self.process_message(msg, conn)
                         
             except (ConnectionResetError, OSError) as e:
                 logger.info(f"Connection closed: {e}")
@@ -508,6 +471,33 @@ class DevelopServer:
             except Exception as e:
                 logger.error(f"Error closing connection: {e}")
     
+    def run_server(self) -> None:
+        """Main server loop: accept clients and spawn handler threads."""
+        self.server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_sock.bind((HOST, PORT))
+        self.server_sock.listen()
+        logger.info(f"Develop server listening on {HOST}:{PORT}")
+
+        # Load finished runs on startup
+        self.load_finished_runs()
+
+        try:
+            while True:
+                conn, addr = self.server_sock.accept()
+                threading.Thread(
+                    target=self.handle_client,
+                    args=(conn,),
+                    daemon=True
+                ).start()
+        except OSError:
+            # This will be triggered when server_sock is closed (on shutdown)
+            pass
+        finally:
+            self.server_sock.close()
+            logger.info("Develop server stopped.")
+
+
 # ============================================================
 # CLI (start / stop).
 # ============================================================
@@ -528,8 +518,9 @@ def main():
         except Exception:
             pass
         # Launch the server as a detached background process (POSIX)
-        subprocess.Popen([sys.executable, __file__, "--serve"],
-                        close_fds=True, start_new_session=True)
+        with open('server_log.txt', 'w') as f:
+            subprocess.Popen([sys.executable, __file__, "--serve"],
+                            close_fds=True, start_new_session=True)
         logger.info("Develop server started.")
         
     elif args.command == 'stop':

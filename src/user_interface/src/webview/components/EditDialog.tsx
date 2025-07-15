@@ -28,7 +28,7 @@ export const EditDialog: React.FC<EditDialogProps> = ({ title, value, onSave, on
                 justifyContent: 'center',
                 zIndex: 1000,
             }}
-            onClick={(e) => {
+            onClick={(e: { target: any; currentTarget: any; }) => {
                 if (e.target === e.currentTarget) {
                     onCancel();
                 }
@@ -46,14 +46,14 @@ export const EditDialog: React.FC<EditDialogProps> = ({ title, value, onSave, on
                     flexDirection: 'column',
                     gap: '16px',
                 }}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e: { stopPropagation: () => any; }) => e.stopPropagation()}
             >
                 <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff' }}>
                     {title}
                 </div>
                 <textarea
                     value={text}
-                    onChange={(e) => setText(e.target.value)}
+                    onChange={(e: { target: { value: React.SetStateAction<string>; }; }) => setText(e.target.value)}
                     style={{
                         width: '100%',
                         height: '300px',

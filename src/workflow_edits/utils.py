@@ -57,3 +57,15 @@ def extract_output_text(response, api_type):
         return _oai_v2_extract_output_text(response)
     else:
         raise ValueError(f"Unknown API type {api_type}")
+
+def response_to_json(output, api_type):
+    if api_type == "openai_v2":
+        return oai_v2_response_to_json(output)
+    else:
+        raise ValueError(f"Unknown API type {api_type}")
+
+def json_to_response(json_str, api_type):
+    if api_type == "openai_v2":
+        return oai_v2_json_to_response(json_str)
+    else:
+        raise ValueError(f"Unknown API type {api_type}")
