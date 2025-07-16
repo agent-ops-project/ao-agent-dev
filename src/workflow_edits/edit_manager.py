@@ -8,14 +8,6 @@ class EditManager:
     Handles user edits to LLM call inputs and outputs, updating the persistent database.
     Uses the llm_calls table in the workflow edits database.
     """
-    @staticmethod
-    def inject_output_text(response_dict: dict, new_text: str) -> dict:
-        """Inject new_text into the correct place in the response dict."""
-        try:
-            response_dict["output"][0]["content"][0]["text"] = new_text
-        except Exception as e:
-            raise ValueError(f"Failed to inject output text: {e}")
-        return response_dict
 
     def set_input_overwrite(self, session_id, node_id, new_input):
         new_input_hash = db.hash_input(new_input)
@@ -23,7 +15,6 @@ class EditManager:
             "UPDATE llm_calls SET input_overwrite=?, input_overwrite_hash=?, output=NULL WHERE session_id=? AND node_id=?",
             (new_input, new_input_hash, session_id, node_id)
         )
-
 
     def set_output_overwrite(self, session_id, node_id, new_output):
         # Get api_type and output for the given session_id and node_id
@@ -41,16 +32,12 @@ class EditManager:
             (updated_output_json, session_id, node_id)
         )
 
-    def remove_input_overwrite(self, session_id, node_id):
+    def erase(self, session_id):
+        default_graph = json.dumps({"nodes": [], "edges": []})
+        db.execute("DELETE FROM llm_calls WHERE session_id=?", (session_id,))
         db.execute(
-            "UPDATE llm_calls SET input_overwrite=NULL WHERE session_id=? AND node_id=?",
-            (session_id, node_id)
-        )
-
-    def remove_output_overwrite(self, session_id, node_id):
-        db.execute(
-            "UPDATE llm_calls SET output=NULL WHERE session_id=? AND node_id=?",
-            (session_id, node_id)
+            "UPDATE experiments SET graph_topology=? WHERE session_id=?",
+            (default_graph, session_id)
         )
 
     def add_experiment(self, session_id, timestamp, cwd, command):

@@ -41,7 +41,7 @@ def get_project_root():
     return ensure_project_root_in_copilot_yaml(config_path)
 
 class DevelopShim:
-    """Manages the development shim that runs user scripts with debugging support."""
+    """Manages the develop shim that runs user scripts with debugging support."""
     
     def __init__(self, script_path: str, script_args: List[str], is_module_execution: bool = False):
         self.script_path = script_path
@@ -200,7 +200,7 @@ class DevelopShim:
         except Exception as e:
             logger.error(f"Cannot connect to develop server ({e})")
             sys.exit(1)
-        # Send handshake to server (never include session_id)
+        # Send handshake to server
         handshake = {
             "type": "hello",
             "role": self.role,
@@ -254,7 +254,7 @@ class DevelopShim:
             sys.argv = [script_path] + script_args
             
             # Compute module name as absolute path from project root
-            # Since the project is installed with pip install -e, we can use absolute module names
+            # TODO: Assumes the project is installed with pip install -e, we can use absolute module names
             rel_path = os.path.relpath(abs_path, project_root)
             if rel_path.startswith('..'):
                 # If the file is outside the project root, use the filename as module name

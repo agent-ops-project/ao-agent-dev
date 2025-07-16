@@ -74,11 +74,9 @@ class CacheManager:
 
     def get_exec_command(self, session_id):
         row = db.query_one("SELECT cwd, command FROM experiments WHERE session_id=?", (session_id,))
-        if not row:
-            logger.error(f"No experiment found for session_id: {session_id}")
-            return None
+        if row is None:
+            return None, None
         return row["cwd"], row["command"]
-
 
 
 CACHE = CacheManager()

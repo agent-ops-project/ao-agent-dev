@@ -156,6 +156,11 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                         );
                     }
                     break;
+                case 'erase':
+                    if (this._pythonClient) {
+                        this._pythonClient.sendMessage(data);
+                    }
+                    break;
             }
         });
     }

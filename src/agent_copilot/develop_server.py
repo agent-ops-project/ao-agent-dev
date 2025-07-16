@@ -13,7 +13,6 @@ from datetime import datetime
 from typing import Dict, Any, Optional, Set, Tuple
 from workflow_edits.edit_manager import EDIT
 from workflow_edits.cache_manager import CACHE
-from workflow_edits import db
 from common.logger import logger
 
 
@@ -110,7 +109,6 @@ class DevelopServer:
                 "payload": graph
             })
     
-    # Handler methods for each message type
     def handle_add_node(self, msg: dict) -> None:
         sid = msg["session_id"]
         node = msg["node"]
@@ -185,111 +183,79 @@ class DevelopServer:
             })
         logger.debug("Output overwrite completed")
 
-    def handle_remove_input_edit(self, msg: dict) -> None:
-        session_id = msg["session_id"]
-        node_id = msg["node_id"]
-        row = db.query_one(
-            "SELECT model, input FROM llm_calls WHERE session_id=? AND node_id=?",
-            (session_id, node_id)
-        )
-        if row:
-            model = row["model"]
-            input_val = row["input"]
-            EDIT.remove_input_overwrite(session_id, model, input_val)
-
-    def handle_remove_output_edit(self, msg: dict) -> None:
-        session_id = msg["session_id"]
-        node_id = msg["node_id"]
-        row = db.query_one(
-            "SELECT model, input FROM llm_calls WHERE session_id=? AND node_id=?",
-            (session_id, node_id)
-        )
-        if row:
-            model = row["model"]
-            input_val = row["input"]
-            EDIT.remove_output_overwrite(session_id, model, input_val)
-
     def handle_get_graph(self, msg: dict, conn: socket.socket) -> None:
         self.handle_graph_request(conn, msg["session_id"])
 
-    # The following handlers are unchanged, but now assume the message type is correct
+    def handle_erase(self, msg):
+        session_id = msg.get("session_id")
+        EDIT.erase(session_id)
+        self.handle_restart_message({"session_id": session_id})
+
     def handle_restart_message(self, msg: dict) -> bool:
-        if msg.get("type") == "restart":
-            session_id = msg.get("session_id")
-            if not session_id:
-                logger.error("Restart message missing session_id. Ignoring.")
-                return False
-            logger.info(f"Received restart request for session_id: {session_id}")
-            session = self.sessions.get(session_id)
-            if session and session.status == "running":
-                logger.debug(f"session.shim_conn: {session.shim_conn}")
+        session_id = msg.get("session_id")
+        if not session_id:
+            logger.error("Restart message missing session_id. Ignoring.")
+            return
+        session = self.sessions.get(session_id)
+        if session and session.status == "running":
+            # Immediately broadcast an empty graph to all UIs for fast clearing
+            self.session_graphs[session_id] = {"nodes": [], "edges": []}
+            logger.debug(f"(pre-restart) Graph reset for session_id: {session_id}")
+            self.broadcast_to_all_uis({
+                "type": "graph_update",
+                "session_id": session_id,
+                "payload": {"nodes": [], "edges": []}
+            })
+            if session.shim_conn:
+                restart_msg = {"type": "restart", "session_id": session_id}
+                logger.debug(f"Sending restart to shim-control for session_id: {session_id} with message: {restart_msg}")
+                try:
+                    send_json(session.shim_conn, restart_msg)
+                except Exception as e:
+                    logger.error(f"Error sending restart: {e}")
+                return
+            else:
+                logger.warning(f"No shim_conn for session_id: {session_id}")
+        elif session and session.status == "finished":
+            # For finished rerun, store the session_id for the next shim-control
+            self.pending_rerun_session_id = session_id
+            # Rerun for finished session: launch new shim-control with same session_id
+            cwd, command = CACHE.get_exec_command(session_id)
+            if not cwd:
+                logger.error(f"Requested restart for session without logged command.")
+                return
+
+            logger.debug(f"Rerunning finished session {session_id} with cwd={cwd} and command={command}")
+            try:
+                # Insert session_id into environment so shim-control uses the same session_id
+                env = os.environ.copy()
+                env["AGENT_COPILOT_SESSION_ID"] = session_id
+                # Rerun the original command. This starts the shim-control, which starts the shim-runner.
+                args = shlex.split(command)
+                subprocess.Popen(args, cwd=cwd, env=env, close_fds=True, start_new_session=True)
                 # Immediately broadcast an empty graph to all UIs for fast clearing
                 self.session_graphs[session_id] = {"nodes": [], "edges": []}
-                logger.debug(f"(pre-restart) Graph reset for session_id: {session_id}")
                 self.broadcast_to_all_uis({
                     "type": "graph_update",
                     "session_id": session_id,
                     "payload": {"nodes": [], "edges": []}
                 })
-                if session.shim_conn:
-                    restart_msg = {"type": "restart", "session_id": session_id}
-                    logger.debug(f"Sending restart to shim-control for session_id: {session_id} with message: {restart_msg}")
-                    try:
-                        send_json(session.shim_conn, restart_msg)
-                    except Exception as e:
-                        logger.error(f"Error sending restart: {e}")
-                    return True
-                else:
-                    logger.warning(f"No shim_conn for session_id: {session_id}")
-            elif session and session.status == "finished":
-                # For finished rerun, store the session_id for the next shim-control
-                self.pending_rerun_session_id = session_id
-                # Rerun for finished session: launch new shim-control with same session_id
-                cwd, command = CACHE.get_exec_command(session_id)
-                if not cwd:
-                    return False
-
-                logger.info(f"Rerunning finished session {session_id} with cwd={cwd} and command={command}")
-                try:
-                    # Insert session_id into environment so shim-control uses the same session_id
-                    env = os.environ.copy()
-                    env["AGENT_COPILOT_SESSION_ID"] = session_id
-                    # Rerun the original command. This starts the shim-control, which starts the shim-runner.
-                    args = shlex.split(command)
-                    subprocess.Popen(args, cwd=cwd, env=env, close_fds=True, start_new_session=True)
-                    # Immediately broadcast an empty graph to all UIs for fast clearing
-                    self.session_graphs[session_id] = {"nodes": [], "edges": []}
-                    self.broadcast_to_all_uis({
-                        "type": "graph_update",
-                        "session_id": session_id,
-                        "payload": {"nodes": [], "edges": []}
-                    })
-                    return True
-                except Exception as e:
-                    logger.error(f"Failed to rerun finished session: {e}")
-                    return False
-            else:
-                logger.warning(f"No session found for session_id: {session_id}")
-        return False
+            except Exception as e:
+                logger.error(f"Failed to rerun finished session: {e}")
     
     def handle_deregister_message(self, msg: dict) -> bool:
-        if msg.get("type") == "deregister" and "session_id" in msg:
-            session_id = msg["session_id"]
-            session = self.sessions.get(session_id)
-            if session:
-                session.status = "finished"
-                self.broadcast_experiment_list_to_all_uis()
-                return True
-        return False
+        session_id = msg["session_id"]
+        session = self.sessions.get(session_id)
+        if session:
+            session.status = "finished"
+            self.broadcast_experiment_list_to_all_uis()
     
     def handle_debugger_restart_message(self, msg: dict) -> bool:
         """Handle debugger restart notification, update session info."""
-        if msg.get("type") == "debugger_restart" and "session_id" in msg:
-            session_id = msg["session_id"]
-            if session_id in self.sessions:
-                self.broadcast_experiment_list_to_all_uis()
-            return True
-        return False
+        # TODO: Test
+        session_id = msg["session_id"]
+        if session_id in self.sessions:
+            self.broadcast_experiment_list_to_all_uis()
     
     def handle_shutdown(self) -> None:
         """Handle shutdown command by closing all connections."""
@@ -325,12 +291,10 @@ class DevelopServer:
             self.handle_edit_input(msg)
         elif msg_type == "edit_output":
             self.handle_edit_output(msg)
-        elif msg_type == "remove_input_edit":
-            self.handle_remove_input_edit(msg)
-        elif msg_type == "remove_output_edit":
-            self.handle_remove_output_edit(msg)
         elif msg_type == "get_graph":
             self.handle_get_graph(msg, conn)
+        elif msg_type == "erase":
+            self.handle_erase(msg)
         else:
             logger.error(f"Unknown message type. Message:\n{msg}")
     
@@ -492,9 +456,8 @@ def main():
         except Exception:
             pass
         # Launch the server as a detached background process (POSIX)
-        with open('server_log.txt', 'w') as f:
-            subprocess.Popen([sys.executable, __file__, "--serve"],
-                            close_fds=True, start_new_session=True)
+        subprocess.Popen([sys.executable, __file__, "--serve"],
+                        close_fds=True, start_new_session=True)
         logger.info("Develop server started.")
         
     elif args.command == 'stop':

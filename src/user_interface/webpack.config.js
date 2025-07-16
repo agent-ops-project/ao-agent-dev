@@ -74,6 +74,10 @@ const webviewConfig = {
             }
           }
         ]
+      },
+      {
+        test: /\.(png|jpe?g|gif|svg)$/i,
+        type: 'asset/resource',
       }
     ]
   },
