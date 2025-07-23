@@ -10,6 +10,7 @@ from workflow_edits.utils import extract_output_text, json_to_response
 from runtime_tracing.taint_wrappers import get_taint_origins, taint_wrap
 from openai import OpenAI
 from openai.resources.responses import Responses
+import openai
 
 
 # ===========================================================
@@ -131,8 +132,8 @@ def _send_graph_node_and_edges(server_conn,
         "session_id": session_id,
         "node": {
             "id": node_id,
-            "input": input,
-            "output": extract_output_text(output_obj, api_type),
+            "input": "None", #input,
+            "output": "None", #extract_output_text(output_obj, api_type),
             "border_color": "#00c542", # TODO: Later based on certainty.
             "label": f"{model}", # TODO: Later label with LLM.
             "codeLocation": codeLocation,
@@ -167,11 +168,6 @@ def v1_openai_patch(server_conn):
     """
     Patch openai.ChatCompletion.create (v1/classic API) to use persistent cache and edits.
     """
-    assert NotImplementedError("openai v1 is not implemented")
-    try:
-        import openai
-    except ImportError:
-        return  # If openai isn't available, do nothing
 
     original_create = getattr(openai.ChatCompletion, "create", None)
     if original_create is None:
@@ -187,96 +183,158 @@ def v1_openai_patch(server_conn):
         if hasattr(messages, 'get_raw'):
             messages = messages.get_raw()
         # Use persistent cache/edits
-        input_to_use, output_to_use, cached_node_id = CACHE.get_in_out(session_id, model, str(messages))
-        from_cache = output_to_use is not None
-        new_node_id = None
+        input_to_use, output_to_use, node_id = CACHE.get_in_out(session_id, model, str(messages))
+
+        # Taint origins: combine from input and model
+        taint_origins = get_taint_origins(messages) + get_taint_origins(model)
+
+        # Produce output
         if output_to_use is not None:
+            # Use cached output (assume already in correct format)
             result = output_to_use
         else:
-            # Call real LLM with possibly edited input
-            result = original_create(model=model, messages=messages) if input_to_use is None else original_create(model=model, messages=input_to_use)
-            # Generate node ID for new result
-            new_node_id = str(uuid.uuid4())
-            CACHE.cache_output(session_id, model, str(messages if input_to_use is None else input_to_use), result, 'openai_v1', new_node_id)
-        # Taint/graph logic
-        def check_taint(val):
-            if get_taint_origins(val):
-                return get_taint_origins(val)
-            if isinstance(val, (list, tuple)):
-                return [check_taint(v) for v in val]
-            if isinstance(val, dict):
-                return {k: check_taint(v) for k, v in val.items()}
-            return None
-        input_obj = messages
-        input_taint = check_taint(input_obj)
-        any_input_tainted = bool(input_taint)
-        # Get caller location
-        frame = inspect.currentframe()
-        caller = frame and frame.f_back
-        file_name = caller.f_code.co_filename if caller else "unknown"
-        line_no = caller.f_lineno if caller else 0
-        
-        # Use new_node_id for new results, cached_node_id for cached results
-        node_id_to_use = new_node_id if not from_cache else cached_node_id
-        return _taint_and_log_openai_result(result, file_name, line_no, from_cache, server_conn, any_input_tainted, input_taint, model, 'openai_v1', node_id_to_use, input_to_use=input_to_use)
+            # Call LLM with possibly edited input
+            call_kwargs = dict(kwargs)
+            call_kwargs["model"] = model
+            call_kwargs["messages"] = input_to_use
+            result = original_create(**call_kwargs)
+            # Cache
+            CACHE.cache_output(session_id, model, input_to_use, result, "openai_v1", node_id)
+
+        # Send to server (graph node/edges)
+        _send_graph_node_and_edges(
+            server_conn=server_conn,
+            node_id=node_id,
+            input=input_to_use,
+            output_obj=result,
+            source_node_ids=taint_origins,
+            model=model,
+            api_type="openai_v1"
+        )
+
+        # Wrap and return
+        return taint_wrap(result, [node_id])
 
     openai.ChatCompletion.create = patched_create
 
-def v2_openai_patch(server_conn):
-    # We need to patch `create` for every instance and cannot do it globally. 
-    original_init = OpenAI.__init__
+def patch_openai_responses_create(responses, server_conn):
+    original_create = responses.create
+    def patched_create(*args, **kwargs):
+        model = kwargs.get("model", args[0] if args else [])
+        input = kwargs.get("input", args[1] if len(args) > 1 else [])
+        taint_origins = get_taint_origins(input) + get_taint_origins(model)
+        # Check if there's a cached / edited input/output
+        input_to_use, output_to_use, node_id = CACHE.get_in_out(session_id, model, input)
+        if output_to_use is not None:
+            result = json_to_response(output_to_use, "openai_v2")
+        else:
+            new_kwargs = dict(kwargs)
+            new_kwargs["input"] = input_to_use
+            if len(args) == 1 and isinstance(args[0], Responses):
+                result = original_create(**new_kwargs)
+            else:
+                result = original_create(*args, **new_kwargs)
+            CACHE.cache_output(session_id, model, input_to_use, result, "openai_v2", node_id)
+        _send_graph_node_and_edges(server_conn=server_conn,
+                                   node_id=node_id,
+                                   input=input_to_use,
+                                   output_obj=result,
+                                   source_node_ids=taint_origins,
+                                   model=model,
+                                   api_type="openai_v2")
+        return taint_wrap(result, [node_id])
+    responses.create = patched_create.__get__(responses, Responses)
 
+def patch_openai_beta_threads_runs_create_and_poll(runs, server_conn):
+    original_create_and_poll = runs.create_and_poll
+    def patched_create_and_poll(*args, **kwargs):
+        print("patched_create_and_poll called with", args, kwargs)
+        taint_origins = []
+        for arg in args:
+            taint_origins.extend(get_taint_origins(arg))
+        for val in kwargs.values():
+            taint_origins.extend(get_taint_origins(val))
+        # Call original method with only keyword arguments
+        result = original_create_and_poll(**kwargs)
+        node_id = str(uuid.uuid4())
+        _send_graph_node_and_edges(
+            server_conn=server_conn,
+            node_id=node_id,
+            input=str(kwargs),
+            output_obj=result,
+            source_node_ids=taint_origins,
+            model="beta_threads_run",
+            api_type="openai_beta_runs"
+        )
+        return taint_wrap(result, [node_id])
+    runs.create_and_poll = patched_create_and_poll.__get__(runs, type(original_create_and_poll))
+
+
+def v2_openai_patch(server_conn):
+    original_init = OpenAI.__init__
     def new_init(self, *args, **kwargs):
         original_init(self, *args, **kwargs)
-        original_create = self.responses.create
-
-        def patched_create(*args, **kwargs):
-            # Get model, input_text and LLM calls that produced them
-            model = kwargs.get("model", args[0] if args else None)
-            input = kwargs.get("input", args[1] if len(args) > 1 else None)
-            taint_origins = get_taint_origins(input) + get_taint_origins(model)
-
-            # Check if there's a cached / edited input/output
-            input_to_use, output_to_use, node_id = CACHE.get_in_out(session_id, model, input)
-
-            # Produce output
-            if output_to_use is not None:
-                # Use cached output. Convert json into OpenAI Response obj.
-                result = json_to_response(output_to_use, "openai_v2")            
-            else:
-                # Call LLM
-                new_kwargs = dict(kwargs)
-                new_kwargs["input"] = input_to_use
-
-                if len(args) == 1 and isinstance(args[0], Responses):
-                    result = original_create(**new_kwargs)
-                else:
-                    result = original_create(*args, **new_kwargs)
-                
-                # Cache
-                CACHE.cache_output(session_id, model, input_to_use, result, "openai_v2", node_id)
-
-            # Send to server
-            _send_graph_node_and_edges(server_conn=server_conn,
-                                       node_id=node_id,
-                                       input=input_to_use,
-                                       output_obj=result,
-                                       source_node_ids=taint_origins,
-                                       model=model,
-                                       api_type="openai_v2")
-
-            # Wrap and return
-            return taint_wrap(result, [node_id])
-           
-        self.responses.create = patched_create.__get__(self.responses, Responses)
+        patch_openai_responses_create(self.responses, server_conn)
+        patch_openai_beta_assistants_create(self.beta.assistants)
+        patch_openai_beta_threads_create(self.beta.threads)
+        patch_openai_beta_threads_runs_create_and_poll(self.beta.threads.runs, server_conn)
     OpenAI.__init__ = new_init
+
+
+def patch_openai_beta_assistants_create(assistants_instance):
+    """
+    Patch the .create method of an OpenAI beta assistants instance to propagate taint origins from any input argument to the result.
+    If no input is tainted, propagate an empty origin list.
+    """
+    original_create = assistants_instance.create
+
+    def patched_create(*args, **kwargs):
+        print("hello from patched_create")
+        # Collect taint origins from all args and kwargs
+        from runtime_tracing.taint_wrappers import get_taint_origins, taint_wrap
+        taint_origins = set()
+        for arg in args:
+            taint_origins.update(get_taint_origins(arg))
+        for val in kwargs.values():
+            taint_origins.update(get_taint_origins(val))
+        # Call the original method
+        result = original_create(*args, **kwargs)
+        # Propagate taint
+        return taint_wrap(result, list(taint_origins))
+
+    assistants_instance.create = patched_create
+
+
+def patch_openai_beta_threads_create(threads_instance):
+    """
+    Patch the .create method of an OpenAI beta threads instance to propagate taint origins from any input argument to the result.
+    If no input is tainted, propagate an empty origin list.
+    """
+    original_create = threads_instance.create
+
+    def patched_create(*args, **kwargs):
+        from runtime_tracing.taint_wrappers import get_taint_origins, taint_wrap
+        taint_origins = set()
+        for arg in args:
+            taint_origins.update(get_taint_origins(arg))
+        for val in kwargs.values():
+            taint_origins.update(get_taint_origins(val))
+        result = original_create(*args, **kwargs)
+        return taint_wrap(result, list(taint_origins))
+
+    threads_instance.create = patched_create
 
 
 # ===========================================================
 # Patch function registry
 # ===========================================================
 
+# Only include patch functions that can be called at global patch time (with server_conn as argument).
+# Subclient patching must be done inside the OpenAI.__init__ patch (see v2_openai_patch).
 CUSTOM_PATCH_FUNCTIONS = [
     v1_openai_patch,
     v2_openai_patch,
 ]
+
+# Subclient patch functions (e.g., patch_openai_responses_create, patch_openai_beta_threads_runs_create_and_poll)
+# are NOT included here and should only be called from within the OpenAI.__init__ patch.

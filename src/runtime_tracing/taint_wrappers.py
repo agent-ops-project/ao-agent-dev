@@ -533,9 +533,9 @@ class TaintDict(dict):
     def get_raw(self):
         return {k: v.get_raw() if hasattr(v, 'get_raw') else v for k, v in self.items()}
 
-class TaintedOpenAIResponse:
+class TaintedOpenAIObject:
     """
-    Proxy for OpenAI response objects (or any object), tainting all attribute/item access.
+    Proxy for OpenAI SDK objects (Response, Assistant, etc.), tainting all attribute/item access.
     """
     def __init__(self, wrapped, taint_origin=None):
         self._wrapped = wrapped
@@ -557,7 +557,7 @@ class TaintedOpenAIResponse:
         return taint_wrap(value, taint_origin=self._taint_origin)
 
     def __repr__(self):
-        return f"TaintedOpenAIResponse({repr(self._wrapped)}, taint_origin={self._taint_origin})"
+        return f"TaintedOpenAIObject({repr(self._wrapped)}, taint_origin={self._taint_origin})"
 
     def __str__(self):
         return str(self._wrapped)
@@ -573,6 +573,13 @@ class TaintedOpenAIResponse:
 
     def get_raw(self):
         return self._wrapped
+
+# Helper to detect OpenAI SDK objects (Response, Assistant, etc.)
+def is_openai_sdk_object(obj):
+    cls = obj.__class__
+    mod = cls.__module__
+    # Covers openai.types.responses.response, openai.types.beta.assistant, etc.
+    return mod.startswith("openai.types.")
 
 def taint_wrap(obj, taint_origin=None, _seen=None):
     if _seen is None:
@@ -590,8 +597,8 @@ def taint_wrap(obj, taint_origin=None, _seen=None):
         return TaintInt(obj, taint_origin=taint_origin)
     if isinstance(obj, float):
         return TaintFloat(obj, taint_origin=taint_origin)
-    if is_openai_response(obj):
-        return TaintedOpenAIResponse(obj, taint_origin=taint_origin)
+    if is_openai_sdk_object(obj):
+        return TaintedOpenAIObject(obj, taint_origin=taint_origin)
     if isinstance(obj, collections.abc.Mapping):
         return TaintDict({k: taint_wrap(v, taint_origin=taint_origin, _seen=_seen) for k, v in obj.items()}, taint_origin=taint_origin)
     if isinstance(obj, collections.abc.Sequence) and not isinstance(obj, (str, bytes, bytearray)):

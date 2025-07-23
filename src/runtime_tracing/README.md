@@ -46,3 +46,9 @@ Installs a custom import hook (`FStringImportFinder`) into sys.meta_path.
 3. When a user module is imported, the import hook rewrites f-strings and .format() calls to use taint-aware functions.
 4. When the user code executes f-strings or .format(), the taint-aware functions are called, and taint is propagated using TaintStr.
 5. When LLM calls are made, the taint on the input is checked and, if present, the output is wrapped with a new taint node, allowing you to track data flow between LLM calls.
+
+## Maintainance
+
+We need to patch a lot of API functions. The idea is that, given a long list of working patches, AI tools can generate patches for new functions as APIs change. 
+
+TODO: We need CI/CD tests that detect API changes. Can simply be if API changed (pip upgrade openai, etc) and then send email with change log link.

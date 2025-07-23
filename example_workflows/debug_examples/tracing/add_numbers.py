@@ -1,7 +1,7 @@
-import time
 from openai import OpenAI
-client = OpenAI()
 
+
+client = OpenAI()
 
 response = client.responses.create(
     model="gpt-3.5-turbo",

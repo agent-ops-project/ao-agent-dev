@@ -1,4 +1,4 @@
-# Agent copilot
+# Agent developer scratchpad
 
 See README's in src dirs for more details.
 
@@ -26,7 +26,7 @@ This will feel *exactly* the same as running Python but also analyzes their code
 This is a temporary "get started". You should run the below steps in VS Code:
 
 1. Install dependencies (see "Dependencies" below).
-2. Set `project_root` in `configs/copilot.yaml` to the path where your code base lives (that you want to analyze).
+2. Set `project_root` in `configs/copilot.yaml` to the path where your code base lives (that you want to analyze). (‼️)
 3. Launch explorer window with extension installed by running "Run Extension" from the debugger options (see "Launch front end" below).
 4. Normally use VS Code. E.g., open folder: The repo you want to analyze
 5. Run `develop script.py` to use our tool on your code base
@@ -36,7 +36,7 @@ The project has python dependencies but also others (for front end). I recommend
 
 ```
 conda env create -f conda-environment.yml
-conda activate copilot
+conda activate scratchpad
 pip install -e .
 ```
 
@@ -49,7 +49,7 @@ Currently, you need to manually start and stop our server. Just do:
  - `server start`
  - `server stop`
 
-If you make changes to the server code, you can also do `server restart` so the changes are reflected in the running server.
+If you make changes to the server code, you can also do `server restart` so the changes are reflected in the running server. If you want to clear all recorded runs and cached LLM calls, do `server clear`.
 
 
 ## Further resources

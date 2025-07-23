@@ -269,6 +269,14 @@ class DevelopServer:
                 logger.error(f"Error closing socket: {e}")
         os._exit(0)
 
+    def handle_clear(self):
+        CACHE.clear_db()
+        self.session_graphs.clear()
+        self.sessions.clear()
+        self.broadcast_experiment_list_to_all_uis()
+        self.broadcast_to_all_uis({"type": "graph_update", "session_id": None, "payload": {"nodes": [], "edges": []}})
+        logger.info("All database records and in-memory state cleared.")
+
     # ============================================================
     # Message rounting logic.
     # ============================================================
@@ -295,6 +303,8 @@ class DevelopServer:
             self.handle_get_graph(msg, conn)
         elif msg_type == "erase":
             self.handle_erase(msg)
+        elif msg_type == "clear":
+            self.handle_clear()
         else:
             logger.error(f"Unknown message type. Message:\n{msg}")
     
@@ -443,8 +453,8 @@ class DevelopServer:
 def main():
     """CLI entry point."""
     parser = argparse.ArgumentParser(description="Development server for LLM call visualization")
-    parser.add_argument('command', choices=['start', 'stop', 'restart'], 
-                       help="Start or stop the server")
+    parser.add_argument('command', choices=['start', 'stop', 'restart', 'clear'], 
+                       help="Start, stop, restart, or clear the server database and state")
     args = parser.parse_args()
 
     if args.command == 'start':
@@ -464,22 +474,20 @@ def main():
         # Connect to the server and send a shutdown command
         try:
             sock = socket.create_connection((HOST, PORT), timeout=SOCKET_TIMEOUT)
-            # The server will only accept messages from this process after a handshake.
-            handshake = {"type": "hello", "role": "ui", "script": "stopper"}
+            handshake = {"type": "hello", "role": "admin", "script": "stopper"}
             send_json(sock, handshake)
-            # Send shutdown message
             send_json(sock, {"type": "shutdown"})
             sock.close()
             logger.info("Develop server stop signal sent.")
         except Exception:
             logger.warning("No running server found.")
             sys.exit(1)
-            
+        
     elif args.command == 'restart':
         # Stop the server if running
         try:
             sock = socket.create_connection((HOST, PORT), timeout=SOCKET_TIMEOUT)
-            handshake = {"type": "hello", "role": "ui", "script": "restarter"}
+            handshake = {"type": "hello", "role": "admin", "script": "restarter"}
             send_json(sock, handshake)
             send_json(sock, {"type": "shutdown"})
             sock.close()
@@ -491,6 +499,20 @@ def main():
         subprocess.Popen([sys.executable, __file__, "--serve"],
                         close_fds=True, start_new_session=True)
         logger.info("Develop server restarted.")
+        
+    elif args.command == 'clear':
+        # Connect to the server and send a clear command
+        try:
+            sock = socket.create_connection((HOST, PORT), timeout=SOCKET_TIMEOUT)
+            handshake = {"type": "hello", "role": "admin", "script": "clearer"}
+            send_json(sock, handshake)
+            send_json(sock, {"type": "clear"})
+            sock.close()
+            logger.info("Develop server clear signal sent.")
+        except Exception:
+            logger.warning("No running server found.")
+            sys.exit(1)
+        return
         
     elif args.command == '--serve':
         # Internal: run the server loop (not meant to be called by users directly)

@@ -78,5 +78,10 @@ class CacheManager:
             return None, None
         return row["cwd"], row["command"]
 
+    def clear_db(self):
+        """Delete all records from experiments and llm_calls tables."""
+        db.execute("DELETE FROM experiments")
+        db.execute("DELETE FROM llm_calls")
+
 
 CACHE = CacheManager()

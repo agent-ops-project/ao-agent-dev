@@ -199,3 +199,7 @@ codeql-cli
 codeql-repo
 src/static_analysis/CodeQL-Analyst/databases
 **/results/**
+
+# DocBench
+**/DocBench/data
+**/DocBench/secret_key.py
