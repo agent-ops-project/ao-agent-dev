@@ -11,7 +11,6 @@ from runtime_tracing.taint_wrappers import get_taint_origins, taint_wrap
 from openai import OpenAI
 from openai.resources.responses import Responses
 import openai
-import tempfile
 
 
 # ===========================================================
@@ -370,7 +369,7 @@ def patch_openai_files_create(files_resource):
 
     def patched_create(self, **kwargs):
         # Extract file argument
-        file_arg = kwargs.get("file") if "file" in kwargs else (args[0] if args else None)
+        file_arg = kwargs.get("file")
         if isinstance(file_arg, tuple) and len(file_arg) >= 2:
             file_name = file_arg[0]
             fileobj = file_arg[1]

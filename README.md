@@ -21,9 +21,11 @@ This will feel *exactly* the same as running Python but also analyzes their code
 
 ## Launch VS Code extension
 
+Several IDEs are based on VS Code. We have successfully tried our extension in VS Code and Cursor.
+
 ### Get started
 
-This is a temporary "get started". You should run the below steps in VS Code:
+This is a temporary "get started". You should run the below steps in VS Code or Cursor:
 
 1. Install dependencies (see "Dependencies" below).
 2. Set `project_root` in `configs/copilot.yaml` to the path where your code base lives (that you want to analyze). (‼️)
