@@ -6,6 +6,7 @@ from runtime_tracing.taint_wrappers import is_tainted, get_taint_origins
 client = OpenAI()
 q_string = "What's up?"
 PDF_PATH = "/Users/ferdi/Downloads/ken_udbms_execution.pdf"
+# PDF_PATH = "/Users/ferdi/Downloads/query_load_3_days.pdf"
 
 response = client.responses.create(
     model="gpt-3.5-turbo",

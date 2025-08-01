@@ -36,7 +36,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
         this._editDialogProvider = provider;
     }
 
-    public handleEditDialogSave(value: string, context: { nodeId: string; field: string; session_id?: string }): void {
+    public handleEditDialogSave(value: string, context: { nodeId: string; field: string; session_id?: string; attachments?: any }): void {
         if (this._view && !(this._view as any)._disposed) {
             console.log('GraphViewProvider: Sending updateNode for node', context.nodeId, 'with session_id:', context.session_id);
             this._view.webview.postMessage({
@@ -86,7 +86,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
         });
 
         // Handle messages from the webview
-        webviewView.webview.onDidReceiveMessage(data => {
+        webviewView.webview.onDidReceiveMessage(async data => {
             console.log(`GraphViewProvider: Received message from webview: ${data.type}`, data);
             if (data.type === 'showEditDialog') {
                 console.log('GraphViewProvider: Received showEditDialog for node', data.payload.nodeId, 'with session_id:', data.payload.session_id);
