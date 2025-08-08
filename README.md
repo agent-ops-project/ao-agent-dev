@@ -56,10 +56,12 @@ If you make changes to the server code, you can also do `server restart` so the 
 
 ## Further resources
 
- - [Google drive folder](https://drive.google.com/drive/folders/1Syc77Cko6PFlr_wnxBMa6PB-_aXCOt1v?usp=sharing)
- - [Project description](https://docs.google.com/document/d/13L2eVu8jAGZwmgp49OoXigCrmA7CUExQOpSmC5HhDls/edit?usp=sharing)
- - [Initial brainstorming doc](https://docs.google.com/document/d/1B0YCZXxEa1St744XfLSZR2Yzt_zihRdUB-d_c1wFw3Q/edit?tab=t.0#heading=h.ltj5f1i4sgpz)
+> [!IMPORTANT] Discord  
+> Join our [discord server](https://discord.gg/fjsNSa6TAh).
 
+
+ - [Goals and road map](https://docs.google.com/document/d/1_qomLR9qJW9SR_dN2x_zVkBGoant-QxZQpxtUKtfk68/edit?usp=sharing)
+ - [Google drive folder](https://drive.google.com/drive/folders/1Syc77Cko6PFlr_wnxBMa6PB-_aXCOt1v?usp=sharing)
 
 ## Dev
 
@@ -86,9 +88,4 @@ Go to `testing` dir to just try things out. See READMEs there.
 
 ### Static analysis
 
-This is not really working as of now. It works on simple scripts but not on Amadou's code-gen (super complicated repo). We're taing different approaches right now:
-
-pyre (TODO document and pull in):
- - We want to set llm calls as source and sink but somehow I couldn't figure out how. We now define other functions as sources and sinks and make stubs for the LLM calls (e.g., we create folder structure to exactly reflect `openai.resources.responses.responses.create` and add a the create function to contain sources and sinks for taint). However, these stubs don't work if they're just in our code base (e.g., `pyre_static_analysis`) but only worked when I placed them directly into the user repo. That sucks ...
- - Env vars: `export PYRE_VERSION=client_and_binary`
-
+This is not really working as of now. It works on simple scripts but not on complex ones with many edge cases. Static analysis might not really be necessary though.
