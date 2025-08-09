@@ -3,14 +3,13 @@ import socket
 import json
 import traceback
 from common.logger import logger
-
-import os
+from common.constants import ACO_PROJECT_ROOT
 from runtime_tracing.fstring_rewriter import install_fstring_rewriter, set_user_py_files
 from common.utils import get_project_root, scan_user_py_files_and_modules
 from runtime_tracing.apply_monkey_patches import apply_all_monkey_patches
 from runtime_tracing.monkey_patches import set_session_id
 
-user_py_files, file_to_module = scan_user_py_files_and_modules(get_project_root())
+user_py_files, file_to_module = scan_user_py_files_and_modules(ACO_PROJECT_ROOT)
 set_user_py_files(user_py_files, file_to_module)
 
 install_fstring_rewriter()

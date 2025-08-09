@@ -14,6 +14,7 @@ from runtime_tracing.fstring_rewriter import install_fstring_rewriter, set_user_
 from runtime_tracing.apply_monkey_patches import apply_all_monkey_patches
 from common.logger import logger
 from common.utils import get_project_root, scan_user_py_files_and_modules
+from common.constants import ACO_PROJECT_ROOT
 from agent_copilot.launch_scripts import SCRIPT_WRAPPER_TEMPLATE, MODULE_WRAPPER_TEMPLATE
 
 
@@ -146,14 +147,11 @@ class DevelopShim:
         # Add the runtime_tracing directory to PYTHONPATH so sitecustomize.py can be found
         runtime_tracing_dir = get_runtime_tracing_dir()
         
-        # Load project_root from copilot.yaml
-        project_root = get_project_root()
-        
         # Add to PYTHONPATH: project_root first, then runtime_tracing_dir
         if 'PYTHONPATH' in env:
-            env['PYTHONPATH'] = project_root + os.pathsep + runtime_tracing_dir + os.pathsep + env['PYTHONPATH']
+            env['PYTHONPATH'] = ACO_PROJECT_ROOT + os.pathsep + runtime_tracing_dir + os.pathsep + env['PYTHONPATH']
         else:
-            env['PYTHONPATH'] = project_root + os.pathsep + runtime_tracing_dir
+            env['PYTHONPATH'] = ACO_PROJECT_ROOT + os.pathsep + runtime_tracing_dir
         
         # Set environment variables to enable monkey patching
         env['AGENT_COPILOT_ENABLE_TRACING'] = '1'
@@ -217,16 +215,10 @@ class DevelopShim:
     def _convert_and_run_as_module(self, script_path: str, script_args: List[str]) -> Optional[int]:
         """Convert script execution to module import for AST rewriting."""
         abs_path = os.path.abspath(script_path)
-        script_dir = os.path.dirname(abs_path)
-        
-        # Set up file scanning and mapping in current process
-        
-        # Load project_root from copilot.yaml
-        project_root = get_project_root()
         
         # Scan for all .py files in the user's project root
         # This ensures AST rewriting works for the user's code
-        user_py_files, file_to_module = scan_user_py_files_and_modules(project_root)
+        user_py_files, file_to_module = scan_user_py_files_and_modules(ACO_PROJECT_ROOT)
         set_user_py_files(user_py_files, file_to_module)
         install_fstring_rewriter()
         
@@ -239,14 +231,14 @@ class DevelopShim:
         
         try:
             # Add project root to sys.path for module import
-            sys.path.insert(0, project_root)
+            sys.path.insert(0, ACO_PROJECT_ROOT)
             
             # Set up argv for the script
             sys.argv = [script_path] + script_args
             
             # Compute module name as absolute path from project root
             # TODO: Assumes the project is installed with pip install -e, we can use absolute module names
-            rel_path = os.path.relpath(abs_path, project_root)
+            rel_path = os.path.relpath(abs_path, ACO_PROJECT_ROOT)
             if rel_path.startswith('..'):
                 # If the file is outside the project root, use the filename as module name
                 module_name = os.path.splitext(os.path.basename(abs_path))[0]
@@ -275,12 +267,9 @@ class DevelopShim:
         else:
             abs_path = os.path.abspath(script_path)
                 
-        # Load project_root from copilot.yaml
-        project_root = get_project_root()
-                
         # Compute module name, handling files outside the project root
         try:
-            rel_path = os.path.relpath(abs_path, project_root)
+            rel_path = os.path.relpath(abs_path, ACO_PROJECT_ROOT)
             
             if rel_path.startswith('..'):
                 # If the file is outside the project root, use the filename as module name
@@ -309,7 +298,7 @@ class DevelopShim:
             base_name = os.path.splitext(os.path.basename(abs_path))[0]
             return base_name
 
-    def _create_runpy_wrapper(self, module_name: str, script_args: List[str], project_root: str) -> str:
+    def _create_runpy_wrapper(self, module_name: str, script_args: List[str]) -> str:
         """
         Create a temporary wrapper script that runs the module with runpy.run_module.
         This is needed for script execution (develop script.py) so that AST patching and import hooks
@@ -318,7 +307,7 @@ class DevelopShim:
         runtime_tracing_dir = get_runtime_tracing_dir()
         wrapper_code = SCRIPT_WRAPPER_TEMPLATE.format(
             runtime_tracing_dir=repr(runtime_tracing_dir),
-            project_root=repr(project_root),
+            project_root=repr(ACO_PROJECT_ROOT),
             module_name=repr(module_name),
             script_args=repr(script_args)
         )
@@ -334,13 +323,12 @@ class DevelopShim:
         to ensure AST patching and import hooks are applied to all user code.
         """
         env = self._setup_monkey_patching_env()
-        project_root = get_project_root()
         if self.is_module_execution:
             # For module execution, create a wrapper that sets up AST rewriting and resolves module names
             runtime_tracing_dir = get_runtime_tracing_dir()
             wrapper_code = MODULE_WRAPPER_TEMPLATE.format(
                 runtime_tracing_dir=repr(runtime_tracing_dir),
-                project_root=repr(project_root),
+                project_root=repr(ACO_PROJECT_ROOT),
                 module_name=repr(self.script_path),
                 script_args=repr(self.script_args)
             )
@@ -352,7 +340,7 @@ class DevelopShim:
         else:
             # For file execution, convert to module name and use wrapper
             module_name = self._convert_file_to_module_name(self.script_path)
-            wrapper_path = self._create_runpy_wrapper(module_name, self.script_args, project_root)
+            wrapper_path = self._create_runpy_wrapper(module_name, self.script_args)
             self.proc = subprocess.Popen([sys.executable, wrapper_path], env=env)
             self.wrapper_path = wrapper_path
         # Monitor the process and check for restart requests

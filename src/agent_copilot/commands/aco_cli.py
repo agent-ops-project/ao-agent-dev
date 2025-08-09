@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 from agent_copilot.commands.config import get_config_parser
-from agent_copilot.commands.launch import launch_command_parser, launch_command
+from agent_copilot.commands.launch import launch_command_parser
+from agent_copilot.commands.server import server_command_parser
 
 
 def main():
@@ -10,6 +11,7 @@ def main():
     # Register commands
     get_config_parser(subparsers=subparsers)
     launch_command_parser(subparsers=subparsers)
+    server_command_parser(subparsers=subparsers)
 
     args = parser.parse_args()
 

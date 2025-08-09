@@ -1,6 +1,13 @@
 import os
 
 
+# server-related constants
+HOST = '127.0.0.1'
+PORT = 5959
+SOCKET_TIMEOUT = 3
+SHUTDOWN_WAIT = 2
+
+
 # default home directory for configs and temporary/cached files
 default_home: str = os.path.join(os.path.expanduser("~"), ".cache")
 ACO_HOME: str = os.path.expandvars(

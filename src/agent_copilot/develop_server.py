@@ -1,26 +1,17 @@
 import socket
-import sys
 import os
-import argparse
 import json
 import threading
 import subprocess
 import uuid
-import time
 import subprocess
 import shlex
 from datetime import datetime
-from typing import Dict, Any, Optional, Set, Tuple
+from typing import Optional
 from workflow_edits.edit_manager import EDIT
 from workflow_edits.cache_manager import CACHE
 from common.logger import logger
-
-
-# Configuration constants
-HOST = '127.0.0.1'
-PORT = 5959
-SOCKET_TIMEOUT = 3
-SHUTDOWN_WAIT = 2
+from common.constants import HOST, PORT
 
 
 def send_json(conn: socket.socket, msg: dict) -> None:
@@ -532,7 +523,7 @@ class DevelopServer:
 
         try:
             while True:
-                conn, addr = self.server_sock.accept()
+                conn, _ = self.server_sock.accept()
                 threading.Thread(
                     target=self.handle_client,
                     args=(conn,),
@@ -544,86 +535,3 @@ class DevelopServer:
         finally:
             self.server_sock.close()
             logger.info("Develop server stopped.")
-
-
-# ============================================================
-# CLI (start / stop).
-# ============================================================
-
-def main():
-    """CLI entry point."""
-    parser = argparse.ArgumentParser(description="Development server for LLM call visualization")
-    parser.add_argument('command', choices=['start', 'stop', 'restart', 'clear'], 
-                       help="Start, stop, restart, or clear the server database and state")
-    args = parser.parse_args()
-
-    if args.command == 'start':
-        # If server is already running, do not start another
-        try:
-            socket.create_connection((HOST, PORT), timeout=1).close()
-            logger.info("Develop server is already running.")
-            return
-        except Exception:
-            pass
-        # Launch the server as a detached background process (POSIX)
-        subprocess.Popen([sys.executable, __file__, "--serve"],
-                        close_fds=True, start_new_session=True)
-        logger.info("Develop server started.")
-        
-    elif args.command == 'stop':
-        # Connect to the server and send a shutdown command
-        try:
-            sock = socket.create_connection((HOST, PORT), timeout=SOCKET_TIMEOUT)
-            handshake = {"type": "hello", "role": "admin", "script": "stopper"}
-            send_json(sock, handshake)
-            send_json(sock, {"type": "shutdown"})
-            sock.close()
-            logger.info("Develop server stop signal sent.")
-        except Exception:
-            logger.warning("No running server found.")
-            sys.exit(1)
-        
-    elif args.command == 'restart':
-        # Stop the server if running
-        try:
-            sock = socket.create_connection((HOST, PORT), timeout=SOCKET_TIMEOUT)
-            handshake = {"type": "hello", "role": "admin", "script": "restarter"}
-            send_json(sock, handshake)
-            send_json(sock, {"type": "shutdown"})
-            sock.close()
-            logger.info("Develop server stop signal sent (for restart). Waiting for shutdown...")
-            time.sleep(SHUTDOWN_WAIT)
-        except Exception:
-            logger.info("No running server found. Proceeding to start.")
-        # Start the server
-        subprocess.Popen([sys.executable, __file__, "--serve"],
-                        close_fds=True, start_new_session=True)
-        logger.info("Develop server restarted.")
-        
-    elif args.command == 'clear':
-        # Connect to the server and send a clear command
-        try:
-            sock = socket.create_connection((HOST, PORT), timeout=SOCKET_TIMEOUT)
-            handshake = {"type": "hello", "role": "admin", "script": "clearer"}
-            send_json(sock, handshake)
-            send_json(sock, {"type": "clear"})
-            sock.close()
-            logger.info("Develop server clear signal sent.")
-        except Exception:
-            logger.warning("No running server found.")
-            sys.exit(1)
-        return
-        
-    elif args.command == '--serve':
-        # Internal: run the server loop (not meant to be called by users directly)
-        server = DevelopServer()
-        server.run_server()
-
-if __name__ == "__main__":
-    # Support internal "--serve" invocation to actually run the server loop
-    if len(sys.argv) > 1 and sys.argv[1] == "--serve":
-        server = DevelopServer()
-        server.run_server()
-    else:
-        logger.info(f"Starting server on {HOST}:{PORT}, PID={os.getpid()}")
-        main()

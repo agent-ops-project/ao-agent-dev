@@ -11,12 +11,12 @@ We assume the user coded their workflow in Python, i.e., runs it with something 
 
 All they change is the Python command. Whenever they want to develop their script with us, they run:
 
- - `develop -m foo.bar`
- - `ENV_VAR=5 develop script.py --some-flag`
+ - `aco-launch -m foo.bar`
+ - `ENV_VAR=5 aco-launch script.py --some-flag`
 
 This will feel *exactly* the same as running Python but also analyzes their code, populates our VS Code extension, etc. Specfically:
 
- - Program prints/reads to/from same terminal, crashes the same, etc
+ - Program prints/reads to/from same terminal, crashes the same, etc.
  - [User can use VS Code debugger](https://github.com/ferdiko/agent-copilot/blob/9af2cbc27fef1e6a0a6bb63c7ad678cf04cdb205/.vscode/launch.json#L11)
 
 ## Launch VS Code extension
@@ -34,9 +34,9 @@ This is a temporary "get started". You should run the below steps in VS Code or 
 5. Run `develop script.py` to use our tool on your code base
 
 ### Dependencies
-The project has python dependencies but also others (for front end). I recommend you use a conda env. Run the following in project root dir:
+The project has python dependencies but also others (for front end). We recommend to use a conda env. Run the following in project root dir:
 
-```
+```bash
 conda env create -f conda-environment.yml
 conda activate scratchpad
 pip install -e .
@@ -48,10 +48,10 @@ Then see [here](/src/user_interface/README.md) to launch explorer window with ex
 ### Start and stop server
 Currently, you need to manually start and stop our server. Just do:
 
- - `server start`
- - `server stop`
+ - `aco-server start`
+ - `aco-server stop`
 
-If you make changes to the server code, you can also do `server restart` so the changes are reflected in the running server. If you want to clear all recorded runs and cached LLM calls, do `server clear`.
+If you make changes to the server code, you can also do `aco-server restart` so the changes are reflected in the running server. If you want to clear all recorded runs and cached LLM calls, do `aco-server clear`.
 
 
 ## Further resources
@@ -69,9 +69,9 @@ If you make changes to the server code, you can also do `server restart` so the 
 
 These are the processes running. 
 
-1. Run user program (green): The users launch processes of their program by running `devlop their_script.py` which feels exactly like running their script normally with `python their_script.py` --- they can also use the debugger to run their script, which also feels completely normal. Under the hood the `develop` command monkey patches certain functions and logs runtime events to the `develop server`. The `develop runner` runs the actual python program of the user. The `develop orchestrator` manages the life cycle of the runner. For example, when the user presses the restart button in the UI, the orchestrator with kill the current runner and re-launch it.
+1. Run user program (green): The users launch processes of their program by running `aco-launch their_script.py` which feels exactly like running their script normally with `python their_script.py` --- they can also use the debugger to run their script, which also feels completely normal. Under the hood the `aco-launch` command monkey patches certain functions and logs runtime events to the `develop server`. The `develop runner` runs the actual python program of the user. The `develop orchestrator` manages the life cycle of the runner. For example, when the user presses the restart button in the UI, the orchestrator with kill the current runner and re-launch it.
 2. Develop server (blue): The `develop server` is the core of the system and responsbible for all analysis. It receives the logs from the user process and updates the UI according to its analyses. All communication to/from the `develop server` happens over a TCP socket (default: 5959). 
-3. UI (red): The red boxes are the UI of the VS Code extension. The UI gets updated by the `develop server`. TODO: The VS Code extension spawn the `develop server` and tears it down. They also exchange a heart beat for failures and unclean VS Code exits.
+3. UI (red): The red boxes are the UI of the VS Code extension. The UI gets updated by the `develop server`. TODO: The VS Code extension spawns the `develop server` and tears it down. They also exchange a heart beat for failures and unclean VS Code exits.
 
 ![Processes overview](./media/processes.png)
 
@@ -83,7 +83,7 @@ Keep dependencies up to date:
 
 ### Testing / Playing around
 
-Go to `testing` dir to just try things out. See READMEs there.
+Go to `testing` dir to just try things out. See the READMEs there.
 
 
 ### Static analysis

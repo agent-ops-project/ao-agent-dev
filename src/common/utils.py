@@ -84,7 +84,7 @@ def ensure_project_root_in_copilot_yaml(config_path, default_root=None):
     return default_root
 
 
-def scan_user_py_files_and_modules(root_dir):
+def scan_user_py_files_and_modules(root_dir: str):
     """
     Scan a directory for all .py files and return:
       - user_py_files: set of absolute file paths
@@ -99,7 +99,7 @@ def scan_user_py_files_and_modules(root_dir):
                 user_py_files.add(abs_path)
                 # Compute module name relative to root_dir
                 rel_path = os.path.relpath(abs_path, root_dir)
-                mod_name = rel_path[:-3].replace(os.sep, '.')  # strip .py, convert / to .
+                mod_name: str = rel_path[:-3].replace(os.sep, '.')  # strip .py, convert / to .
                 if mod_name.endswith(".__init__"):
                     mod_name = mod_name[:-9]  # remove .__init__
                 file_to_module[abs_path] = mod_name
@@ -110,8 +110,3 @@ def get_config_path():
     """Return the absolute path to configs/copilot.yaml."""
     import os
     return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'configs', 'copilot.yaml'))
-
-def get_project_root():
-    """Return the project root as set in copilot.yaml (ensuring it is set)."""
-    config_path = get_config_path()
-    return ensure_project_root_in_copilot_yaml(config_path)
