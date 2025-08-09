@@ -137,7 +137,8 @@ def _send_graph_node_and_edges(server_conn,
             "codeLocation": codeLocation,
             "model": model,
             "attachments": attachements,
-        }
+        },
+        "incoming_edges": source_node_ids
     }
 
     try:
@@ -145,18 +146,6 @@ def _send_graph_node_and_edges(server_conn,
     except Exception as e:
         logger.error(f"Failed to send add_node: {e}")
 
-    # Send edges for each source
-    for src in source_node_ids:
-        if src != node_id:
-            edge_msg = {
-                "type": "add_edge",
-                "session_id": session_id,
-                "edge": {"source": src, "target": node_id}
-            }
-            try:
-                server_conn.sendall((json.dumps(edge_msg) + "\n").encode("utf-8"))
-            except Exception as e:
-                logger.error(f"Failed to send addEdge: {e}")
 
 
 # ===========================================================

@@ -114,24 +114,24 @@ def _vertexai_extract_output_text(response):
         return str(response) 
 
 def _vertexai_response_to_json(response) -> str:
-    """Convert Vertex AI response to JSON string."""
-    return json.dumps({
-        "output_text": response.output_text if hasattr(response, 'output_text') else str(response)
-    }, indent=2)
+    """Serialize a Vertex AI Response object to a JSON string for storage."""
+    if hasattr(response, 'to_dict'):
+        return json.dumps(response.to_dict())
+    elif hasattr(response, '__dict__'):
+        return json.dumps(response.__dict__, default=str)
+    else:
+        return json.dumps(str(response))
 
 def _vertexai_json_to_response(json_str: str):
-    """Convert JSON string back to Vertex AI response-like object."""
-    data = json.loads(json_str)
-    
+    """Deserialize a JSON string from the DB to a Vertex AI Response object."""
     try:
         from google.genai.types import GenerateContentResponse
     except ImportError:
         raise ImportError("VertexAI library not installed. Cannot deserialize VertexAI response.")
-
+    
+    data = json.loads(json_str)
     try:
-        response = GenerateContentResponse()
-        response.output_text = data.get("output_text", "")
-        return response
+        return GenerateContentResponse.from_dict(data)
     except Exception:
         return str(data)
 
@@ -139,8 +139,20 @@ def _vertexai_swap_output(output_text: str, json_response: str) -> str:
     # Parse the JSON response
     response_data = json.loads(json_response)
     
-    # Replace the output_text content in Vertex AI response format
-    response_data["output_text"] = output_text
+    # Replace the text content in Vertex AI response format
+    # VertexAI responses typically have candidates with parts containing text
+    if 'candidates' in response_data and isinstance(response_data['candidates'], list):
+        for candidate in response_data['candidates']:
+            if 'content' in candidate and 'parts' in candidate['content']:
+                for part in candidate['content']['parts']:
+                    if 'text' in part:
+                        part['text'] = output_text
+                        break
+                break
+    # Fallback: if the structure doesn't match expected format, try direct text field
+    elif 'text' in response_data:
+        response_data['text'] = output_text
+    
     return json.dumps(response_data, indent=2)
         
 # === General Response helpers ===

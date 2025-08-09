@@ -255,15 +255,15 @@ class DevelopServer:
             "color_preview": []
         })
 
+        # Immediately broadcast an empty graph to all UIs for fast clearing
+        self.session_graphs[session_id] = {"nodes": [], "edges": []}
+        self.broadcast_to_all_uis({
+            "type": "graph_update",
+            "session_id": session_id,
+            "payload": {"nodes": [], "edges": []}
+        })
+
         if session and session.status == "running":
-            # Immediately broadcast an empty graph to all UIs for fast clearing
-            self.session_graphs[session_id] = {"nodes": [], "edges": []}
-            logger.debug(f"(pre-restart) Graph reset for session_id: {session_id}")
-            self.broadcast_to_all_uis({
-                "type": "graph_update",
-                "session_id": session_id,
-                "payload": {"nodes": [], "edges": []}
-            })
             if session.shim_conn:
                 restart_msg = {"type": "restart", "session_id": session_id}
                 logger.debug(f"Sending restart to shim-control for session_id: {session_id} with message: {restart_msg}")
@@ -291,13 +291,6 @@ class DevelopServer:
                 # Rerun the original command. This starts the shim-control, which starts the shim-runner.
                 args = shlex.split(command)
                 subprocess.Popen(args, cwd=cwd, env=env, close_fds=True, start_new_session=True)
-                # Immediately broadcast an empty graph to all UIs for fast clearing
-                self.session_graphs[session_id] = {"nodes": [], "edges": []}
-                self.broadcast_to_all_uis({
-                    "type": "graph_update",
-                    "session_id": session_id,
-                    "payload": {"nodes": [], "edges": []}
-                })
                 EDIT.update_graph_topology(session_id, self.session_graphs[session_id])
                 
                 # Update the session status to running and update timestamp for rerun
@@ -390,7 +383,9 @@ class DevelopServer:
             handshake = json.loads(handshake_line.strip())
             role = handshake.get("role")
             session_id = None
-            # Only assign session_id for shim-control
+            # Only assign session_id for shim-control.
+            # NOTE: In theory, there's' a race condition here but the user
+            # needs to click restart on two different experiments ms apart.
             if role == "shim-control":
                 if self.pending_rerun_session_id:
                     session_id = self.pending_rerun_session_id
