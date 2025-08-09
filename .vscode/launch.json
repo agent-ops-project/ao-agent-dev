@@ -5,11 +5,29 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Develop Script",
+      "name": "develop <script.py> [<args>]",
       "type": "debugpy",
       "request": "launch",
       "module": "agent_copilot.develop",
-      "args": ["${workspaceFolder}/testing/tracing/dynamic_taint_prop.py"],
+      "args": ["${workspaceFolder}/example_workflows/debug_examples/tracing/add_numbers.py"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "aco config",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "agent_copilot.commands.aco_cli",
+      "args": ["config", "--config-file", "./test.yaml"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "aco launch -m <script.py> [<arg>]",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "agent_copilot.commands.launch",
+      "args": ["-m", "example_workflows/debug_examples/tracing/add_numbers", "--arg1", "a1"],
       "console": "integratedTerminal",
       "justMyCode": false
     },

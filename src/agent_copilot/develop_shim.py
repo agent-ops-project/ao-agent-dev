@@ -416,6 +416,7 @@ class DevelopShim:
     
     def _is_debug_mode(self) -> bool:
         """Check if we're running in debug mode."""
+        return False
         try:
             import debugpy
             return debugpy.is_client_connected()
@@ -493,30 +494,3 @@ class DevelopShim:
         
         sys.exit(0)
 
-def main():
-    """Entry point for the develop command."""
-    if len(sys.argv) < 2:
-        logger.error("Usage: develop <script.py> [script args...] or develop -m <module> [module args...]")
-        sys.exit(1)
-    
-    # Check if user is running as module (-m flag)
-    is_module_execution = False
-    if sys.argv[1] == '-m':
-        if len(sys.argv) < 3:
-            logger.error("No module specified after -m")
-            logger.error("Usage: develop -m <module> [module args...]")
-            sys.exit(1)
-        # Module execution: pass through to subprocess
-        script_path = sys.argv[2]  # This will be the module name
-        script_args = sys.argv[3:]
-        is_module_execution = True
-    else:
-        # Direct execution: convert to module import
-        script_path = sys.argv[1]
-        script_args = sys.argv[2:]
-    
-    shim = DevelopShim(script_path, script_args, is_module_execution)
-    shim.run()
-
-if __name__ == "__main__":
-    main()

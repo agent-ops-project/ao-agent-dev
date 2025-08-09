@@ -3,7 +3,7 @@ from openai import OpenAI
 
 
 client = OpenAI()
-PDF_PATH = "/Users/ferdi/Downloads/ken_udbms_execution.pdf"
+PDF_PATH = "/Users/jub/Downloads/0223.pdf"
 # PDF_PATH = "/Users/ferdi/Downloads/query_load_3_days.pdf"
 
 response = client.responses.create(
