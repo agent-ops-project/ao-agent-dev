@@ -13,13 +13,8 @@ response = client.models.generate_content(
 
 response = response.text
 
-print("RESPONSE", response)
-
 prompt_add_1 = f"Add 1 to {response} and just output the result."
 prompt_add_2 = f"Add 2 to {response} and just output the result."
-
-print("PROMPT ADD 1", prompt_add_1)
-print("PROMPT ADD 2", prompt_add_2)
 
 response1 = client.models.generate_content(
     model=model,

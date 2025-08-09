@@ -48,10 +48,9 @@ def setup_tracing():
                     pass
         except Exception:
             pass
-        try:            # print(f"[DEBUG] sitecustomize: session_id from env = {session_id}")
+        try:
             if session_id:
                 set_session_id(session_id)
-                # print(f"[DEBUG] sitecustomize: set_session_id called with {session_id}")
             else:
                 logger.error(f"sitecustomize: No session_id in environment, run will not be traced properly.")
             apply_all_monkey_patches(server_conn)
