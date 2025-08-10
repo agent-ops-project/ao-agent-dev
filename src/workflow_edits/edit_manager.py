@@ -14,14 +14,10 @@ class EditManager:
         # TODO: Implement an overwrite input in utils (assume api_type = "openai_v2_response" for now)
         # new_input = overwrite_input(original_input, new_input, api_type)
         new_input_hash = db.hash_input(new_input)
-        print("~~~~~~~~~ execute SQL", new_input, new_input_hash, node_id)
-        a = db.execute(
+        db.execute(
             "UPDATE llm_calls SET input_overwrite=?, input_overwrite_hash=?, output=NULL WHERE session_id=? AND node_id=?",
             (new_input, new_input_hash, session_id, node_id)
         )
-        print("~~~~~~~~~ executed SQL", a)
-        row = db.query_one("SELECT * FROM llm_calls WHERE session_id=? AND node_id=?", (session_id, node_id))
-        print("~~~~~~~~~ row after update:", row["input_overwrite"], row["session_id"], row["input_hash"], row["input"])
 
     def set_output_overwrite(self, session_id, node_id, new_output):
         # Get api_type and output for the given session_id and node_id
@@ -47,11 +43,12 @@ class EditManager:
             (default_graph, session_id)
         )
 
-    def add_experiment(self, session_id, timestamp, cwd, command):
+    def add_experiment(self, session_id, timestamp, cwd, command, environment):
         default_graph = json.dumps({"nodes": [], "edges": []})
+        env_json = json.dumps(environment)
         db.execute(
-            "INSERT INTO experiments (session_id, graph_topology, timestamp, cwd, command) VALUES (?, ?, ?, ?, ?)",
-            (session_id, default_graph, timestamp, cwd, command)
+            "INSERT INTO experiments (session_id, graph_topology, timestamp, cwd, command, environment) VALUES (?, ?, ?, ?, ?, ?)",
+            (session_id, default_graph, timestamp, cwd, command, env_json)
         )
 
     def update_graph_topology(self, session_id, graph_dict):

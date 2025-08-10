@@ -1,5 +1,5 @@
 import os
-
+from common.utils import get_project_root
 
 # server-related constants
 HOST = '127.0.0.1'
@@ -47,55 +47,5 @@ ACO_CACHE = os.path.expandvars(
 )
 
 
-# project root
-def safe_infer_project_root() -> str:
-    """
-    Infer the project root directory by finding the directory that contains
-    the 'src' subdirectory with the 'agent_copilot' folder.
-    
-    Returns:
-        str: The absolute path to the project root directory
-        
-    Raises:
-        RuntimeError: If the project root cannot be determined
-    """
-    # Start from the current file's directory (src/common/constants.py)
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Go up directories until we find the project root
-    # The project root should contain 'src' with both 'common' and 'agent_copilot'
-    search_dir = current_dir
-
-    # init project root
-    project_root = None
-    
-    while True:
-        # Check if this directory contains src with the expected subdirectories
-        src_path = os.path.join(search_dir, 'src')
-        if (os.path.isdir(src_path) and 
-            os.path.isdir(os.path.join(src_path, 'agent_copilot'))):
-            project_root = search_dir
-            break
-        
-        # Move up one level
-        parent_dir = os.path.dirname(search_dir)
-        
-        # Stop if we've reached the filesystem root
-        if parent_dir == search_dir:
-            break
-            
-        search_dir = parent_dir
-    
-    if project_root is None:
-        raise RuntimeError(
-            f"Could not infer project root. Started from {current_dir} "
-            f"and searched up to filesystem root without finding a directory "
-            f"containing 'src' with both 'common' and 'agent_copilot' subdirectories."
-        )
-    else:
-        assert os.path.isdir(project_root) and os.path.isdir(os.path.join(project_root, 'src/agent_copilot')), \
-            "project root found but incorrect."
-        return project_root
-
-
-ACO_PROJECT_ROOT = safe_infer_project_root()
+# project root is only inferred once at import-time
+ACO_PROJECT_ROOT = get_project_root()

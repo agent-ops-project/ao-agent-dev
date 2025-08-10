@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
 """
 Test script to verify that the monkey patches work with optional dependencies.
 This script simulates a user environment where not all API packages (openai, 
 anthropic, google, ...) are installed. I don't want our install to overwrite 
 the user's installation of the APIs because they change all the time.
 """
+
 import sys
 import os
 
@@ -92,11 +92,11 @@ def test_import_with_api_dependencies():
                 print(f"✗ {patch_func.__name__} failed: {e}")
                 return False
                 
-        print("✓ All tests passed with dependencies available!")
+        print("All tests passed with dependencies available.")
         return True
         
     except Exception as e:
-        print(f"✗ Test failed: {e}")
+        print(f"Test failed: {e}")
         import traceback
         traceback.print_exc()
         return False

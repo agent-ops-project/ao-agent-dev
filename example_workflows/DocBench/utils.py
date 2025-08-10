@@ -30,9 +30,4 @@ def get_gpt_response_openai(text, engine='gpt-4-0125-preview', system_content='Y
         )
 
     text_response = completion.choices[0].message.content
-    # print(text_response)
-
-    response_dict = completion.json()
-    # print(response_dict)
-    # record(response_dict)
     return text_response

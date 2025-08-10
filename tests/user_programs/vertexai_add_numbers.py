@@ -11,7 +11,11 @@ response = client.models.generate_content(
     contents="Output the number 42 and nothing else",
 )
 
+print(response)
+
 response = response.text
+
+print(response)
 
 prompt_add_1 = f"Add 1 to {response} and just output the result."
 prompt_add_2 = f"Add 2 to {response} and just output the result."

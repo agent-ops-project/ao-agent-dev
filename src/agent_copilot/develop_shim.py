@@ -195,7 +195,8 @@ class DevelopShim:
             "role": self.role,
             "script": self.script_name,
             "cwd": os.getcwd(),
-            "command": " ".join(sys.argv)
+            "command": " ".join(sys.argv),
+            "environment": dict(os.environ)
         }
         try:
             self.server_conn.sendall((json.dumps(handshake) + "\n").encode('utf-8'))

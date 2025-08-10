@@ -52,7 +52,7 @@ def export_combined_env(output_path="conda-environment.yml"):
     with open(output_path, "w") as f:
         yaml.dump(full_env, f, sort_keys=False)
 
-    print(f"✅ Clean environment exported to {output_path}")
+    print(f"Environment exported to {output_path}. Please check it.")
 
 if __name__ == "__main__":
     export_combined_env()

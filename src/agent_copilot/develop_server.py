@@ -142,12 +142,9 @@ class DevelopServer:
     def handle_add_node(self, msg: dict) -> None:
         sid = msg["session_id"]
         node = msg["node"]
-        if "model" not in node:
-            node["model"] = None
-        if "id" not in node:
-            node["id"] = str(uuid.uuid4())
-        if "api_type" not in node:
-            node["api_type"] = None
+        incoming_edges = msg.get("incoming_edges", [])
+        
+        # Add or update the node
         graph = self.session_graphs.setdefault(sid, {"nodes": [], "edges": []})
         for i, n in enumerate(graph["nodes"]):
             if n["id"] == node["id"]:
@@ -155,6 +152,13 @@ class DevelopServer:
                 break
         else:
             graph["nodes"].append(node)
+        
+        # Add incoming edges
+        for source in incoming_edges:
+            target = node["id"]
+            edge_id = f"e{source}-{target}"
+            full_edge = {"id": edge_id, "source": source, "target": target}
+            graph["edges"].append(full_edge)
         
         # Update color preview in database
         node_colors = [n["border_color"] for n in graph["nodes"]]
@@ -168,21 +172,6 @@ class DevelopServer:
             "color_preview": color_preview
         })
         
-        self.broadcast_to_all_uis({
-            "type": "graph_update",
-            "session_id": sid,
-            "payload": {"nodes": graph["nodes"], "edges": graph["edges"]}
-        })
-        EDIT.update_graph_topology(sid, graph)
-
-    def handle_add_edge(self, msg: dict) -> None:
-        sid = msg["session_id"]
-        edge = msg["edge"]
-        graph = self.session_graphs.setdefault(sid, {"nodes": [], "edges": []})
-        if not any(e["source"] == edge["source"] and e["target"] == edge["target"] for e in graph["edges"]):
-            edge_id = f"e{edge['source']}-{edge['target']}"
-            edge_with_id = {"id": edge_id, **edge}
-            graph["edges"].append(edge_with_id)
         self.broadcast_to_all_uis({
             "type": "graph_update",
             "session_id": sid,
@@ -259,15 +248,15 @@ class DevelopServer:
             "color_preview": []
         })
 
+        # Immediately broadcast an empty graph to all UIs for fast clearing
+        self.session_graphs[session_id] = {"nodes": [], "edges": []}
+        self.broadcast_to_all_uis({
+            "type": "graph_update",
+            "session_id": session_id,
+            "payload": {"nodes": [], "edges": []}
+        })
+
         if session and session.status == "running":
-            # Immediately broadcast an empty graph to all UIs for fast clearing
-            self.session_graphs[session_id] = {"nodes": [], "edges": []}
-            logger.debug(f"(pre-restart) Graph reset for session_id: {session_id}")
-            self.broadcast_to_all_uis({
-                "type": "graph_update",
-                "session_id": session_id,
-                "payload": {"nodes": [], "edges": []}
-            })
             if session.shim_conn:
                 restart_msg = {"type": "restart", "session_id": session_id}
                 logger.debug(f"Sending restart to shim-control for session_id: {session_id} with message: {restart_msg}")
@@ -282,7 +271,7 @@ class DevelopServer:
             # For finished rerun, store the session_id for the next shim-control
             self.pending_rerun_session_id = session_id
             # Rerun for finished session: launch new shim-control with same session_id
-            cwd, command = CACHE.get_exec_command(session_id)
+            cwd, command, environment = CACHE.get_exec_command(session_id)
             if not cwd:
                 logger.error(f"Requested restart for session without logged command.")
                 return
@@ -292,16 +281,14 @@ class DevelopServer:
                 # Insert session_id into environment so shim-control uses the same session_id
                 env = os.environ.copy()
                 env["AGENT_COPILOT_SESSION_ID"] = session_id
+                
+                # Restore the user's original environment variables
+                env.update(environment)
+                logger.debug(f"Restored {len(environment)} environment variables for session {session_id}")
+                
                 # Rerun the original command. This starts the shim-control, which starts the shim-runner.
                 args = shlex.split(command)
                 subprocess.Popen(args, cwd=cwd, env=env, close_fds=True, start_new_session=True)
-                # Immediately broadcast an empty graph to all UIs for fast clearing
-                self.session_graphs[session_id] = {"nodes": [], "edges": []}
-                self.broadcast_to_all_uis({
-                    "type": "graph_update",
-                    "session_id": session_id,
-                    "payload": {"nodes": [], "edges": []}
-                })
                 EDIT.update_graph_topology(session_id, self.session_graphs[session_id])
                 
                 # Update the session status to running and update timestamp for rerun
@@ -367,8 +354,6 @@ class DevelopServer:
             self.handle_debugger_restart_message(msg)
         elif msg_type == "add_node":
             self.handle_add_node(msg)
-        elif msg_type == "add_edge":
-            self.handle_add_edge(msg)
         elif msg_type == "edit_input":
             self.handle_edit_input(msg)
         elif msg_type == "edit_output":
@@ -396,7 +381,9 @@ class DevelopServer:
             handshake = json.loads(handshake_line.strip())
             role = handshake.get("role")
             session_id = None
-            # Only assign session_id for shim-control
+            # Only assign session_id for shim-control.
+            # NOTE: In theory, there's' a race condition here but the user
+            # needs to click restart on two different experiments ms apart.
             if role == "shim-control":
                 if self.pending_rerun_session_id:
                     session_id = self.pending_rerun_session_id
@@ -409,8 +396,9 @@ class DevelopServer:
                         # Insert new experiment row using edit_manager
                         cwd = handshake.get("cwd")
                         command = handshake.get("command")
+                        environment = handshake.get("environment")
                         timestamp = datetime.now().strftime("%d/%m %H:%M")
-                        EDIT.add_experiment(session_id, timestamp, cwd, command)
+                        EDIT.add_experiment(session_id, timestamp, cwd, command, environment)
                     session = self.sessions[session_id]
                 with session.lock:
                     session.shim_conn = conn
@@ -420,9 +408,7 @@ class DevelopServer:
                 self.conn_info[conn] = {"role": role, "session_id": session_id}
                 send_json(conn, {"type": "session_id", "session_id": session_id})
             elif role == "shim-runner":
-                session_id = handshake.get("session_id")
-                # Optionally, associate this runner with the session if needed
-                pass  # Do not add to self.ui_connections
+                pass  # Don't do anything if shim-runner
             elif role == "ui":
                 # Always reload finished runs from the DB before sending experiment list
                 self.load_finished_runs()

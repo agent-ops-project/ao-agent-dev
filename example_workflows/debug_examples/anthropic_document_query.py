@@ -28,15 +28,11 @@ with open(PDF_PATH, "rb") as f:
     )
     file_content = file_response.id
 
-print(f"File uploaded with ID: {file_content}")
-
 # List files to verify upload
 files_list = client.beta.files.list()
-print(f"Total files uploaded: {len(files_list.data)}")
 
 # Get file metadata
 file_metadata = client.beta.files.retrieve_metadata(file_id=file_content)
-print(f"File metadata: {file_metadata}")
 
 # Now ask a question about the document by reading the file content and encoding it
 with open(PDF_PATH, "rb") as f:
@@ -70,8 +66,6 @@ query_response = client.messages.create(
 
 # Get the response content
 message_content = query_response.content[0].text
-print(f"Response: {message_content}")
 
 # Clean up - delete the uploaded file
 client.beta.files.delete(file_id=file_content)
-print(f"File {file_content} deleted")

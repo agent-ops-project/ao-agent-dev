@@ -37,20 +37,12 @@ def setup_tracing():
         }
         try:
             server_conn.sendall((json.dumps(handshake) + "\n").encode('utf-8'))
-            file_obj = server_conn.makefile(mode='r')
-            session_line = file_obj.readline()
-            if session_line:
-                try:
-                    session_msg = json.loads(session_line.strip())
-                    # session_id = session_msg.get("session_id")  # Don't override env session_id
-                except Exception:
-                    pass
+            # For shim-runner, server doesn't send a response, so don't wait for one
         except Exception:
             pass
-        try:            # print(f"[DEBUG] sitecustomize: session_id from env = {session_id}")
+        try:
             if session_id:
                 set_session_id(session_id)
-                # print(f"[DEBUG] sitecustomize: set_session_id called with {session_id}")
             else:
                 logger.error(f"sitecustomize: No session_id in environment, run will not be traced properly.")
             apply_all_monkey_patches(server_conn)
