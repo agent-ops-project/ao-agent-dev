@@ -1,4 +1,4 @@
-project_root: /Users/jub/agent-copilot/example_workflows/debug_examples/tracing
+project_root: /Users/jub/agent-copilot/example_workflows/debug_examples/
 
 # Should we cache request attachements so you can see it in the scratchpad?
 request_attachments:

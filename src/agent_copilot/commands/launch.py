@@ -9,7 +9,7 @@ def launch_command_parser():
     parser = ArgumentParser(
         usage="aco-launch <script.py> [<args>]",
         description="Launch a python script with the agent copilot under the hood.",
-        allow_abbrev=False
+        allow_abbrev=False,
     )
 
     parser.add_argument(
@@ -18,11 +18,7 @@ def launch_command_parser():
         help="The config file to use for the default values in the launching script.",
     )
 
-    parser.add_argument(
-        "--disable-cache-attachments",
-        default=False,
-        action="store_true"
-    )
+    parser.add_argument("--disable-cache-attachments", default=False, action="store_true")
 
     parser.add_argument(
         "-m",
@@ -37,7 +33,9 @@ def launch_command_parser():
         help="The full path to the script to be executed, followed by all the remaining arguments.",
     )
 
-    parser.add_argument("script_args", nargs=REMAINDER, help="Arguments of the script to be executed.")
+    parser.add_argument(
+        "script_args", nargs=REMAINDER, help="Arguments of the script to be executed."
+    )
     return parser
 
 
@@ -46,10 +44,7 @@ def _validate_launch_command(args):
     config_file = None
 
     # check if the location of the config file is set
-    if (
-        args.config_file is not None
-        and os.path.isfile(args.config_file)
-    ):
+    if args.config_file is not None and os.path.isfile(args.config_file):
         config_file = args.config_file
     # if not, check in the AOC_CONFIG path
     elif os.path.isfile(ACO_CONFIG):
@@ -59,7 +54,7 @@ def _validate_launch_command(args):
     if config_file is not None:
         with open(config_file, encoding="utf-8") as f:
             default_dict = yaml.safe_load(f)
-    
+
     # the arguments overwrite what is written in the config file
     # that's why they come second.
     args.__dict__ = {**default_dict, **args.__dict__}

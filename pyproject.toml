@@ -33,3 +33,6 @@ static_analysis = ["pyre_static_analysis/**/*"]
 aco-launch = "agent_copilot.commands.launch:main"
 aco-config = "agent_copilot.commands.config.config:main"
 aco-server = "agent_copilot.commands.server:main"
+
+[tool.black]
+line-length = 100

@@ -5,6 +5,7 @@ from typing import Optional, Union
 
 import yaml
 
+
 def rel_path_to_abs(abs_file_path, rel_to_file):
     """
     Use __file__ as first argumante (abs_fil_path).
@@ -24,10 +25,13 @@ def rel_path_to_abs(abs_file_path, rel_to_file):
                 break
             if current == os.path.dirname(current):  # Reached filesystem root
                 raise ValueError("Could not find 'agent-copilot' project root.")
-        return os.path.abspath(os.path.join(project_root, os.path.relpath(rel_to_file, "agent-copilot")))
+        return os.path.abspath(
+            os.path.join(project_root, os.path.relpath(rel_to_file, "agent-copilot"))
+        )
     else:
         # Treat as relative to the current file's directory
         return os.path.abspath(os.path.join(os.path.dirname(abs_file_path), rel_to_file))
+
 
 def scan_user_py_files_and_modules(root_dir):
     """
@@ -39,12 +43,12 @@ def scan_user_py_files_and_modules(root_dir):
     file_to_module = dict()
     for dirpath, dirnames, filenames in os.walk(root_dir):
         for filename in filenames:
-            if filename.endswith('.py'):
+            if filename.endswith(".py"):
                 abs_path = os.path.abspath(os.path.join(dirpath, filename))
                 user_py_files.add(abs_path)
                 # Compute module name relative to root_dir
                 rel_path = os.path.relpath(abs_path, root_dir)
-                mod_name = rel_path[:-3].replace(os.sep, '.')  # strip .py, convert / to .
+                mod_name = rel_path[:-3].replace(os.sep, ".")  # strip .py, convert / to .
                 if mod_name.endswith(".__init__"):
                     mod_name = mod_name[:-9]  # remove .__init__
                 file_to_module[abs_path] = mod_name
@@ -54,7 +58,10 @@ def scan_user_py_files_and_modules(root_dir):
 def get_config_path():
     """Return the absolute path to configs/copilot.yaml."""
     # TODO: Is this still needed? Only used in cache manager.
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'configs', 'copilot.yaml'))
+    return os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "configs", "copilot.yaml")
+    )
+
 
 def get_project_root() -> str:
     """Return the project root as set in copilot.yaml (ensuring it is set)."""
@@ -63,6 +70,7 @@ def get_project_root() -> str:
     # TODO: Delete below.
     config_path = get_config_path()
     return ensure_project_root_in_copilot_yaml(config_path)
+
 
 # TODO: delete this function (used in develop.py).
 def ensure_project_root_in_copilot_yaml(config_path, default_root=None):
@@ -75,11 +83,11 @@ def ensure_project_root_in_copilot_yaml(config_path, default_root=None):
     if not os.path.exists(config_path):
         config = {}
     else:
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             config = yaml.safe_load(f) or {}
 
-    if 'project_root' in config and config['project_root']:
-        return config['project_root']
+    if "project_root" in config and config["project_root"]:
+        return config["project_root"]
 
     # Compute default if not provided
     if default_root is None:
@@ -87,8 +95,9 @@ def ensure_project_root_in_copilot_yaml(config_path, default_root=None):
         current = os.getcwd()
         found = False
         while current != os.path.dirname(current):
-            if (os.path.exists(os.path.join(current, 'pyproject.toml')) or
-                os.path.exists(os.path.join(current, '.git'))):
+            if os.path.exists(os.path.join(current, "pyproject.toml")) or os.path.exists(
+                os.path.join(current, ".git")
+            ):
                 default_root = current
                 found = True
                 break
@@ -99,14 +108,15 @@ def ensure_project_root_in_copilot_yaml(config_path, default_root=None):
                 "or set 'project_root' manually in configs/copilot.yaml."
             )
 
-    config['project_root'] = default_root
+    config["project_root"] = default_root
     # Write back to YAML
-    with open(config_path, 'w') as f:
+    with open(config_path, "w") as f:
         yaml.safe_dump(config, f)
     return default_root
 
+
 # ==============================================================================
-# We try to derive the project root relative to the user working directory. 
+# We try to derive the project root relative to the user working directory.
 # All of the below is implementing this heuristic search.
 # ==============================================================================
 def derive_project_root() -> str:
@@ -155,6 +165,7 @@ def derive_project_root() -> str:
     # We reached the OS root without a decisive marker.
     return str(last_good)
 
+
 def _normalize_start(start: Optional[Union[str, os.PathLike]]) -> Path:
     if start is None:
         start = Path.cwd()
@@ -197,8 +208,8 @@ def _has_project_markers(p: Path) -> bool:
         ".git",
         ".hg",
         ".svn",
-        ".idea",      # JetBrains project
-        ".vscode",    # VS Code project
+        ".idea",  # JetBrains project
+        ".vscode",  # VS Code project
     }
     return any((p / f).exists() for f in files) or any((p / d).is_dir() for d in dirs)
 
@@ -274,8 +285,8 @@ def _is_common_non_project_dir(p: Path) -> bool:
     # --- macOS / Linux-ish anchors ---
     posix_anchors = {
         "applications",  # macOS
-        "library",       # macOS / shared
-        "system",        # macOS
+        "library",  # macOS / shared
+        "system",  # macOS
         "usr",
         "bin",
         "sbin",
@@ -347,4 +358,3 @@ def _is_common_non_project_dir(p: Path) -> bool:
         return True
 
     return False
-

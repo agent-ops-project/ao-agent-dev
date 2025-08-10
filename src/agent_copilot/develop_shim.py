@@ -19,13 +19,14 @@ from agent_copilot.launch_scripts import SCRIPT_WRAPPER_TEMPLATE, MODULE_WRAPPER
 
 
 # Configuration constants
-HOST = '127.0.0.1'
+HOST = "127.0.0.1"
 PORT = 5959
 CONNECTION_TIMEOUT = 5
 SERVER_START_TIMEOUT = 2
 PROCESS_TERMINATE_TIMEOUT = 5
 MESSAGE_POLL_INTERVAL = 0.1
 SERVER_START_WAIT = 1
+
 
 # Utility functions for path computation
 def get_runtime_tracing_dir():
@@ -35,57 +36,52 @@ def get_runtime_tracing_dir():
 
 class DevelopShim:
     """Manages the develop shim that runs user scripts with debugging support."""
-    
+
     def __init__(self, script_path: str, script_args: List[str], is_module_execution: bool = False):
         self.script_path = script_path
         self.script_args = script_args
         self.is_module_execution = is_module_execution
         self.script_name = os.path.basename(script_path)
         self.role = "shim-control"
-        
+
         # State management
         self.restart_event = threading.Event()
         self.shutdown_flag = False
         self.socket_closed = False
         self.proc: Optional[subprocess.Popen] = None
         self.wrapper_path: Optional[str] = None
-        
+
         # Server communication
         self.session_id: Optional[str] = None
         self.server_conn: Optional[socket.socket] = None
-        
+
         # Threading
         self.listener_thread: Optional[threading.Thread] = None
-        
+
         # Register signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
-    
+
     def _send_message(self, msg_type: str, **kwargs) -> None:
         """Send a message to the develop server."""
         if not self.server_conn:
             return
-        message = {
-            "type": msg_type,
-            "role": self.role,
-            "script": self.script_name,
-            **kwargs
-        }
+        message = {"type": msg_type, "role": self.role, "script": self.script_name, **kwargs}
         if self.session_id:
             message["session_id"] = self.session_id
         try:
-            self.server_conn.sendall((json.dumps(message) + "\n").encode('utf-8'))
+            self.server_conn.sendall((json.dumps(message) + "\n").encode("utf-8"))
         except Exception:
             pass  # Best effort only
-    
+
     def send_deregister(self) -> None:
         """Send deregistration message to the develop server."""
         self._send_message("deregister")
-    
+
     def send_restart_notification(self) -> None:
         """Send restart notification to the develop server."""
         self._send_message("debugger_restart")
-    
+
     def _signal_handler(self, signum, frame) -> None:
         """Handle termination signals gracefully."""
         self.send_deregister()
@@ -95,12 +91,12 @@ class DevelopShim:
             except Exception:
                 pass
         sys.exit(0)
-    
+
     def _listen_for_server_messages(self, sock: socket.socket) -> None:
         """Background thread: listen for 'restart' or 'shutdown' messages from the server."""
         try:
             sock.setblocking(False)
-            buffer = b''
+            buffer = b""
             while not self.shutdown_flag and not self.socket_closed:
                 try:
                     rlist, _, _ = select.select([sock], [], [], 1.0)
@@ -110,10 +106,10 @@ class DevelopShim:
                             if not data:
                                 break  # Socket closed
                             buffer += data
-                            while b'\n' in buffer:
-                                line, buffer = buffer.split(b'\n', 1)
+                            while b"\n" in buffer:
+                                line, buffer = buffer.split(b"\n", 1)
                                 try:
-                                    msg = json.loads(line.decode('utf-8').strip())
+                                    msg = json.loads(line.decode("utf-8").strip())
                                 except json.JSONDecodeError:
                                     continue
                                 self._handle_server_message(msg)
@@ -128,7 +124,7 @@ class DevelopShim:
                 sock.close()
             except Exception:
                 pass
-    
+
     def _handle_server_message(self, msg: dict) -> None:
         """Handle incoming server messages."""
         logger.info(f"[shim-control] Received message from server: {msg}")
@@ -139,31 +135,33 @@ class DevelopShim:
         elif msg_type == "shutdown":
             logger.info(f"[shim-control] Received shutdown message: {msg}")
             self.shutdown_flag = True
-    
+
     def _setup_monkey_patching_env(self) -> dict:
         """Set up environment variables to enable monkey patching in the user's script."""
         env = os.environ.copy()
-        
+
         # Add the runtime_tracing directory to PYTHONPATH so sitecustomize.py can be found
         runtime_tracing_dir = get_runtime_tracing_dir()
-        
+
         # Add to PYTHONPATH: project_root first, then runtime_tracing_dir
-        if 'PYTHONPATH' in env:
-            env['PYTHONPATH'] = ACO_PROJECT_ROOT + os.pathsep + runtime_tracing_dir + os.pathsep + env['PYTHONPATH']
+        if "PYTHONPATH" in env:
+            env["PYTHONPATH"] = (
+                ACO_PROJECT_ROOT + os.pathsep + runtime_tracing_dir + os.pathsep + env["PYTHONPATH"]
+            )
         else:
-            env['PYTHONPATH'] = ACO_PROJECT_ROOT + os.pathsep + runtime_tracing_dir
-        
+            env["PYTHONPATH"] = ACO_PROJECT_ROOT + os.pathsep + runtime_tracing_dir
+
         # Set environment variables to enable monkey patching
-        env['AGENT_COPILOT_ENABLE_TRACING'] = '1'
-        env['AGENT_COPILOT_SERVER_HOST'] = HOST
-        env['AGENT_COPILOT_SERVER_PORT'] = str(PORT)
-        
+        env["AGENT_COPILOT_ENABLE_TRACING"] = "1"
+        env["AGENT_COPILOT_SERVER_HOST"] = HOST
+        env["AGENT_COPILOT_SERVER_PORT"] = str(PORT)
+
         # Pass the session id to the child process
         if self.session_id:
-            env['AGENT_COPILOT_SESSION_ID'] = self.session_id
-        
+            env["AGENT_COPILOT_SESSION_ID"] = self.session_id
+
         return env
-    
+
     def _ensure_server_running(self) -> None:
         """Ensure the develop server is running, start it if necessary."""
         try:
@@ -181,7 +179,7 @@ class DevelopShim:
             except Exception:
                 logger.error("Develop server did not start.")
                 sys.exit(1)
-    
+
     def _connect_to_server(self) -> None:
         """Connect to the develop server and perform handshake."""
         try:
@@ -196,12 +194,12 @@ class DevelopShim:
             "script": self.script_name,
             "cwd": os.getcwd(),
             "command": " ".join(sys.argv),
-            "environment": dict(os.environ)
+            "environment": dict(os.environ),
         }
         try:
-            self.server_conn.sendall((json.dumps(handshake) + "\n").encode('utf-8'))
+            self.server_conn.sendall((json.dumps(handshake) + "\n").encode("utf-8"))
             # Read session_id from server
-            file_obj = self.server_conn.makefile(mode='r')
+            file_obj = self.server_conn.makefile(mode="r")
             session_line = file_obj.readline()
             if session_line:
                 try:
@@ -212,43 +210,43 @@ class DevelopShim:
                     pass
         except Exception:
             pass
-    
+
     def _convert_and_run_as_module(self, script_path: str, script_args: List[str]) -> Optional[int]:
         """Convert script execution to module import for AST rewriting."""
         abs_path = os.path.abspath(script_path)
-        
+
         # Scan for all .py files in the user's project root
         # This ensures AST rewriting works for the user's code
         user_py_files, file_to_module = scan_user_py_files_and_modules(ACO_PROJECT_ROOT)
         set_user_py_files(user_py_files, file_to_module)
         install_fstring_rewriter()
-        
+
         # Apply monkey patches in the current process
         apply_all_monkey_patches(self.server_conn)
-        
+
         # Save original state
         original_path = sys.path.copy()
         original_argv = sys.argv.copy()
-        
+
         try:
             # Add project root to sys.path for module import
             sys.path.insert(0, ACO_PROJECT_ROOT)
-            
+
             # Set up argv for the script
             sys.argv = [script_path] + script_args
-            
+
             # Compute module name as absolute path from project root
             # TODO: Assumes the project is installed with pip install -e, we can use absolute module names
             rel_path = os.path.relpath(abs_path, ACO_PROJECT_ROOT)
-            if rel_path.startswith('..'):
+            if rel_path.startswith(".."):
                 # If the file is outside the project root, use the filename as module name
                 module_name = os.path.splitext(os.path.basename(abs_path))[0]
             else:
                 # Convert relative path to module name
-                module_name = rel_path[:-3].replace(os.sep, '.')  # strip .py, convert / to .
-            
+                module_name = rel_path[:-3].replace(os.sep, ".")  # strip .py, convert / to .
+
             # Import and run as module (this triggers AST rewriting)
-            runpy.run_module(module_name, run_name='__main__')
+            runpy.run_module(module_name, run_name="__main__")
             return 0
         except SystemExit as e:
             return e.code if e.code is not None else 0
@@ -267,33 +265,33 @@ class DevelopShim:
             abs_path = script_path
         else:
             abs_path = os.path.abspath(script_path)
-                
+
         # Compute module name, handling files outside the project root
         try:
             rel_path = os.path.relpath(abs_path, ACO_PROJECT_ROOT)
-            
-            if rel_path.startswith('..'):
+
+            if rel_path.startswith(".."):
                 # If the file is outside the project root, use the filename as module name
                 module_name = os.path.splitext(os.path.basename(abs_path))[0]
                 return module_name
-            
+
             # Remove .py extension
-            if rel_path.endswith('.py'):
+            if rel_path.endswith(".py"):
                 rel_path = rel_path[:-3]
-            
+
             # Convert path separators to dots
-            module_name = rel_path.replace(os.sep, '.')
-            
+            module_name = rel_path.replace(os.sep, ".")
+
             # Handle __init__.py files (remove .__init__ suffix)
-            if module_name.endswith('.__init__'):
+            if module_name.endswith(".__init__"):
                 module_name = module_name[:-9]
-            
+
             # Handle empty module names (file is at project root)
             if not module_name:
                 module_name = os.path.splitext(os.path.basename(abs_path))[0]
-            
+
             return module_name
-            
+
         except ValueError as e:
             # If the file is not relative to the project root, use filename
             base_name = os.path.splitext(os.path.basename(abs_path))[0]
@@ -310,10 +308,10 @@ class DevelopShim:
             runtime_tracing_dir=repr(runtime_tracing_dir),
             project_root=repr(ACO_PROJECT_ROOT),
             module_name=repr(module_name),
-            script_args=repr(script_args)
+            script_args=repr(script_args),
         )
-        fd, temp_path = tempfile.mkstemp(suffix='.py', prefix='develop_runpy_wrapper_')
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        fd, temp_path = tempfile.mkstemp(suffix=".py", prefix="develop_runpy_wrapper_")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(wrapper_code)
         return temp_path
 
@@ -331,17 +329,35 @@ class DevelopShim:
                 runtime_tracing_dir=repr(runtime_tracing_dir),
                 project_root=repr(ACO_PROJECT_ROOT),
                 module_name=repr(self.script_path),
-                script_args=repr(self.script_args)
+                script_args=repr(self.script_args),
             )
-            fd, temp_path = tempfile.mkstemp(suffix='.py', prefix='develop_module_wrapper_')
-            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            fd, temp_path = tempfile.mkstemp(suffix=".py", prefix="develop_module_wrapper_")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(wrapper_code)
+
+            # [debug] removed /Users/jub/agent-copilot/src/runtime_tracing
+            # we don't need it since the wrapper-script knows where runtime_tracing is and
+            # can add it to the sys path. we can then import it and call setup_tracing from
+            # the wrapper script.
+            new_pp = "/Users/jub/agent-copilot/example_workflows/debug_examples/"
+            env["PYTHONPATH"] = new_pp
+            print(temp_path)
+
             self.proc = subprocess.Popen([sys.executable, temp_path], env=env)
             self.wrapper_path = temp_path
         else:
             # For file execution, convert to module name and use wrapper
             module_name = self._convert_file_to_module_name(self.script_path)
             wrapper_path = self._create_runpy_wrapper(module_name, self.script_args)
+
+            # [debug] removed /Users/jub/agent-copilot/src/runtime_tracing
+            # we don't need it since the wrapper-script knows where runtime_tracing is and
+            # can add it to the sys path. we can then import it and call setup_tracing from
+            # the wrapper script.
+            new_pp = "/Users/jub/agent-copilot/example_workflows/debug_examples/"
+            env["PYTHONPATH"] = new_pp
+            print(wrapper_path)
+
             self.proc = subprocess.Popen([sys.executable, wrapper_path], env=env)
             self.wrapper_path = wrapper_path
         # Monitor the process and check for restart requests
@@ -371,19 +387,19 @@ class DevelopShim:
                 except Exception:
                     pass
         return self.proc.returncode
-    
+
     def _run_user_script_debug_mode(self) -> int:
         """Run the user's script in debug mode with restart detection."""
         import importlib.util
-        
+
         # Load the script as a module
         spec = importlib.util.spec_from_file_location("user_script", self.script_path)
         module = importlib.util.module_from_spec(spec)
-        
+
         # Add script args to sys.argv for the script
         original_argv = sys.argv.copy()
         sys.argv = [self.script_path] + self.script_args
-        
+
         try:
             # Execute the script
             spec.loader.exec_module(module)
@@ -396,7 +412,7 @@ class DevelopShim:
         finally:
             # Restore original argv
             sys.argv = original_argv
-    
+
     def _kill_current_process(self) -> None:
         """Kill the current subprocess if it's still running."""
         if self.proc and self.proc.poll() is None:
@@ -408,32 +424,33 @@ class DevelopShim:
                 self.proc.wait()
             except Exception:
                 pass
-    
+
     def _is_debug_mode(self) -> bool:
         """Check if we're running in debug mode."""
         return False
         try:
             import debugpy
+
             return debugpy.is_client_connected()
         except Exception:
             return False
-    
+
     def _run_debug_mode(self) -> int:
         """Run the script in debug mode."""
         logger.info("Debug mode detected. Running script in debug context.")
         logger.info("Running script in debug mode...")
-        
+
         returncode = self._run_user_script_debug_mode()
-        
+
         # If restart was requested during execution, handle it
         if returncode is None:
             logger.info("Restart requested during execution, restarting script...")
             self.restart_event.clear()
             # Run the script again
             return self._run_user_script_debug_mode()
-        
+
         return returncode
-    
+
     def _run_normal_mode(self) -> Optional[int]:
         """Run the script in normal mode with restart handling."""
         while not self.shutdown_flag:
@@ -454,17 +471,16 @@ class DevelopShim:
             # No restart requested, exit with user script's return code
             return returncode
         return 0
-    
+
     def run(self) -> None:
         """Main entry point to run the develop shim."""
         # Ensure server is running and connect to it
         self._ensure_server_running()
         self._connect_to_server()
-        
+
         # Start background thread to listen for server messages
         self.listener_thread = threading.Thread(
-            target=self._listen_for_server_messages, 
-            args=(self.server_conn,)
+            target=self._listen_for_server_messages, args=(self.server_conn,)
         )
         self.listener_thread.start()
 
@@ -477,7 +493,7 @@ class DevelopShim:
         finally:
             # Kill any remaining subprocess before cleanup
             self._kill_current_process()
-            
+
             # Clean up
             self.send_deregister()
             if self.server_conn:
@@ -486,10 +502,9 @@ class DevelopShim:
                     self.server_conn.close()
                 except Exception:
                     pass
-            
+
             # Wait for background thread to finish
             if self.listener_thread:
                 self.listener_thread.join(timeout=2)
-        
-        sys.exit(exit_code)
 
+        sys.exit(exit_code)

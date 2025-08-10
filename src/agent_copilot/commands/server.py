@@ -12,7 +12,7 @@ def server_command_parser():
     parser = ArgumentParser(
         usage="aco-server {start, stop, restart, clear}",
         description="Server utilities.",
-        allow_abbrev=False
+        allow_abbrev=False,
     )
 
     parser.add_argument(
@@ -34,13 +34,14 @@ def execute_server_command(args):
             pass
         # Launch the server as a detached background process (POSIX)
         print(sys.executable, __file__, "_serve")
-        subprocess.Popen([sys.executable, __file__, "_serve"],
+        subprocess.Popen(
+            [sys.executable, __file__, "_serve"],
             stderr=subprocess.DEVNULL,
-            close_fds=True, 
-            start_new_session=True
+            close_fds=True,
+            start_new_session=True,
         )
         logger.info("Develop server started.")
-        
+
     elif args.command == "stop":
         # Connect to the server and send a shutdown command
         try:
@@ -53,7 +54,7 @@ def execute_server_command(args):
         except Exception:
             logger.warning("No running server found.")
             sys.exit(1)
-        
+
     elif args.command == "restart":
         # Stop the server if running
         try:
@@ -67,13 +68,14 @@ def execute_server_command(args):
         except Exception:
             logger.info("No running server found. Proceeding to start.")
         # Start the server
-        subprocess.Popen([sys.executable, __file__, "_serve"],
+        subprocess.Popen(
+            [sys.executable, __file__, "_serve"],
             stderr=subprocess.DEVNULL,
-            close_fds=True, 
-            start_new_session=True
+            close_fds=True,
+            start_new_session=True,
         )
         logger.info("Develop server restarted.")
-        
+
     elif args.command == "clear":
         # Connect to the server and send a clear command
         try:
@@ -87,7 +89,7 @@ def execute_server_command(args):
             logger.warning("No running server found.")
             sys.exit(1)
         return
-        
+
     elif args.command == "_serve":
         # Internal: run the server loop (not meant to be called by users directly)
         server = DevelopServer()

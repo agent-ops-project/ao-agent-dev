@@ -2,7 +2,7 @@ import os
 from common.utils import get_project_root
 
 # server-related constants
-HOST = '127.0.0.1'
+HOST = "127.0.0.1"
 PORT = 5959
 SOCKET_TIMEOUT = 1
 SHUTDOWN_WAIT = 2

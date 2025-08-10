@@ -3,6 +3,7 @@ import json
 from openai.types.responses.response import Response
 from workflow_edits.utils import swap_output
 
+
 class EditManager:
     """
     Handles user edits to LLM call inputs and outputs, updating the persistent database.
@@ -16,14 +17,14 @@ class EditManager:
         new_input_hash = db.hash_input(new_input)
         db.execute(
             "UPDATE llm_calls SET input_overwrite=?, input_overwrite_hash=?, output=NULL WHERE session_id=? AND node_id=?",
-            (new_input, new_input_hash, session_id, node_id)
+            (new_input, new_input_hash, session_id, node_id),
         )
 
     def set_output_overwrite(self, session_id, node_id, new_output):
         # Get api_type and output for the given session_id and node_id
         row = db.query_one(
             "SELECT api_type, output FROM llm_calls WHERE session_id=? AND node_id=?",
-            (session_id, node_id)
+            (session_id, node_id),
         )
         if not row or row["output"] is None:
             raise ValueError(f"No output found for session_id={session_id}, node_id={node_id}")
@@ -32,7 +33,7 @@ class EditManager:
         updated_output_json = swap_output(new_output, existing_output, api_type)
         db.execute(
             "UPDATE llm_calls SET output=? WHERE session_id=? AND node_id=?",
-            (updated_output_json, session_id, node_id)
+            (updated_output_json, session_id, node_id),
         )
 
     def erase(self, session_id):
@@ -40,7 +41,7 @@ class EditManager:
         db.execute("DELETE FROM llm_calls WHERE session_id=?", (session_id,))
         db.execute(
             "UPDATE experiments SET graph_topology=? WHERE session_id=?",
-            (default_graph, session_id)
+            (default_graph, session_id),
         )
 
     def add_experiment(self, session_id, timestamp, cwd, command, environment):
@@ -48,22 +49,20 @@ class EditManager:
         env_json = json.dumps(environment)
         db.execute(
             "INSERT INTO experiments (session_id, graph_topology, timestamp, cwd, command, environment) VALUES (?, ?, ?, ?, ?, ?)",
-            (session_id, default_graph, timestamp, cwd, command, env_json)
+            (session_id, default_graph, timestamp, cwd, command, env_json),
         )
 
     def update_graph_topology(self, session_id, graph_dict):
         import json
+
         graph_json = json.dumps(graph_dict)
         db.execute(
-            "UPDATE experiments SET graph_topology=? WHERE session_id=?",
-            (graph_json, session_id)
-        )
-    
-    def update_timestamp(self, session_id, timestamp):
-        """Update the timestamp of an experiment (used for reruns)"""
-        db.execute(
-            "UPDATE experiments SET timestamp=? WHERE session_id=?",
-            (timestamp, session_id)
+            "UPDATE experiments SET graph_topology=? WHERE session_id=?", (graph_json, session_id)
         )
 
-EDIT = EditManager() 
+    def update_timestamp(self, session_id, timestamp):
+        """Update the timestamp of an experiment (used for reruns)"""
+        db.execute("UPDATE experiments SET timestamp=? WHERE session_id=?", (timestamp, session_id))
+
+
+EDIT = EditManager()

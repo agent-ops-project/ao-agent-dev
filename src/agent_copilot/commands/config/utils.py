@@ -4,8 +4,8 @@ from typing import Callable, Any
 def _ask_field(
     input_text: str,
     convert_value: Callable[[Any], Any] | None = None,
-    default : Any | None = None,
-    error_message: str | None = None
+    default: Any | None = None,
+    error_message: str | None = None,
 ):
     ask_again = True
     while ask_again:
