@@ -134,7 +134,6 @@ class CacheManager:
         return []
 
     def update_color_preview(self, session_id, colors):
-        import json
         color_preview_json = json.dumps(colors)
         db.execute("UPDATE experiments SET color_preview=? WHERE session_id=?", (color_preview_json, session_id))
 
@@ -142,9 +141,7 @@ class CacheManager:
         row = db.query_one("SELECT cwd, command, environment FROM experiments WHERE session_id=?", (session_id,))
         if row is None:
             return None, None, None
-        # Parse environment from JSON if it exists
-        environment = json.loads(row["environment"])
-        return row["cwd"], row["command"], environment
+        return row["cwd"], row["command"], json.loads(row["environment"])
 
     def clear_db(self):
         """Delete all records from experiments and llm_calls tables."""

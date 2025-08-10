@@ -69,20 +69,11 @@ def _init_db(conn):
     c.execute('''
         CREATE INDEX IF NOT EXISTS overwrite_input_lookup ON llm_calls(session_id, model, input_overwrite_hash)
     ''')
-    # Create index for timestamp ordering (most recent first)
     c.execute('''
         CREATE INDEX IF NOT EXISTS experiments_timestamp_idx ON experiments(timestamp DESC)
     ''')
     conn.commit()
     
-    # Migration: Add color_preview column if it doesn't exist
-    try:
-        c.execute('ALTER TABLE experiments ADD COLUMN color_preview TEXT')
-        conn.commit()
-    except sqlite3.OperationalError:
-        # Column already exists, ignore
-        pass
-
 def query_one(sql, params=()):
     conn = get_conn()
     c = conn.cursor()
