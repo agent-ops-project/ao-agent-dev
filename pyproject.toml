@@ -30,6 +30,9 @@ static_analysis = ["pyre_static_analysis/**/*"]
 
 [project.scripts]
 # Console commands for the agent-copilot package
-develop = "agent_copilot.develop:run"           # Main development command
-debug = "agent_copilot.develop_shim:main"       # Alternative name for develop
-server = "agent_copilot.develop_server:main"    # Server management command
+aco-launch = "agent_copilot.commands.launch:main"
+aco-config = "agent_copilot.commands.config.config:main"
+aco-server = "agent_copilot.commands.server:main"
+
+[tool.black]
+line-length = 100

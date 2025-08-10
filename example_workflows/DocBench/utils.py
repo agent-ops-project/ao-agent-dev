@@ -1,10 +1,14 @@
 from openai import OpenAI
 from secret_key import OPENAI_API_KEY
 
-def get_gpt_response_openai(text, engine='gpt-4-0125-preview', system_content='You are a helpful assistant.' ,json_format=False):
-    client = OpenAI(
-        base_url="https://api.openai.com/v1", api_key=OPENAI_API_KEY
-    )
+
+def get_gpt_response_openai(
+    text,
+    engine="gpt-4-0125-preview",
+    system_content="You are a helpful assistant.",
+    json_format=False,
+):
+    client = OpenAI(base_url="https://api.openai.com/v1", api_key=OPENAI_API_KEY)
     if json_format:
         completion = client.chat.completions.create(
             model=engine,

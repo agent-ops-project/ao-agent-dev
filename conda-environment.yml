@@ -1,4 +1,4 @@
-name: scratchpad
+name: aco
 channels:
 - https://repo.anaconda.com/pkgs/main
 - https://repo.anaconda.com/pkgs/r

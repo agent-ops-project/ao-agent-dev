@@ -1,39 +1,31 @@
 import socket
-import sys
 import os
-import argparse
 import json
 import threading
 import subprocess
 import uuid
-import time
 import subprocess
 import shlex
 from datetime import datetime
-from typing import Dict, Any, Optional, Set, Tuple
+from typing import Optional
 from workflow_edits.edit_manager import EDIT
 from workflow_edits.cache_manager import CACHE
 from common.logger import logger
-
-
-# Configuration constants
-HOST = '127.0.0.1'
-PORT = 5959
-SOCKET_TIMEOUT = 3
-SHUTDOWN_WAIT = 2
+from common.constants import HOST, PORT
 
 
 def send_json(conn: socket.socket, msg: dict) -> None:
     try:
-        msg_type = msg.get('type', 'unknown')
+        msg_type = msg.get("type", "unknown")
         logger.debug(f"Sent message type: {msg_type}")
         conn.sendall((json.dumps(msg) + "\n").encode("utf-8"))
     except Exception as e:
         logger.error(f"Error sending JSON: {e}")
 
+
 class Session:
     """Represents a running develop process and its associated UI clients."""
-    
+
     def __init__(self, session_id: str):
         self.session_id = session_id
         self.shim_conn: Optional[socket.socket] = None
@@ -41,9 +33,10 @@ class Session:
         self.timestamp = datetime.now().strftime("%d/%m %H:%M")
         self.lock = threading.Lock()
 
+
 class DevelopServer:
     """Manages the development server for LLM call visualization."""
-    
+
     def __init__(self):
         self.server_sock = None
         self.lock = threading.Lock()
@@ -53,7 +46,7 @@ class DevelopServer:
         self.sessions = {}  # session_id -> Session (only for shim connections)
         # Store a pending rerun session_id if a rerun is requested
         self.pending_rerun_session_id = None
-    
+
     # ============================================================
     # Utils
     # ============================================================
@@ -66,23 +59,23 @@ class DevelopServer:
             except Exception as e:
                 logger.error(f"Error broadcasting to UI: {e}")
                 self.ui_connections.discard(ui_conn)
-    
+
     def broadcast_experiment_list_to_all_uis(self) -> None:
         # Get all experiments from database (already sorted by timestamp DESC)
         db_experiments = CACHE.get_all_experiments_sorted()
-        
+
         # Create a map of session_id to session for quick lookup
         session_map = {session.session_id: session for session in self.sessions.values()}
-        
+
         experiment_list = []
         for row in db_experiments:
             session_id = row["session_id"]
             session = session_map.get(session_id)
-            
+
             # Get status from in-memory session, or default to "finished"
             status = session.status if session else "finished"
             timestamp = session.timestamp if session else row["timestamp"]
-            
+
             # Parse color_preview from database
             color_preview = []
             if row["color_preview"]:
@@ -90,17 +83,19 @@ class DevelopServer:
                     color_preview = json.loads(row["color_preview"])
                 except:
                     color_preview = []
-            
-            experiment_list.append({
-                "session_id": session_id,
-                "status": status,
-                "timestamp": timestamp,
-                "color_preview": color_preview
-            })
-        
+
+            experiment_list.append(
+                {
+                    "session_id": session_id,
+                    "status": status,
+                    "timestamp": timestamp,
+                    "color_preview": color_preview,
+                }
+            )
+
         msg = {"type": "experiment_list", "experiments": experiment_list}
         self.broadcast_to_all_uis(msg)
-    
+
     def print_graph(self, session_id):
         # Debug utility.
         print("\n--------------------------------")
@@ -116,6 +111,7 @@ class DevelopServer:
         else:
             print(f"No graph found for session_id: {session_id}")
         print("--------------------------------\n")
+
     # ============================================================
     # Handle message types.
     # ============================================================
@@ -140,17 +136,13 @@ class DevelopServer:
         if row and row["graph_topology"]:
             graph = json.loads(row["graph_topology"])
             self.session_graphs[session_id] = graph
-            send_json(conn, {
-                "type": "graph_update",
-                "session_id": session_id,
-                "payload": graph
-            })
-    
+            send_json(conn, {"type": "graph_update", "session_id": session_id, "payload": graph})
+
     def handle_add_node(self, msg: dict) -> None:
         sid = msg["session_id"]
         node = msg["node"]
         incoming_edges = msg.get("incoming_edges", [])
-        
+
         # Add or update the node
         graph = self.session_graphs.setdefault(sid, {"nodes": [], "edges": []})
         for i, n in enumerate(graph["nodes"]):
@@ -159,31 +151,31 @@ class DevelopServer:
                 break
         else:
             graph["nodes"].append(node)
-        
+
         # Add incoming edges
         for source in incoming_edges:
             target = node["id"]
             edge_id = f"e{source}-{target}"
             full_edge = {"id": edge_id, "source": source, "target": target}
             graph["edges"].append(full_edge)
-        
+
         # Update color preview in database
         node_colors = [n["border_color"] for n in graph["nodes"]]
         color_preview = node_colors[-6:]  # Only display last 6 colors
         CACHE.update_color_preview(sid, color_preview)
-        
+
         # Broadcast color preview update to all UIs
-        self.broadcast_to_all_uis({
-            "type": "color_preview_update",
-            "session_id": sid,
-            "color_preview": color_preview
-        })
-        
-        self.broadcast_to_all_uis({
-            "type": "graph_update",
-            "session_id": sid,
-            "payload": {"nodes": graph["nodes"], "edges": graph["edges"]}
-        })
+        self.broadcast_to_all_uis(
+            {"type": "color_preview_update", "session_id": sid, "color_preview": color_preview}
+        )
+
+        self.broadcast_to_all_uis(
+            {
+                "type": "graph_update",
+                "session_id": sid,
+                "payload": {"nodes": graph["nodes"], "edges": graph["edges"]},
+            }
+        )
         EDIT.update_graph_topology(sid, graph)
 
     def handle_edit_input(self, msg: dict) -> None:
@@ -197,11 +189,13 @@ class DevelopServer:
                 if node["id"] == node_id:
                     node["input"] = new_input
                     break
-            self.broadcast_to_all_uis({
-                "type": "graph_update",
-                "session_id": session_id,
-                "payload": self.session_graphs[session_id]
-            })
+            self.broadcast_to_all_uis(
+                {
+                    "type": "graph_update",
+                    "session_id": session_id,
+                    "payload": self.session_graphs[session_id],
+                }
+            )
         logger.debug("Input overwrite completed")
 
     def handle_edit_output(self, msg: dict) -> None:
@@ -215,11 +209,13 @@ class DevelopServer:
                 if node["id"] == node_id:
                     node["output"] = new_output
                     break
-            self.broadcast_to_all_uis({
-                "type": "graph_update",
-                "session_id": session_id,
-                "payload": self.session_graphs[session_id]
-            })
+            self.broadcast_to_all_uis(
+                {
+                    "type": "graph_update",
+                    "session_id": session_id,
+                    "payload": self.session_graphs[session_id],
+                }
+            )
         logger.debug("Output overwrite completed")
 
     def handle_get_graph(self, msg: dict, conn: socket.socket) -> None:
@@ -230,14 +226,12 @@ class DevelopServer:
         EDIT.erase(session_id)
         # Clear color preview in database
         CACHE.update_color_preview(session_id, [])
-        
+
         # Broadcast color preview clearing to all UIs
-        self.broadcast_to_all_uis({
-            "type": "color_preview_update",
-            "session_id": session_id,
-            "color_preview": []
-        })
-        
+        self.broadcast_to_all_uis(
+            {"type": "color_preview_update", "session_id": session_id, "color_preview": []}
+        )
+
         self.handle_restart_message({"session_id": session_id})
 
     def handle_restart_message(self, msg: dict) -> bool:
@@ -249,24 +243,26 @@ class DevelopServer:
 
         # Reset color previews.
         CACHE.update_color_preview(session_id, [])
-        self.broadcast_to_all_uis({
-            "type": "color_preview_update",
-            "session_id": session_id,
-            "color_preview": []
-        })
+        self.broadcast_to_all_uis(
+            {"type": "color_preview_update", "session_id": session_id, "color_preview": []}
+        )
 
         # Immediately broadcast an empty graph to all UIs for fast clearing
         self.session_graphs[session_id] = {"nodes": [], "edges": []}
-        self.broadcast_to_all_uis({
-            "type": "graph_update",
-            "session_id": session_id,
-            "payload": {"nodes": [], "edges": []}
-        })
+        self.broadcast_to_all_uis(
+            {
+                "type": "graph_update",
+                "session_id": session_id,
+                "payload": {"nodes": [], "edges": []},
+            }
+        )
 
         if session and session.status == "running":
             if session.shim_conn:
                 restart_msg = {"type": "restart", "session_id": session_id}
-                logger.debug(f"Sending restart to shim-control for session_id: {session_id} with message: {restart_msg}")
+                logger.debug(
+                    f"Sending restart to shim-control for session_id: {session_id} with message: {restart_msg}"
+                )
                 try:
                     send_json(session.shim_conn, restart_msg)
                 except Exception as e:
@@ -283,21 +279,25 @@ class DevelopServer:
                 logger.error(f"Requested restart for session without logged command.")
                 return
 
-            logger.debug(f"Rerunning finished session {session_id} with cwd={cwd} and command={command}")
+            logger.debug(
+                f"Rerunning finished session {session_id} with cwd={cwd} and command={command}"
+            )
             try:
                 # Insert session_id into environment so shim-control uses the same session_id
                 env = os.environ.copy()
                 env["AGENT_COPILOT_SESSION_ID"] = session_id
-                
+
                 # Restore the user's original environment variables
                 env.update(environment)
-                logger.debug(f"Restored {len(environment)} environment variables for session {session_id}")
-                
+                logger.debug(
+                    f"Restored {len(environment)} environment variables for session {session_id}"
+                )
+
                 # Rerun the original command. This starts the shim-control, which starts the shim-runner.
                 args = shlex.split(command)
                 subprocess.Popen(args, cwd=cwd, env=env, close_fds=True, start_new_session=True)
                 EDIT.update_graph_topology(session_id, self.session_graphs[session_id])
-                
+
                 # Update the session status to running and update timestamp for rerun
                 session = self.sessions.get(session_id)
                 if session:
@@ -310,21 +310,21 @@ class DevelopServer:
                     self.broadcast_experiment_list_to_all_uis()
             except Exception as e:
                 logger.error(f"Failed to rerun finished session: {e}")
-    
+
     def handle_deregister_message(self, msg: dict) -> bool:
         session_id = msg["session_id"]
         session = self.sessions.get(session_id)
         if session:
             session.status = "finished"
             self.broadcast_experiment_list_to_all_uis()
-    
+
     def handle_debugger_restart_message(self, msg: dict) -> bool:
         """Handle debugger restart notification, update session info."""
         # TODO: Test
         session_id = msg["session_id"]
         if session_id in self.sessions:
             self.broadcast_experiment_list_to_all_uis()
-    
+
     def handle_shutdown(self) -> None:
         """Handle shutdown command by closing all connections."""
         logger.info("Shutdown command received. Closing all connections.")
@@ -342,7 +342,9 @@ class DevelopServer:
         self.session_graphs.clear()
         self.sessions.clear()
         self.broadcast_experiment_list_to_all_uis()
-        self.broadcast_to_all_uis({"type": "graph_update", "session_id": None, "payload": {"nodes": [], "edges": []}})
+        self.broadcast_to_all_uis(
+            {"type": "graph_update", "session_id": None, "payload": {"nodes": [], "edges": []}}
+        )
         logger.info("All database records and in-memory state cleared.")
 
     # ============================================================
@@ -373,13 +375,13 @@ class DevelopServer:
             self.handle_clear()
         else:
             logger.error(f"Unknown message type. Message:\n{msg}")
-    
+
     def handle_client(self, conn: socket.socket) -> None:
         """Handle a new client connection in a separate thread."""
-        file_obj = conn.makefile(mode='r')
+        file_obj = conn.makefile(mode="r")
         session: Optional[Session] = None
         role = None
-        
+
         try:
             # Expect handshake first
             handshake_line = file_obj.readline()
@@ -426,19 +428,19 @@ class DevelopServer:
                 # Send experiment_list only to this UI connection
                 # Get all experiments from database (already sorted by timestamp DESC)
                 db_experiments = CACHE.get_all_experiments_sorted()
-                
+
                 # Create a map of session_id to session for quick lookup
                 session_map = {session.session_id: session for session in self.sessions.values()}
-                
+
                 experiment_list = []
                 for row in db_experiments:
                     session_id = row["session_id"]
                     session = session_map.get(session_id)
-                    
+
                     # Get status from in-memory session, or default to "finished"
                     status = session.status if session else "finished"
                     timestamp = session.timestamp if session else row["timestamp"]
-                    
+
                     # Parse color_preview from database
                     color_preview = []
                     if row["color_preview"]:
@@ -446,26 +448,27 @@ class DevelopServer:
                             color_preview = json.loads(row["color_preview"])
                         except:
                             color_preview = []
-                    
-                    experiment_list.append({
-                        "session_id": session_id,
-                        "status": status,
-                        "timestamp": timestamp,
-                        "color_preview": color_preview
-                    })
-                
+
+                    experiment_list.append(
+                        {
+                            "session_id": session_id,
+                            "status": status,
+                            "timestamp": timestamp,
+                            "color_preview": color_preview,
+                        }
+                    )
+
                 send_json(conn, {"type": "experiment_list", "experiments": experiment_list})
                 # Send current graph data for all running sessions to the new UI
                 for sid, session in self.sessions.items():
                     if session.status == "running" and sid in self.session_graphs:
                         graph_data = self.session_graphs[sid]
                         if graph_data.get("nodes") or graph_data.get("edges"):
-                            send_json(conn, {
-                                "type": "graph_update",
-                                "session_id": sid,
-                                "payload": graph_data
-                            })
-            
+                            send_json(
+                                conn,
+                                {"type": "graph_update", "session_id": sid, "payload": graph_data},
+                            )
+
             # Main message loop
             try:
                 for line in file_obj:
@@ -474,16 +477,16 @@ class DevelopServer:
                     except Exception as e:
                         logger.error(f"Error parsing JSON: {e}")
                         continue
-                    
+
                     # Print message type.
                     msg_type = msg.get("type", "unknown")
                     logger.debug(f"Received message type: {msg_type}")
 
                     if "session_id" not in msg:
                         msg["session_id"] = session_id
-                    
+
                     self.process_message(msg, conn)
-                        
+
             except (ConnectionResetError, OSError) as e:
                 logger.info(f"Connection closed: {e}")
         finally:
@@ -504,7 +507,7 @@ class DevelopServer:
                 conn.close()
             except Exception as e:
                 logger.error(f"Error closing connection: {e}")
-    
+
     def run_server(self) -> None:
         """Main server loop: accept clients and spawn handler threads."""
         self.server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -518,98 +521,11 @@ class DevelopServer:
 
         try:
             while True:
-                conn, addr = self.server_sock.accept()
-                threading.Thread(
-                    target=self.handle_client,
-                    args=(conn,),
-                    daemon=True
-                ).start()
+                conn, _ = self.server_sock.accept()
+                threading.Thread(target=self.handle_client, args=(conn,), daemon=True).start()
         except OSError:
             # This will be triggered when server_sock is closed (on shutdown)
             pass
         finally:
             self.server_sock.close()
             logger.info("Develop server stopped.")
-
-
-# ============================================================
-# CLI (start / stop).
-# ============================================================
-
-def main():
-    """CLI entry point."""
-    parser = argparse.ArgumentParser(description="Development server for LLM call visualization")
-    parser.add_argument('command', choices=['start', 'stop', 'restart', 'clear'], 
-                       help="Start, stop, restart, or clear the server database and state")
-    args = parser.parse_args()
-
-    if args.command == 'start':
-        # If server is already running, do not start another
-        try:
-            socket.create_connection((HOST, PORT), timeout=1).close()
-            logger.info("Develop server is already running.")
-            return
-        except Exception:
-            pass
-        # Launch the server as a detached background process (POSIX)
-        subprocess.Popen([sys.executable, __file__, "--serve"],
-                        close_fds=True, start_new_session=True)
-        logger.info("Develop server started.")
-        
-    elif args.command == 'stop':
-        # Connect to the server and send a shutdown command
-        try:
-            sock = socket.create_connection((HOST, PORT), timeout=SOCKET_TIMEOUT)
-            handshake = {"type": "hello", "role": "admin", "script": "stopper"}
-            send_json(sock, handshake)
-            send_json(sock, {"type": "shutdown"})
-            sock.close()
-            logger.info("Develop server stop signal sent.")
-        except Exception:
-            logger.warning("No running server found.")
-            sys.exit(1)
-        
-    elif args.command == 'restart':
-        # Stop the server if running
-        try:
-            sock = socket.create_connection((HOST, PORT), timeout=SOCKET_TIMEOUT)
-            handshake = {"type": "hello", "role": "admin", "script": "restarter"}
-            send_json(sock, handshake)
-            send_json(sock, {"type": "shutdown"})
-            sock.close()
-            logger.info("Develop server stop signal sent (for restart). Waiting for shutdown...")
-            time.sleep(SHUTDOWN_WAIT)
-        except Exception:
-            logger.info("No running server found. Proceeding to start.")
-        # Start the server
-        subprocess.Popen([sys.executable, __file__, "--serve"],
-                        close_fds=True, start_new_session=True)
-        logger.info("Develop server restarted.")
-        
-    elif args.command == 'clear':
-        # Connect to the server and send a clear command
-        try:
-            sock = socket.create_connection((HOST, PORT), timeout=SOCKET_TIMEOUT)
-            handshake = {"type": "hello", "role": "admin", "script": "clearer"}
-            send_json(sock, handshake)
-            send_json(sock, {"type": "clear"})
-            sock.close()
-            logger.info("Develop server clear signal sent.")
-        except Exception:
-            logger.warning("No running server found.")
-            sys.exit(1)
-        return
-        
-    elif args.command == '--serve':
-        # Internal: run the server loop (not meant to be called by users directly)
-        server = DevelopServer()
-        server.run_server()
-
-if __name__ == "__main__":
-    # Support internal "--serve" invocation to actually run the server loop
-    if len(sys.argv) > 1 and sys.argv[1] == "--serve":
-        server = DevelopServer()
-        server.run_server()
-    else:
-        logger.info(f"Starting server on {HOST}:{PORT}, PID={os.getpid()}")
-        main()

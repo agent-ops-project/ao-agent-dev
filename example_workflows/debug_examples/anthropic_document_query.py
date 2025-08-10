@@ -11,11 +11,8 @@ response = client.messages.create(
     model="claude-3-5-sonnet-20241022",
     max_tokens=10,
     messages=[
-        {
-            "role": "user",
-            "content": "Just output: 'summarize the document` and nothing else."
-        }
-    ]
+        {"role": "user", "content": "Just output: 'summarize the document` and nothing else."}
+    ],
 )
 
 task = response.content[0].text
@@ -23,9 +20,7 @@ task = response.content[0].text
 # Upload the file to Anthropic
 with open(PDF_PATH, "rb") as f:
     assert os.path.isfile(PDF_PATH), f"File not found: {PDF_PATH}"
-    file_response = client.beta.files.upload(
-        file=f
-    )
+    file_response = client.beta.files.upload(file=f)
     file_content = file_response.id
 
 # List files to verify upload
@@ -37,7 +32,7 @@ file_metadata = client.beta.files.retrieve_metadata(file_id=file_content)
 # Now ask a question about the document by reading the file content and encoding it
 with open(PDF_PATH, "rb") as f:
     file_bytes = f.read()
-    file_base64 = base64.b64encode(file_bytes).decode('utf-8')
+    file_base64 = base64.b64encode(file_bytes).decode("utf-8")
 
 # Create a message with the file content embedded
 query_response = client.messages.create(
@@ -47,21 +42,18 @@ query_response = client.messages.create(
         {
             "role": "user",
             "content": [
-                {
-                    "type": "text",
-                    "text": task
-                },
+                {"type": "text", "text": task},
                 {
                     "type": "document",
                     "source": {
                         "type": "base64",
                         "media_type": "application/pdf",
-                        "data": file_base64
-                    }
-                }
-            ]
+                        "data": file_base64,
+                    },
+                },
+            ],
         }
-    ]
+    ],
 )
 
 # Get the response content
