@@ -139,10 +139,12 @@ class CacheManager:
         db.execute("UPDATE experiments SET color_preview=? WHERE session_id=?", (color_preview_json, session_id))
 
     def get_exec_command(self, session_id):
-        row = db.query_one("SELECT cwd, command FROM experiments WHERE session_id=?", (session_id,))
+        row = db.query_one("SELECT cwd, command, environment FROM experiments WHERE session_id=?", (session_id,))
         if row is None:
-            return None, None
-        return row["cwd"], row["command"]
+            return None, None, None
+        # Parse environment from JSON if it exists
+        environment = json.loads(row["environment"])
+        return row["cwd"], row["command"], environment
 
     def clear_db(self):
         """Delete all records from experiments and llm_calls tables."""

@@ -1,5 +1,5 @@
 """
-Integration that tests if the develop command works as expected.
+Integration test if the develop command works as expected.
 We insert cached responses into the database so we don't make actual 
 API calls. We register a UI, run a develop command, and check if the 
 UI receives the correct number of graph_update messages.
@@ -136,12 +136,7 @@ def run_add_numbers_test(program_file, api_type, create_response_func):
         "Add these two numbers together and just output the result: 43 + 44"
     ]
 
-    cached_outputs = [
-        "42",
-        "43", 
-        "44",
-        "87"
-    ]
+    cached_outputs = ["42", "43", "44", "87"]
 
     # 1. Connect as shim-control and get session_id
     print("1. Connecting as shim-control...")
@@ -159,18 +154,24 @@ def run_add_numbers_test(program_file, api_type, create_response_func):
     
     response = json.loads(shim_file.readline().strip())
     session_id = response["session_id"]
+
+    # 2. Deregister the shim-control to mark session as finished
+    print("2. Deregistering shim-control...")
+    deregister_msg = {"type": "deregister", "session_id": session_id}
+    shim_file.write(json.dumps(deregister_msg) + "\n")
+    shim_file.flush()
     
-    # 2. Connect as UI and collect messages
-    print("2. Connecting as UI...")
+    # Close the fake shim connection
+    shim_sock.close()
+
+    # 3. Connect as UI and collect messages
+    print("3. Connecting as UI...")
     ui_sock = socket.create_connection(('127.0.0.1', 5959))
     ui_file = ui_sock.makefile('rw')
     
     ui_handshake = {"role": "ui"}
     ui_file.write(json.dumps(ui_handshake) + "\n")
     ui_file.flush()
-    
-    # Read UI session_id response
-    ui_response = json.loads(ui_file.readline().strip())
     
     message_queue = queue.Queue()
     
@@ -179,22 +180,13 @@ def run_add_numbers_test(program_file, api_type, create_response_func):
             try:
                 msg = json.loads(line.strip())
                 message_queue.put(msg)
-            except Exception as e:
+            except Exception:
                 break
     
     ui_thread = threading.Thread(target=ui_listener, daemon=True)
     ui_thread.start()
     
-    # 3. Deregister the fake session to mark it as finished
-    print("3. Deregistering fake session...")
-    deregister_msg = {"type": "deregister", "session_id": session_id}
-    shim_file.write(json.dumps(deregister_msg) + "\n")
-    shim_file.flush()
-    
-    # Close the fake shim connection
-    shim_sock.close()
-    
-    # 4. Populate database with cached responses (only OpenAI for now)
+    # 4. Populate database with cached responses
     print("4. Populating database with cached responses...")
     for input_text, output_text in zip(groundtruth_inputs, cached_outputs):
         input_hash = db.hash_input(input_text)

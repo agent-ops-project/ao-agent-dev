@@ -15,16 +15,9 @@ def _anthropic_response_to_json(response) -> str:
 
 def _anthropic_json_to_response(json_str: str):
     """Deserialize a JSON string from the DB to an Anthropic Response object."""
-    try:
-        from anthropic.types import Message as AnthropicMessage
-    except ImportError:
-        raise ImportError("Anthropic library not installed. Cannot deserialize Anthropic response.")
-    
+    from anthropic.types import Message as AnthropicMessage
     data = json.loads(json_str)
-    try:
-        return AnthropicMessage(**data)
-    except Exception:
-        return str(data)
+    return AnthropicMessage(**data)
 
 def _anthropic_swap_output(output_text: str, json_response: str) -> str:
     # Parse the JSON response
@@ -55,16 +48,9 @@ def _oai_v2_response_to_json(response) -> str:
 
 def _oai_v2_json_to_response(json_str: str):
     """Deserialize a JSON string from the DB to an OpenAI v2 Response object."""
-    try:
-        from openai.types.responses.response import Response
-    except ImportError:
-        raise ImportError("OpenAI library not installed. Cannot deserialize OpenAI response.")
-    
+    from openai.types.responses.response import Response
     data = json.loads(json_str)
-    try:
-        return Response(**data)
-    except Exception:
-        return str(data)
+    return Response(**data)
 
 def _oai_v2_swap_output(output_text: str, json_response: str) -> str:
     # Parse the JSON response
@@ -115,25 +101,12 @@ def _vertexai_extract_output_text(response):
 
 def _vertexai_response_to_json(response) -> str:
     """Serialize a Vertex AI Response object to a JSON string for storage."""
-    if hasattr(response, 'to_dict'):
-        return json.dumps(response.to_dict())
-    elif hasattr(response, '__dict__'):
-        return json.dumps(response.__dict__, default=str)
-    else:
-        return json.dumps(str(response))
+    return response.model_dump_json()
 
 def _vertexai_json_to_response(json_str: str):
     """Deserialize a JSON string from the DB to a Vertex AI Response object."""
-    try:
-        from google.genai.types import GenerateContentResponse
-    except ImportError:
-        raise ImportError("VertexAI library not installed. Cannot deserialize VertexAI response.")
-    
-    data = json.loads(json_str)
-    try:
-        return GenerateContentResponse.from_dict(data)
-    except Exception:
-        return str(data)
+    from google.genai.types import GenerateContentResponse
+    return GenerateContentResponse.model_validate_json(json_str)
 
 def _vertexai_swap_output(output_text: str, json_response: str) -> str:
     # Parse the JSON response

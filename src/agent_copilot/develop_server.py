@@ -278,7 +278,7 @@ class DevelopServer:
             # For finished rerun, store the session_id for the next shim-control
             self.pending_rerun_session_id = session_id
             # Rerun for finished session: launch new shim-control with same session_id
-            cwd, command = CACHE.get_exec_command(session_id)
+            cwd, command, environment = CACHE.get_exec_command(session_id)
             if not cwd:
                 logger.error(f"Requested restart for session without logged command.")
                 return
@@ -288,6 +288,11 @@ class DevelopServer:
                 # Insert session_id into environment so shim-control uses the same session_id
                 env = os.environ.copy()
                 env["AGENT_COPILOT_SESSION_ID"] = session_id
+                
+                # Restore the user's original environment variables
+                env.update(environment)
+                logger.debug(f"Restored {len(environment)} environment variables for session {session_id}")
+                
                 # Rerun the original command. This starts the shim-control, which starts the shim-runner.
                 args = shlex.split(command)
                 subprocess.Popen(args, cwd=cwd, env=env, close_fds=True, start_new_session=True)
@@ -398,8 +403,9 @@ class DevelopServer:
                         # Insert new experiment row using edit_manager
                         cwd = handshake.get("cwd")
                         command = handshake.get("command")
+                        environment = handshake.get("environment")
                         timestamp = datetime.now().strftime("%d/%m %H:%M")
-                        EDIT.add_experiment(session_id, timestamp, cwd, command)
+                        EDIT.add_experiment(session_id, timestamp, cwd, command, environment)
                     session = self.sessions[session_id]
                 with session.lock:
                     session.shim_conn = conn

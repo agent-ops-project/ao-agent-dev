@@ -30,6 +30,7 @@ def _init_db(conn):
             timestamp TEXT DEFAULT (datetime('now')),
             cwd TEXT,
             command TEXT,
+            environment TEXT,
             code_hash TEXT
         )
     ''')
