@@ -1,13 +1,10 @@
-import yaml
 import uuid
-import os
 import json
-
-from runtime_tracing.taint_wrappers import untaint_if_needed
-from workflow_edits.utils import response_to_json
+from common.constants import ACO_ATTACHMENT_CACHE
 from workflow_edits import db
+from workflow_edits.utils import response_to_json
 from workflow_edits.utils import stream_hash, save_io_stream
-from common.utils import get_config_path
+from runtime_tracing.taint_wrappers import untaint_if_needed
 
 
 class CacheManager:
@@ -17,16 +14,12 @@ class CacheManager:
 
     def __init__(self):
         # Check if and where to cache attachments.
-        # TODO: More robustness for users having invalid configs.
-        config_path = get_config_path()
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f) or {}
-        request_attachments = config.get("request_attachments", {})
-
-        self.cache_attachments = request_attachments.get("cache_attachments", False)
-        self.attachment_cache_dir = request_attachments.get("cache_dir", None)
-        if self.cache_attachments:
-            os.makedirs(self.attachment_cache_dir, exist_ok=True)
+        # TODO develop-shim determines whether to cache attachments or not
+        # TODO server must be able to cope with empty attachment reference
+        # TODO we should be able to just remove this init completely.
+        # TODO do we even need a class then?
+        self.cache_attachments = True
+        self.attachment_cache_dir = ACO_ATTACHMENT_CACHE
 
     def cache_file(self, file_id, file_name, io_stream):
         if not getattr(self, "cache_attachments", False):

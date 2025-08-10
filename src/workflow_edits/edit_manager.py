@@ -1,6 +1,5 @@
-from workflow_edits import db
 import json
-from openai.types.responses.response import Response
+from workflow_edits import db
 from workflow_edits.utils import swap_output
 
 

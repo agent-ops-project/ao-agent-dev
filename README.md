@@ -65,18 +65,16 @@ If you make changes to the server code, you can also do `aco-server restart` so 
 
 ## Development
 
-Please install the dependencies required for linting, formatting etc.
+Please install the dependencies required for developing
 ```bash
 pip install -r requirements_dev.txt
+pre-commit install
 ```
 In [Makefile](./Makefile), there are commands that need to run smoothly before pushing any code. Execute the following commands:
 ```bash
 make black
-make pylint
-make pycodestyle
-make mypy
+make pytest
 ```
-For executing the test, run `make pytest`.
 
 ### Architecture
 

@@ -1,22 +1,22 @@
-import sqlite3
 import os
+import sqlite3
 import threading
 import hashlib
-
-from common.utils import rel_path_to_abs
-
-DB_PATH = rel_path_to_abs(__file__, os.path.join("agent-copilot", "experiments.sqlite"))
+from common.logger import logger
+from common.constants import ACO_DB_PATH
 
 
 # Thread-safe singleton connection
 def get_conn():
+    db_path = os.path.join(ACO_DB_PATH, "experiments.sqlite")
     if not hasattr(get_conn, "_conn"):
         get_conn._lock = threading.Lock()
         with get_conn._lock:
             if not hasattr(get_conn, "_conn"):
-                conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+                conn = sqlite3.connect(db_path, check_same_thread=False)
                 conn.row_factory = sqlite3.Row
                 _init_db(conn)
+                logger.debug(f"Initialized DB at {db_path}")
                 get_conn._conn = conn
     return get_conn._conn
 

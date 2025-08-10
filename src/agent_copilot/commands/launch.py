@@ -1,7 +1,7 @@
 import os
 import yaml
 from argparse import ArgumentParser, REMAINDER
-from common.constants import ACO_CONFIG
+from common.constants import ACO_CONFIG, ACO_PROJECT_ROOT
 from agent_copilot.develop_shim import DevelopShim
 
 
@@ -18,7 +18,11 @@ def launch_command_parser():
         help="The config file to use for the default values in the launching script.",
     )
 
-    parser.add_argument("--disable-cache-attachments", default=False, action="store_true")
+    parser.add_argument(
+        "--project-root",
+        default=ACO_PROJECT_ROOT,
+        help="The root directory of the user's project.",
+    )
 
     parser.add_argument(
         "-m",
@@ -28,7 +32,7 @@ def launch_command_parser():
     )
 
     parser.add_argument(
-        "script",
+        "script_path",
         type=str,
         help="The full path to the script to be executed, followed by all the remaining arguments.",
     )
@@ -61,12 +65,25 @@ def _validate_launch_command(args):
     # we don't need the config_file anymore and we don't
     # want to confuse people with it still in the args:
     del args.config_file
+
+    # check the validity of the project_root
+    assert os.path.isdir(args.project_root), (
+        f"Project root {args.project_root} is not a directory. "
+        f"The derived project_root was {ACO_PROJECT_ROOT}. "
+        f"To fix this, pass the correct --project-root to aco-launch. "
+        "For example, aco-launch --project-root ~/my-project script.py"
+    )
     return args
 
 
 def launch_command(args):
     args = _validate_launch_command(args)
-    shim = DevelopShim(args.script, args.script_args, args.module)
+    shim = DevelopShim(
+        script_path=args.script_path,
+        script_args=args.script_args,
+        is_module_execution=args.module,
+        project_root=args.project_root,
+    )
     shim.run()
 
 

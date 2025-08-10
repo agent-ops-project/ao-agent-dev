@@ -3,13 +3,17 @@ import yaml
 import os
 from dataclasses import dataclass
 from enum import Enum
-from agent_copilot.commands.config.utils import _ask_field, _convert_yes_no_to_bool
+from agent_copilot.commands.config.utils import (
+    _ask_field,
+    _convert_yes_no_to_bool,
+    _convert_to_valid_path,
+)
 from common.constants import ACO_CONFIG
 
 
 @dataclass
 class Config:
-    disable_cache_attachments: bool
+    project_root: str
 
     @classmethod
     def from_yaml_file(cls, yaml_file: str) -> "Config":
@@ -58,25 +62,19 @@ class Config:
 
 
 def get_user_input() -> Config:
-    disable_cache_attachments = _ask_field(
-        "Caching LLM call attachments like images or pdfs is currently "
-        "the default. Disable? [yes/NO]: ",
-        _convert_yes_no_to_bool,
-        default=False,
-        error_message="Please enter yes or no.",
+    project_root = _ask_field(
+        "What is the root directory of your project?\n> ",
+        _convert_to_valid_path,
+        default=None,
+        error_message="Please enter a valid path to a directory.",
     )
-    config = Config(disable_cache_attachments=disable_cache_attachments)
+    config = Config(project_root=project_root)
     return config
 
 
-def config_command(args):
+def config_command():
     config = get_user_input()
-    if args.config_file is not None:
-        config_file = args.config_file
-    else:
-        # get the pare
-        config_file = ACO_CONFIG
-
+    config_file = ACO_CONFIG
     config.to_yaml_file(config_file)
 
 
@@ -87,23 +85,14 @@ def config_command_parser():
         "These will get saved in a default path or in --config_path "
         "which you can pass: `aco config --config_path some/path/config.yaml"
     )
-    parser = argparse.ArgumentParser(
-        "Config", usage="aco-config [--config-file <path/to/file.yaml>]", description=description
-    )
-
-    parser.add_argument(
-        "--config-file",
-        default=None,
-        type=str,
-        help="The path for the config file.",
-    )
+    parser = argparse.ArgumentParser("Config", usage="aco-config", description=description)
     return parser
 
 
 def main():
     parser = config_command_parser()
-    args = parser.parse_args()
-    config_command(args)
+    parser.parse_args()
+    config_command()
 
 
 if __name__ == "__main__":

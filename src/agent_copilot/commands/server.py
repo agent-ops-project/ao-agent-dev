@@ -33,10 +33,8 @@ def execute_server_command(args):
         except Exception:
             pass
         # Launch the server as a detached background process (POSIX)
-        print(sys.executable, __file__, "_serve")
         subprocess.Popen(
             [sys.executable, __file__, "_serve"],
-            stderr=subprocess.DEVNULL,
             close_fds=True,
             start_new_session=True,
         )
@@ -70,7 +68,6 @@ def execute_server_command(args):
         # Start the server
         subprocess.Popen(
             [sys.executable, __file__, "_serve"],
-            stderr=subprocess.DEVNULL,
             close_fds=True,
             start_new_session=True,
         )

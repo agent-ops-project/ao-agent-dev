@@ -14,7 +14,6 @@ from runtime_tracing.fstring_rewriter import install_fstring_rewriter, set_user_
 from runtime_tracing.apply_monkey_patches import apply_all_monkey_patches
 from common.logger import logger
 from common.utils import scan_user_py_files_and_modules
-from common.constants import ACO_PROJECT_ROOT
 from agent_copilot.launch_scripts import SCRIPT_WRAPPER_TEMPLATE, MODULE_WRAPPER_TEMPLATE
 
 
@@ -37,10 +36,13 @@ def get_runtime_tracing_dir():
 class DevelopShim:
     """Manages the develop shim that runs user scripts with debugging support."""
 
-    def __init__(self, script_path: str, script_args: List[str], is_module_execution: bool = False):
+    def __init__(
+        self, script_path: str, script_args: List[str], is_module_execution: bool, project_root: str
+    ):
         self.script_path = script_path
         self.script_args = script_args
         self.is_module_execution = is_module_execution
+        self.project_root = project_root
         self.script_name = os.path.basename(script_path)
         self.role = "shim-control"
 
@@ -146,10 +148,14 @@ class DevelopShim:
         # Add to PYTHONPATH: project_root first, then runtime_tracing_dir
         if "PYTHONPATH" in env:
             env["PYTHONPATH"] = (
-                ACO_PROJECT_ROOT + os.pathsep + runtime_tracing_dir + os.pathsep + env["PYTHONPATH"]
+                self.project_root
+                + os.pathsep
+                + runtime_tracing_dir
+                + os.pathsep
+                + env["PYTHONPATH"]
             )
         else:
-            env["PYTHONPATH"] = ACO_PROJECT_ROOT + os.pathsep + runtime_tracing_dir
+            env["PYTHONPATH"] = self.project_root + os.pathsep + runtime_tracing_dir
 
         # Set environment variables to enable monkey patching
         env["AGENT_COPILOT_ENABLE_TRACING"] = "1"
@@ -217,7 +223,7 @@ class DevelopShim:
 
         # Scan for all .py files in the user's project root
         # This ensures AST rewriting works for the user's code
-        user_py_files, file_to_module = scan_user_py_files_and_modules(ACO_PROJECT_ROOT)
+        user_py_files, file_to_module = scan_user_py_files_and_modules(self.project_root)
         set_user_py_files(user_py_files, file_to_module)
         install_fstring_rewriter()
 
@@ -230,14 +236,14 @@ class DevelopShim:
 
         try:
             # Add project root to sys.path for module import
-            sys.path.insert(0, ACO_PROJECT_ROOT)
+            sys.path.insert(0, self.project_root)
 
             # Set up argv for the script
             sys.argv = [script_path] + script_args
 
             # Compute module name as absolute path from project root
             # TODO: Assumes the project is installed with pip install -e, we can use absolute module names
-            rel_path = os.path.relpath(abs_path, ACO_PROJECT_ROOT)
+            rel_path = os.path.relpath(abs_path, self.project_root)
             if rel_path.startswith(".."):
                 # If the file is outside the project root, use the filename as module name
                 module_name = os.path.splitext(os.path.basename(abs_path))[0]
@@ -268,7 +274,7 @@ class DevelopShim:
 
         # Compute module name, handling files outside the project root
         try:
-            rel_path = os.path.relpath(abs_path, ACO_PROJECT_ROOT)
+            rel_path = os.path.relpath(abs_path, self.project_root)
 
             if rel_path.startswith(".."):
                 # If the file is outside the project root, use the filename as module name
@@ -306,7 +312,7 @@ class DevelopShim:
         runtime_tracing_dir = get_runtime_tracing_dir()
         wrapper_code = SCRIPT_WRAPPER_TEMPLATE.format(
             runtime_tracing_dir=repr(runtime_tracing_dir),
-            project_root=repr(ACO_PROJECT_ROOT),
+            project_root=repr(self.project_root),
             module_name=repr(module_name),
             script_args=repr(script_args),
         )
@@ -327,7 +333,7 @@ class DevelopShim:
             runtime_tracing_dir = get_runtime_tracing_dir()
             wrapper_code = MODULE_WRAPPER_TEMPLATE.format(
                 runtime_tracing_dir=repr(runtime_tracing_dir),
-                project_root=repr(ACO_PROJECT_ROOT),
+                project_root=repr(self.project_root),
                 module_name=repr(self.script_path),
                 script_args=repr(self.script_args),
             )

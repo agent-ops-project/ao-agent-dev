@@ -1,5 +1,5 @@
 import os
-from common.utils import get_project_root
+from common.utils import derive_project_root
 
 # server-related constants
 HOST = "127.0.0.1"
@@ -18,6 +18,7 @@ ACO_HOME: str = os.path.expandvars(
         )
     )
 )
+os.makedirs(ACO_HOME, exist_ok=True)
 
 
 # Path to config.yaml. This config file includes the possible
@@ -33,6 +34,7 @@ ACO_CONFIG = os.path.expandvars(
         )
     )
 )
+os.makedirs(os.path.dirname(ACO_CONFIG), exist_ok=True)
 
 
 # Anything cache-related should be stored here
@@ -45,7 +47,38 @@ ACO_CACHE = os.path.expandvars(
         )
     )
 )
+os.makedirs(os.path.dirname(ACO_CACHE), exist_ok=True)
+
+
+# the path to the folder where the experiments database is
+# stored
+default_db_cache_path = os.path.join(ACO_HOME, "db")
+ACO_DB_PATH = os.path.expandvars(
+    os.path.expanduser(
+        os.getenv(
+            "ACO_DB_PATH",
+            default_db_cache_path,
+        )
+    )
+)
+os.makedirs(os.path.dirname(ACO_DB_PATH), exist_ok=True)
+
+
+default_attachment_cache = os.path.join(ACO_CACHE, "attachments")
+ACO_ATTACHMENT_CACHE = os.path.expandvars(
+    os.path.expanduser(
+        os.getenv(
+            "ACO_ATTACHMENT_CACHE",
+            default_attachment_cache,
+        )
+    )
+)
+os.makedirs(os.path.dirname(ACO_ATTACHMENT_CACHE), exist_ok=True)
 
 
 # project root is only inferred once at import-time
-ACO_PROJECT_ROOT = get_project_root()
+# here, we derive it based on heuristics.
+# User can also pass project_root like this:
+# aco-launch --project-root <ro/root> script.py
+# In this case, the derived project root is overwritten
+ACO_PROJECT_ROOT = derive_project_root()

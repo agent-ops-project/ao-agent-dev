@@ -9,7 +9,15 @@
       "type": "debugpy",
       "request": "launch",
       "module": "agent_copilot.commands.config.config",
-      "args": ["--config-file", "./test.yaml"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "aco-server",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "agent_copilot.commands.server",
+      "args": ["restart"],
       "console": "integratedTerminal",
       "justMyCode": false
     },
@@ -18,7 +26,7 @@
       "type": "debugpy",
       "request": "launch",
       "module": "agent_copilot.commands.launch",
-      "args": ["-m", "./example_workflows/debug_examples/openai_add_numbers"],
+      "args": ["./example_workflows/debug_examples/openai_add_numbers.py"],
       "console": "integratedTerminal",
       "justMyCode": false
     },
