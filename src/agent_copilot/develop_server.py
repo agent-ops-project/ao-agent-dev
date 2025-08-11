@@ -1,3 +1,4 @@
+import re
 import socket
 import os
 import json
@@ -138,6 +139,19 @@ class DevelopServer:
             self.session_graphs[session_id] = graph
             send_json(conn, {"type": "graph_update", "session_id": session_id, "payload": graph})
 
+    def _determine_unique_tab_title(self, label, session_id):
+        # Search for strings like f"{label}" and f"{label} (x)".
+        pattern = rf"^{re.escape(label)}(?: \((\d+)\))?$"
+        matches = []
+        for string in [n["tab_title"] for n in self.session_graphs[session_id]["nodes"]]:
+            if re.match(pattern, string):
+                matches.append(string)
+
+        # Form unique tab title.
+        if len(matches) == 0:
+            return label
+        return f"{label} ({len(matches)})"
+
     def handle_add_node(self, msg: dict) -> None:
         sid = msg["session_id"]
         node = msg["node"]
@@ -150,6 +164,9 @@ class DevelopServer:
                 graph["nodes"][i] = node
                 break
         else:
+            # Get title for tab where user edits input/output.
+            tab_title = self._determine_unique_tab_title(node["label"], sid)
+            node["tab_title"] = tab_title
             graph["nodes"].append(node)
 
         # Add incoming edges

@@ -70,7 +70,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
             nodeId: id,
             field: "input",
             value: data.input,
-            label: data.label,
+            label: data.tab_title || "Input",
             session_id: data.session_id, // include session_id
             attachments: data.attachments,
           },
@@ -83,7 +83,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
             nodeId: id,
             field: "output",
             value: data.output,
-            label: data.label,
+            label: data.tab_title || "Output",
             session_id: data.session_id,
             attachments: data.attachments,
           },

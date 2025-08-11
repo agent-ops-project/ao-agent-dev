@@ -4,7 +4,12 @@ import base64
 
 client = anthropic.Anthropic()
 model = "claude-3-5-haiku-20241022"  # Fastest and most cost-effective model
-PDF_PATH = "/Users/ferdi/Downloads/ken_udbms_execution.pdf"
+
+# Example files.
+current_dir = os.path.dirname(os.path.abspath(__file__))
+PDF_PATH = os.path.join(current_dir, "user_files", "example.pdf")
+PNG_PATH = os.path.join(current_dir, "user_files", "example.png")
+DOCX_PATH = os.path.join(current_dir, "user_files", "example.docx")
 
 # First, get a response to use as instructions
 response = client.messages.create(

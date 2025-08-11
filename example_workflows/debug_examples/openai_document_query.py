@@ -3,11 +3,16 @@ from openai import OpenAI
 
 
 client = OpenAI()
-PDF_PATH = "/Users/jub/Downloads/0223.pdf"
-# PDF_PATH = "/Users/ferdi/Downloads/query_load_3_days.pdf"
+model = "gpt-3.5-turbo"
+
+# Example files.
+current_dir = os.path.dirname(os.path.abspath(__file__))
+PDF_PATH = os.path.join(current_dir, "user_files", "example.pdf")
+PNG_PATH = os.path.join(current_dir, "user_files", "example.png")
+DOCX_PATH = os.path.join(current_dir, "user_files", "example.docx")
 
 response = client.responses.create(
-    model="gpt-3.5-turbo",
+    model=model,
     input="Output a system prompt for a document processing LLM (e.g., you're a helpful assistant).",
 )
 
@@ -21,7 +26,7 @@ with open(PDF_PATH, "rb") as f:
 assistant = client.beta.assistants.create(
     name="Document Assistant",
     instructions=response.output_text,
-    model="gpt-3.5-turbo",
+    model=model,
     tools=[{"type": "file_search"}],
 )
 # Create a thread and attach the file to the message
