@@ -34,7 +34,11 @@ def _init_db(conn):
             cwd TEXT,
             command TEXT,
             environment TEXT,
-            code_hash TEXT
+            code_hash TEXT,
+            title TEXT,
+            success TEXT CHECK (success IN ('', 'Satisfatory', 'Failed')),
+            notes TEXT,
+            log TEXT
         )
     """
     )

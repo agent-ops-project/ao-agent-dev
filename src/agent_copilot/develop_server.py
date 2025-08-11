@@ -31,7 +31,6 @@ class Session:
         self.session_id = session_id
         self.shim_conn: Optional[socket.socket] = None
         self.status = "running"
-        self.timestamp = datetime.now().strftime("%d/%m %H:%M")
         self.lock = threading.Lock()
 
 
@@ -61,7 +60,8 @@ class DevelopServer:
                 logger.error(f"Error broadcasting to UI: {e}")
                 self.ui_connections.discard(ui_conn)
 
-    def broadcast_experiment_list_to_all_uis(self) -> None:
+    def broadcast_experiment_list_to_uis(self, conn=None) -> None:
+        """Only broadcast to one UI (conn) or, if conn is None, to all."""
         # Get all experiments from database (already sorted by timestamp DESC)
         db_experiments = CACHE.get_all_experiments_sorted()
 
@@ -75,7 +75,13 @@ class DevelopServer:
 
             # Get status from in-memory session, or default to "finished"
             status = session.status if session else "finished"
-            timestamp = session.timestamp if session else row["timestamp"]
+
+            # Get data from DB entries.
+            timestamp = row["timestamp"]
+            title = row["title"]
+            success = row["success"]
+            notes = row["notes"]
+            log = row["log"]
 
             # Parse color_preview from database
             color_preview = []
@@ -91,11 +97,18 @@ class DevelopServer:
                     "status": status,
                     "timestamp": timestamp,
                     "color_preview": color_preview,
+                    "title": title,
+                    "success": success,
+                    "notes": notes,
+                    "log": log,
                 }
             )
 
         msg = {"type": "experiment_list", "experiments": experiment_list}
-        self.broadcast_to_all_uis(msg)
+        if conn:
+            send_json(conn, msg)
+        else:
+            self.broadcast_to_all_uis(msg)
 
     def print_graph(self, session_id):
         # Debug utility.
@@ -122,13 +135,11 @@ class DevelopServer:
         rows = CACHE.get_finished_runs()
         for row in rows:
             session_id = row["session_id"]
-            timestamp = row["timestamp"]
             # Mark as finished (not running)
             session = self.sessions.get(session_id)
             if not session:
                 session = Session(session_id)
                 session.status = "finished"
-                session.timestamp = timestamp
                 self.sessions[session_id] = session
 
     def handle_graph_request(self, conn, session_id):
@@ -319,12 +330,11 @@ class DevelopServer:
                 session = self.sessions.get(session_id)
                 if session:
                     session.status = "running"
-                    new_timestamp = datetime.now().strftime("%d/%m %H:%M")
-                    session.timestamp = new_timestamp
                     # Update database timestamp so it sorts correctly
+                    new_timestamp = datetime.now().strftime("%d/%m %H:%M")
                     EDIT.update_timestamp(session_id, new_timestamp)
                     # Broadcast updated experiment list with rerun session at the front
-                    self.broadcast_experiment_list_to_all_uis()
+                    self.broadcast_experiment_list_to_uis()
             except Exception as e:
                 logger.error(f"Failed to rerun finished session: {e}")
 
@@ -333,14 +343,14 @@ class DevelopServer:
         session = self.sessions.get(session_id)
         if session:
             session.status = "finished"
-            self.broadcast_experiment_list_to_all_uis()
+            self.broadcast_experiment_list_to_uis()
 
     def handle_debugger_restart_message(self, msg: dict) -> bool:
         """Handle debugger restart notification, update session info."""
         # TODO: Test
         session_id = msg["session_id"]
         if session_id in self.sessions:
-            self.broadcast_experiment_list_to_all_uis()
+            self.broadcast_experiment_list_to_uis()
 
     def handle_shutdown(self) -> None:
         """Handle shutdown command by closing all connections."""
@@ -358,7 +368,7 @@ class DevelopServer:
         CACHE.clear_db()
         self.session_graphs.clear()
         self.sessions.clear()
-        self.broadcast_experiment_list_to_all_uis()
+        self.broadcast_experiment_list_to_uis()
         self.broadcast_to_all_uis(
             {"type": "graph_update", "session_id": None, "payload": {"nodes": [], "edges": []}}
         )
@@ -369,6 +379,7 @@ class DevelopServer:
     # ============================================================
 
     def process_message(self, msg: dict, conn: socket.socket) -> None:
+        # TODO: Process experiment changes for title, success, notes.
         msg_type = msg.get("type")
         if msg_type == "shutdown":
             self.handle_shutdown()
@@ -429,8 +440,7 @@ class DevelopServer:
                 with session.lock:
                     session.shim_conn = conn
                 session.status = "running"
-                session.timestamp = datetime.now().strftime("%d/%m %H:%M")
-                self.broadcast_experiment_list_to_all_uis()
+                self.broadcast_experiment_list_to_uis()
                 self.conn_info[conn] = {"role": role, "session_id": session_id}
                 send_json(conn, {"type": "session_id", "session_id": session_id})
             elif role == "shim-runner":
@@ -443,48 +453,7 @@ class DevelopServer:
                 self.conn_info[conn] = {"role": role, "session_id": None}
                 send_json(conn, {"type": "session_id", "session_id": None})
                 # Send experiment_list only to this UI connection
-                # Get all experiments from database (already sorted by timestamp DESC)
-                db_experiments = CACHE.get_all_experiments_sorted()
-
-                # Create a map of session_id to session for quick lookup
-                session_map = {session.session_id: session for session in self.sessions.values()}
-
-                experiment_list = []
-                for row in db_experiments:
-                    session_id = row["session_id"]
-                    session = session_map.get(session_id)
-
-                    # Get status from in-memory session, or default to "finished"
-                    status = session.status if session else "finished"
-                    timestamp = session.timestamp if session else row["timestamp"]
-
-                    # Parse color_preview from database
-                    color_preview = []
-                    if row["color_preview"]:
-                        try:
-                            color_preview = json.loads(row["color_preview"])
-                        except:
-                            color_preview = []
-
-                    experiment_list.append(
-                        {
-                            "session_id": session_id,
-                            "status": status,
-                            "timestamp": timestamp,
-                            "color_preview": color_preview,
-                        }
-                    )
-
-                send_json(conn, {"type": "experiment_list", "experiments": experiment_list})
-                # Send current graph data for all running sessions to the new UI
-                for sid, session in self.sessions.items():
-                    if session.status == "running" and sid in self.session_graphs:
-                        graph_data = self.session_graphs[sid]
-                        if graph_data.get("nodes") or graph_data.get("edges"):
-                            send_json(
-                                conn,
-                                {"type": "graph_update", "session_id": sid, "payload": graph_data},
-                            )
+                self.broadcast_experiment_list_to_uis(conn)
 
             # Main message loop
             try:
@@ -516,7 +485,7 @@ class DevelopServer:
                     with session.lock:
                         session.shim_conn = None
                     session.status = "finished"
-                    self.broadcast_experiment_list_to_all_uis()
+                    self.broadcast_experiment_list_to_uis()
             elif info and role == "ui":
                 # Remove from global UI connections list
                 self.ui_connections.discard(conn)

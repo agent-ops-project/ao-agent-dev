@@ -117,7 +117,7 @@ class CacheManager:
     def get_all_experiments_sorted(self):
         """Get all experiments sorted by timestamp (most recent first)"""
         return db.query_all(
-            "SELECT session_id, timestamp, color_preview FROM experiments ORDER BY timestamp DESC",
+            "SELECT session_id, timestamp, color_preview, title, success, notes, log FROM experiments ORDER BY timestamp DESC",
             (),
         )
 
@@ -153,6 +153,7 @@ class CacheManager:
         """Delete all records from experiments and llm_calls tables."""
         db.execute("DELETE FROM experiments")
         db.execute("DELETE FROM llm_calls")
+        # TODO: Should we delete the entire DB file + all attachments?
 
 
 CACHE = CacheManager()

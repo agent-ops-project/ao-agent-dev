@@ -44,11 +44,28 @@ class EditManager:
         )
 
     def add_experiment(self, session_id, timestamp, cwd, command, environment):
+        # Defaults.
         default_graph = json.dumps({"nodes": [], "edges": []})
+        default_title = "Workflow run"
+        default_result = ""
+        default_note = "Take notes."
+        default_log = "No entries"
+
         env_json = json.dumps(environment)
         db.execute(
-            "INSERT INTO experiments (session_id, graph_topology, timestamp, cwd, command, environment) VALUES (?, ?, ?, ?, ?, ?)",
-            (session_id, default_graph, timestamp, cwd, command, env_json),
+            "INSERT INTO experiments (session_id, graph_topology, timestamp, cwd, command, environment, title, success, notes, log) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                session_id,
+                default_graph,
+                timestamp,
+                cwd,
+                command,
+                env_json,
+                default_title,
+                default_result,
+                default_note,
+                default_log,
+            ),
         )
 
     def update_graph_topology(self, session_id, graph_dict):
