@@ -21,6 +21,16 @@ class CacheManager:
         self.cache_attachments = True
         self.attachment_cache_dir = ACO_ATTACHMENT_CACHE
 
+    def should_run_subrun(self, parent_session_id, name):
+        result = db.query_one(
+            "SELECT edited, session_id FROM experiments WHERE parent_session_id = ? AND title = ?",
+            (parent_session_id, name),
+        )
+        if result is None:
+            return True, None
+        else:
+            return result["edited"], result["session_id"]
+
     def cache_file(self, file_id, file_name, io_stream):
         if not getattr(self, "cache_attachments", False):
             return
@@ -133,6 +143,12 @@ class CacheManager:
         if row and row["color_preview"]:
             return json.loads(row["color_preview"])
         return []
+
+    def get_parent_environment(self, parent_session_id):
+        return db.query_one(
+            "SELECT cwd, command, environment FROM experiments WHERE session_id=?",
+            (parent_session_id,),
+        )
 
     def update_color_preview(self, session_id, colors):
         color_preview_json = json.dumps(colors)

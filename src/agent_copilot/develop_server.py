@@ -435,7 +435,17 @@ class DevelopServer:
                         command = handshake.get("command")
                         environment = handshake.get("environment")
                         timestamp = datetime.now().strftime("%d/%m %H:%M")
-                        EDIT.add_experiment(session_id, timestamp, cwd, command, environment)
+                        name = handshake.get("name")
+                        parent_session_id = handshake.get("parent_session_id")
+                        EDIT.add_experiment(
+                            session_id,
+                            name,
+                            timestamp,
+                            cwd,
+                            command,
+                            environment,
+                            parent_session_id,
+                        )
                     session = self.sessions[session_id]
                 with session.lock:
                     session.shim_conn = conn

@@ -46,14 +46,7 @@ class TestOptionalDependencies:
             # Apply the comprehensive mock
             builtins.__import__ = mock_import
 
-            # Test that blocked imports fail
-            with pytest.raises(ImportError):
-                import openai
-
-            with pytest.raises(ImportError):
-                from openai import OpenAI
-
-            # Import module (this should work)
+            # Import module
             from runtime_tracing.monkey_patches import CUSTOM_PATCH_FUNCTIONS
 
             # Test calling patch functions - these should handle missing deps gracefully

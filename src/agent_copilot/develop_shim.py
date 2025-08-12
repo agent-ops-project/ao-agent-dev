@@ -43,8 +43,6 @@ class DevelopShim:
         self.script_args = script_args
         self.is_module_execution = is_module_execution
         self.project_root = project_root
-        self.script_name = os.path.basename(script_path)
-        self.role = "shim-control"
 
         # State management
         self.restart_event = threading.Event()
@@ -68,7 +66,7 @@ class DevelopShim:
         """Send a message to the develop server."""
         if not self.server_conn:
             return
-        message = {"type": msg_type, "role": self.role, "script": self.script_name, **kwargs}
+        message = {"type": msg_type, "role": "shim-control", **kwargs}
         if self.session_id:
             message["session_id"] = self.session_id
         try:
@@ -196,11 +194,12 @@ class DevelopShim:
         # Send handshake to server
         handshake = {
             "type": "hello",
-            "role": self.role,
-            "script": self.script_name,
+            "role": "shim-control",
+            "name": "Workflow run",  # TODO: Set to --run-name. Default of arg: "Workflow run"
             "cwd": os.getcwd(),
             "command": " ".join(sys.argv),
             "environment": dict(os.environ),
+            "parent_session_id": None,
         }
         try:
             self.server_conn.sendall((json.dumps(handshake) + "\n").encode("utf-8"))

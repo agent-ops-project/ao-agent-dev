@@ -6,19 +6,39 @@ from common.logger import logger
 from common.constants import ACO_DB_PATH
 
 
-# Thread-safe singleton connection
+# Global lock among concurrent threads: Threads within a process share a single
+# DB connection, so they cannot issue DB operations in parallel. Python releases
+# the GIL during DB operations, so we use a global lock to ensure only one thread
+# executes a DB operation at a time. Different processes use different connections
+# and SQLite handles concurrency amongst them.
+# NOTE: Alternatively, we can give each thread its own connection and avoid the
+# global lock. This would improve scalability, which might be important for the
+# server (e.g., 1000s of parallel production runs). However, we need to switch
+# away from SQLite and make larger refactors for that anyways, so we currently
+# stick with this strawman approach.
+_db_lock = threading.RLock()
+_shared_conn = None
+
+
 def get_conn():
-    db_path = os.path.join(ACO_DB_PATH, "experiments.sqlite")
-    if not hasattr(get_conn, "_conn"):
-        get_conn._lock = threading.Lock()
-        with get_conn._lock:
-            if not hasattr(get_conn, "_conn"):
-                conn = sqlite3.connect(db_path, check_same_thread=False)
-                conn.row_factory = sqlite3.Row
-                _init_db(conn)
-                logger.debug(f"Initialized DB at {db_path}")
-                get_conn._conn = conn
-    return get_conn._conn
+    """Get the shared SQLite connection"""
+    global _shared_conn
+
+    if _shared_conn is None:
+        with _db_lock:
+            # Double-check pattern to avoid race condition during initialization
+            if _shared_conn is None:
+                db_path = os.path.join(ACO_DB_PATH, "experiments.sqlite")
+                _shared_conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30.0)
+                _shared_conn.row_factory = sqlite3.Row
+                # Enable WAL mode for better concurrent access
+                _shared_conn.execute("PRAGMA journal_mode=WAL")
+                _shared_conn.execute("PRAGMA synchronous=NORMAL")
+                _shared_conn.execute("PRAGMA busy_timeout=10000")  # 10 second timeout
+                _init_db(_shared_conn)
+                logger.debug(f"Initialized shared DB connection at {db_path}")
+
+    return _shared_conn
 
 
 def _init_db(conn):
@@ -28,6 +48,7 @@ def _init_db(conn):
         """
         CREATE TABLE IF NOT EXISTS experiments (
             session_id TEXT PRIMARY KEY,
+            parent_session_id TEXT,
             graph_topology TEXT,
             color_preview TEXT,
             timestamp TEXT DEFAULT (datetime('now')),
@@ -38,7 +59,9 @@ def _init_db(conn):
             title TEXT,
             success TEXT CHECK (success IN ('', 'Satisfatory', 'Failed')),
             notes TEXT,
-            log TEXT
+            log TEXT,
+            edited BOOLEAN DEFAULT FALSE,
+            FOREIGN KEY (parent_session_id) REFERENCES experiments (session_id)
         )
     """
     )
@@ -58,7 +81,8 @@ def _init_db(conn):
             label TEXT,
             api_type TEXT,
             timestamp TEXT DEFAULT (datetime('now')),
-            PRIMARY KEY (session_id, node_id)
+            PRIMARY KEY (session_id, node_id),
+            FOREIGN KEY (session_id) REFERENCES experiments (session_id)
         )
     """
     )
@@ -96,25 +120,29 @@ def _init_db(conn):
 
 
 def query_one(sql, params=()):
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute(sql, params)
-    return c.fetchone()
+    with _db_lock:
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute(sql, params)
+        return c.fetchone()
 
 
 def query_all(sql, params=()):
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute(sql, params)
-    return c.fetchall()
+    with _db_lock:
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute(sql, params)
+        return c.fetchall()
 
 
 def execute(sql, params=()):
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute(sql, params)
-    conn.commit()
-    return c.lastrowid
+    """Execute SQL with proper locking to prevent transaction conflicts"""
+    with _db_lock:
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute(sql, params)
+        conn.commit()
+        return c.lastrowid
 
 
 def hash_input(input_str):

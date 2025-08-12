@@ -2,10 +2,10 @@ import os
 import socket
 import json
 import traceback
+from agent_copilot.context_manager import set_session_id
 from common.logger import logger
 from common.constants import HOST, PORT, SOCKET_TIMEOUT
 from runtime_tracing.apply_monkey_patches import apply_all_monkey_patches
-from runtime_tracing.monkey_patches import set_session_id
 
 
 def setup_tracing():

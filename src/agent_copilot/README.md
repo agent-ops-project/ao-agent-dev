@@ -31,6 +31,10 @@ This is the wrapper around the user's python command. It works like this:
 
 > Note: Alternatively, if the user doesn't run `develop script.py` from the terminal but from a debugger, things work similarly but there's small changes into how the child process is started and restarted by the orchestrator.
 
+## context_manager.py
+
+Individual runs cannot be restarted during execution.
+
 ## Editing and caching
 
 ### Goal

@@ -4,6 +4,7 @@ import json
 import threading
 import functools
 from io import BytesIO
+from agent_copilot.context_manager import get_session_id
 from workflow_edits.cache_manager import CACHE
 from common.logger import logger
 from workflow_edits.utils import extract_output_text, json_to_response
@@ -96,19 +97,6 @@ def no_notify_patch(fn):
 
 
 # ===========================================================
-# Session management
-# ===========================================================
-
-# Global session_id, set by set_session_id()
-session_id = None
-
-
-def set_session_id(sid):
-    global session_id
-    session_id = sid
-
-
-# ===========================================================
 # Graph tracking utilities
 # ===========================================================
 
@@ -117,7 +105,7 @@ def _send_graph_node_and_edges(
     server_conn, node_id, input, output_obj, source_node_ids, model, api_type, attachements=[]
 ):
     """Send graph node and edge updates to the server."""
-    # Get caller location
+    # Get caller location TODO: Do we need this?
     frame = inspect.currentframe()
     caller = frame and frame.f_back
     file_name = caller.f_code.co_filename if caller else "unknown"
@@ -127,7 +115,7 @@ def _send_graph_node_and_edges(
     # Send node
     node_msg = {
         "type": "add_node",
-        "session_id": session_id,
+        "session_id": get_session_id(),
         "node": {
             "id": node_id,
             "input": input,
@@ -197,7 +185,9 @@ def v1_openai_patch(server_conn):
         if hasattr(messages, "get_raw"):
             messages = messages.get_raw()
         # Use persistent cache/edits
-        input_to_use, output_to_use, node_id = CACHE.get_in_out(session_id, model, str(messages))
+        input_to_use, output_to_use, node_id = CACHE.get_in_out(
+            get_session_id(), model, str(messages)
+        )
 
         # Taint origins: combine from input and model
         taint_origins = get_taint_origins(messages) + get_taint_origins(model)
@@ -213,7 +203,7 @@ def v1_openai_patch(server_conn):
             call_kwargs["messages"] = input_to_use
             result = original_create(**call_kwargs)
             # Cache
-            CACHE.cache_output(session_id, node_id, result, "openai_v1")
+            CACHE.cache_output(get_session_id(), node_id, result, "openai_v1")
 
         # Send to server (graph node/edges)
         _send_graph_node_and_edges(
@@ -246,7 +236,7 @@ def patch_openai_responses_create(responses, server_conn):
         input = kwargs.get("input", args[1] if len(args) > 1 else [])
         taint_origins = get_taint_origins(input) + get_taint_origins(model)
         # Check if there's a cached / edited input/output
-        input_to_use, output_to_use, node_id = CACHE.get_in_out(session_id, model, input)
+        input_to_use, output_to_use, node_id = CACHE.get_in_out(get_session_id(), model, input)
         if output_to_use is not None:
             result = json_to_response(output_to_use, "openai_v2_response")
         else:
@@ -256,7 +246,7 @@ def patch_openai_responses_create(responses, server_conn):
                 args[0], Responses
             )  # OpenAI: all args must be kwargs
             result = original_create(**new_kwargs)
-            CACHE.cache_output(session_id, node_id, result, "openai_v2_response")
+            CACHE.cache_output(get_session_id(), node_id, result, "openai_v2_response")
         _send_graph_node_and_edges(
             server_conn=server_conn,
             node_id=node_id,
@@ -311,7 +301,7 @@ def patch_openai_beta_threads_runs_create_and_poll(runs, server_conn):
 
         # Call original create_and_poll method.
         # NOTE: Caching the output is not easy here ... probably can't support it.
-        _, _, node_id = CACHE.get_in_out(session_id, model, input_content)
+        _, _, node_id = CACHE.get_in_out(get_session_id(), model, input_content)
         result = original_create_and_poll(**kwargs)
 
         # Get most recent message (LLM response).
@@ -379,7 +369,7 @@ def patch_openai_beta_threads_create(threads_instance):
         )
 
         # Check if there's a cached input
-        input_to_use, _, _ = CACHE.get_in_out(session_id, None, input_content)
+        input_to_use, _, _ = CACHE.get_in_out(get_session_id(), None, input_content)
         # If input is overwritten, update the last message content
         new_messages = messages.copy()
         new_messages[-1] = {**new_messages[-1], "content": input_to_use}
@@ -503,7 +493,9 @@ def patch_anthropic_messages_create(messages_instance, server_conn):
         taint_origins = get_taint_origins(args) + get_taint_origins(kwargs)
 
         # Check cache and handle input/output overrides
-        input_to_use, output_to_use, node_id = CACHE.get_in_out(session_id, model, input_content)
+        input_to_use, output_to_use, node_id = CACHE.get_in_out(
+            get_session_id(), model, input_content
+        )
 
         if output_to_use is not None:
             result = json_to_response(output_to_use, "anthropic_messages")
@@ -536,7 +528,7 @@ def patch_anthropic_messages_create(messages_instance, server_conn):
             new_kwargs["messages"] = new_messages
 
             result = original_create(*args, **new_kwargs)
-            CACHE.cache_output(session_id, node_id, result, "anthropic_messages", model)
+            CACHE.cache_output(get_session_id(), node_id, result, "anthropic_messages", model)
 
         # Send to server (graph node/edges)
         _send_graph_node_and_edges(
@@ -686,7 +678,9 @@ def patch_vertexai_models_generate_content(models_instance, server_conn):
         taint_origins = get_taint_origins(args) + get_taint_origins(kwargs)
 
         # Check cache and handle input/output overrides
-        input_to_use, output_to_use, node_id = CACHE.get_in_out(session_id, model, input_content)
+        input_to_use, output_to_use, node_id = CACHE.get_in_out(
+            get_session_id(), model, input_content
+        )
 
         if output_to_use is not None:
             result = json_to_response(output_to_use, "vertexai_generate_content")
@@ -696,7 +690,9 @@ def patch_vertexai_models_generate_content(models_instance, server_conn):
             new_kwargs["contents"] = str(input_to_use)
 
             result = original_generate_content(*args, **new_kwargs)
-            CACHE.cache_output(session_id, node_id, result, "vertexai_generate_content", model)
+            CACHE.cache_output(
+                get_session_id(), node_id, result, "vertexai_generate_content", model
+            )
 
         # Send to server (graph node/edges)
         _send_graph_node_and_edges(
