@@ -49,13 +49,6 @@ class TestOptionalDependencies:
             # Import module
             from runtime_tracing.monkey_patches import CUSTOM_PATCH_FUNCTIONS
 
-            # Test calling patch functions - these should handle missing deps gracefully
-            class MockServerConn:
-                def sendall(self, data):
-                    pass
-
-            # TODO
-            server_conn = MockServerConn()
             for patch_func in CUSTOM_PATCH_FUNCTIONS:
                 try:
                     patch_func()
@@ -83,12 +76,6 @@ class TestOptionalDependencies:
         try:
             # Import module normally (no mocking)
             from runtime_tracing.monkey_patches import CUSTOM_PATCH_FUNCTIONS
-
-            class MockServerConn:
-                def sendall(self, data):
-                    pass
-
-            # server_conn = MockServerConn()
 
             # Test each patch function
             for patch_func in CUSTOM_PATCH_FUNCTIONS:
