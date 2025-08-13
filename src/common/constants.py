@@ -7,6 +7,21 @@ PORT = 5959
 SOCKET_TIMEOUT = 1
 SHUTDOWN_WAIT = 2
 
+# Experiment meta data.
+DEFAULT_NOTE = "Take notes."
+DEFAULT_LOG = "No entries"
+DEFAULT_SUCCESS = ""
+SUCCESS_STRING = {True: "Satisfactory", False: "Failed", None: ""}
+
+# Colors
+CERTAINTY_GREEN = "#00c542"
+CERTAINTY_YELLOW = "#FFC000"
+CERTAINTY_RED = "#B80F0A"
+SUCCESS_COLORS = {
+    "Satisfactory": CERTAINTY_GREEN,
+    "": CERTAINTY_YELLOW,
+    "Failed": CERTAINTY_RED,
+}
 
 # default home directory for configs and temporary/cached files
 default_home: str = os.path.join(os.path.expanduser("~"), ".cache")

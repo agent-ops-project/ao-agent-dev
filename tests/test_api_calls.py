@@ -142,6 +142,7 @@ def run_add_numbers_test(program_file, api_type, create_response_func):
         "cwd": test_dir,
         "command": f"aco-launch user_programs/{program_file}",
         "environment": {},
+        "name": "test_api_calls",
     }
     shim_file.write(json.dumps(handshake) + "\n")
     shim_file.flush()

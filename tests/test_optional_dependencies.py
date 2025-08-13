@@ -54,10 +54,11 @@ class TestOptionalDependencies:
                 def sendall(self, data):
                     pass
 
+            # TODO
             server_conn = MockServerConn()
             for patch_func in CUSTOM_PATCH_FUNCTIONS:
                 try:
-                    patch_func(server_conn)
+                    patch_func()
                     print(f"✓ {patch_func.__name__} handled missing dependency gracefully")
                 except ImportError as e:
                     print(f"✗ {patch_func.__name__} failed with ImportError: {e}")
@@ -87,12 +88,12 @@ class TestOptionalDependencies:
                 def sendall(self, data):
                     pass
 
-            server_conn = MockServerConn()
+            # server_conn = MockServerConn()
 
             # Test each patch function
             for patch_func in CUSTOM_PATCH_FUNCTIONS:
                 try:
-                    patch_func(server_conn)
+                    patch_func()
                     print(f"✓ {patch_func.__name__} succeeded with dependencies available")
                 except ImportError as e:
                     # This shouldn't happen if dependencies are available
@@ -124,18 +125,18 @@ class TestOptionalDependencies:
 
             print("✓ openai is available")
         except ImportError:
-            pytest.skip("openai not installed - skipping positive dependency test")
+            print("openai not available in test environment")
 
         try:
             import anthropic
 
             print("✓ anthropic is available")
         except ImportError:
-            print("? anthropic not available (may be expected)")
+            print("anthropic not available in test environment")
 
         try:
             import google
 
             print("✓ google is available")
         except ImportError:
-            print("? google not available (may be expected)")
+            print("vertexai not available in test environment")

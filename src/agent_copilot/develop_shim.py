@@ -199,8 +199,9 @@ class DevelopShim:
             "cwd": os.getcwd(),
             "command": " ".join(sys.argv),
             "environment": dict(os.environ),
-            "parent_session_id": None,
-            "prev_session_id": os.getenv("AGENT_COPILOT_PREV_SESSION_ID"),
+            "prev_session_id": os.getenv(
+                "AGENT_COPILOT_SESSION_ID"
+            ),  # Is set if rerun, otherwise None
         }
         try:
             self.server_conn.sendall((json.dumps(handshake) + "\n").encode("utf-8"))
@@ -211,6 +212,7 @@ class DevelopShim:
                 try:
                     session_msg = json.loads(session_line.strip())
                     self.session_id = session_msg.get("session_id")
+                    print("shim session id", self.session_id)
                     logger.info(f"[shim-control] Registered with session_id: {self.session_id}")
                 except Exception:
                     pass
@@ -219,6 +221,7 @@ class DevelopShim:
 
     def _convert_and_run_as_module(self, script_path: str, script_args: List[str]) -> Optional[int]:
         """Convert script execution to module import for AST rewriting."""
+        # TODO: Refactor this.
         abs_path = os.path.abspath(script_path)
 
         # Scan for all .py files in the user's project root
@@ -226,9 +229,6 @@ class DevelopShim:
         user_py_files, file_to_module = scan_user_py_files_and_modules(self.project_root)
         set_user_py_files(user_py_files, file_to_module)
         install_fstring_rewriter()
-
-        # Apply monkey patches in the current process
-        apply_all_monkey_patches(self.server_conn)
 
         # Save original state
         original_path = sys.path.copy()

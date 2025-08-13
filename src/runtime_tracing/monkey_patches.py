@@ -5,6 +5,8 @@ import threading
 import functools
 from io import BytesIO
 from agent_copilot.context_manager import get_session_id
+from common.constants import CERTAINTY_GREEN, CERTAINTY_RED, CERTAINTY_YELLOW
+from common.utils import send_to_server
 from workflow_edits.cache_manager import CACHE
 from common.logger import logger
 from workflow_edits.utils import extract_output_text, json_to_response
@@ -16,7 +18,7 @@ from runtime_tracing.taint_wrappers import get_taint_origins, taint_wrap
 # ===========================================================
 
 
-def notify_server_patch(fn, server_conn):
+def notify_server_patch(fn):
     """
     Wrap `fn` to cache results and notify server of calls.
 
@@ -57,7 +59,7 @@ def notify_server_patch(fn, server_conn):
             "task": task_id,
         }
         try:
-            server_conn.sendall((json.dumps(message) + "\n").encode("utf-8"))
+            send_to_server(message)
         except Exception:
             pass  # best-effort only
 
@@ -102,7 +104,7 @@ def no_notify_patch(fn):
 
 
 def _send_graph_node_and_edges(
-    server_conn, node_id, input, output_obj, source_node_ids, model, api_type, attachements=[]
+    node_id, input, output_obj, source_node_ids, model, api_type, attachements=[]
 ):
     """Send graph node and edge updates to the server."""
     # Get caller location TODO: Do we need this?
@@ -113,6 +115,7 @@ def _send_graph_node_and_edges(
     codeLocation = f"{file_name}:{line_no}"
 
     # Send node
+    print("Send add node", get_session_id())
     node_msg = {
         "type": "add_node",
         "session_id": get_session_id(),
@@ -120,7 +123,7 @@ def _send_graph_node_and_edges(
             "id": node_id,
             "input": input,
             "output": extract_output_text(output_obj, api_type),
-            "border_color": "#00c542",  # TODO: Set based on certainty.
+            "border_color": CERTAINTY_YELLOW,  # TODO: Set based on certainty.
             "label": f"{model}",  # TODO: Later label with LLM.
             "codeLocation": codeLocation,
             "model": model,
@@ -129,10 +132,10 @@ def _send_graph_node_and_edges(
         "incoming_edges": source_node_ids,
     }
 
-    try:
-        server_conn.sendall((json.dumps(node_msg) + "\n").encode("utf-8"))
-    except Exception as e:
-        logger.error(f"Failed to send add_node: {e}")
+    # try:
+    send_to_server(node_msg)
+    # except Exception as e:
+    #     logger.error(f"Failed to send add_node: {e}")
 
 
 # ===========================================================
@@ -140,7 +143,7 @@ def _send_graph_node_and_edges(
 # ===========================================================
 
 
-def v2_openai_patch(server_conn):
+def v2_openai_patch():
     try:
         from openai import OpenAI
     except ImportError:
@@ -151,16 +154,16 @@ def v2_openai_patch(server_conn):
 
     def new_init(self, *args, **kwargs):
         original_init(self, *args, **kwargs)
-        patch_openai_responses_create(self.responses, server_conn)
+        patch_openai_responses_create(self.responses)
         patch_openai_beta_assistants_create(self.beta.assistants)
         patch_openai_beta_threads_create(self.beta.threads)
-        patch_openai_beta_threads_runs_create_and_poll(self.beta.threads.runs, server_conn)
+        patch_openai_beta_threads_runs_create_and_poll(self.beta.threads.runs)
         patch_openai_files_create(self.files)
 
     OpenAI.__init__ = new_init
 
 
-def v1_openai_patch(server_conn):
+def v1_openai_patch():
     """
     Patch openai.ChatCompletion.create (v1/classic API) to use persistent cache and edits.
     """
@@ -207,7 +210,6 @@ def v1_openai_patch(server_conn):
 
         # Send to server (graph node/edges)
         _send_graph_node_and_edges(
-            server_conn=server_conn,
             node_id=node_id,
             input=input_to_use,
             output_obj=result,
@@ -222,7 +224,7 @@ def v1_openai_patch(server_conn):
     openai.ChatCompletion.create = patched_create
 
 
-def patch_openai_responses_create(responses, server_conn):
+def patch_openai_responses_create(responses):
     try:
         from openai.resources.responses import Responses
     except ImportError:
@@ -248,7 +250,6 @@ def patch_openai_responses_create(responses, server_conn):
             result = original_create(**new_kwargs)
             CACHE.cache_output(get_session_id(), node_id, result, "openai_v2_response")
         _send_graph_node_and_edges(
-            server_conn=server_conn,
             node_id=node_id,
             input=input_to_use,
             output_obj=result,
@@ -261,7 +262,7 @@ def patch_openai_responses_create(responses, server_conn):
     responses.create = patched_create.__get__(responses, Responses)
 
 
-def patch_openai_beta_threads_runs_create_and_poll(runs, server_conn):
+def patch_openai_beta_threads_runs_create_and_poll(runs):
     original_create_and_poll = runs.create_and_poll
 
     def patched_create_and_poll(self, **kwargs):
@@ -314,7 +315,6 @@ def patch_openai_beta_threads_runs_create_and_poll(runs, server_conn):
             )  # TODO: How to handle. What does OAI do?
 
         _send_graph_node_and_edges(
-            server_conn=server_conn,
             node_id=node_id,
             input=input_content,
             output_obj=output_obj,
@@ -428,7 +428,7 @@ def patch_openai_files_create(files_resource):
 # ===========================================================
 
 
-def anthropic_patch(server_conn):
+def anthropic_patch():
     """
     Patch Anthropic API to use persistent cache and edits.
     """
@@ -442,8 +442,8 @@ def anthropic_patch(server_conn):
 
     def new_init(self, *args, **kwargs):
         original_init(self, *args, **kwargs)
-        patch_anthropic_messages_create(self.messages, server_conn)
-        patch_anthropic_files_upload(self.beta.files, server_conn)
+        patch_anthropic_messages_create(self.messages)
+        patch_anthropic_files_upload(self.beta.files)
         patch_anthropic_files_list(self.beta.files)
         patch_anthropic_files_retrieve_metadata(self.beta.files)
         patch_anthropic_files_delete(self.beta.files)
@@ -451,7 +451,7 @@ def anthropic_patch(server_conn):
     anthropic.Anthropic.__init__ = new_init
 
 
-def patch_anthropic_messages_create(messages_instance, server_conn):
+def patch_anthropic_messages_create(messages_instance):
     """
     Patch the .create method of an Anthropic messages instance to handle caching and edits.
     """
@@ -532,7 +532,6 @@ def patch_anthropic_messages_create(messages_instance, server_conn):
 
         # Send to server (graph node/edges)
         _send_graph_node_and_edges(
-            server_conn=server_conn,
             node_id=node_id,
             input=input_to_use,
             output_obj=result,
@@ -547,7 +546,7 @@ def patch_anthropic_messages_create(messages_instance, server_conn):
     messages_instance.create = patched_create
 
 
-def patch_anthropic_files_upload(files_instance, server_conn):
+def patch_anthropic_files_upload(files_instance):
     """
     Patch the .upload method of an Anthropic files instance to handle file caching.
     """
@@ -634,7 +633,7 @@ def patch_anthropic_files_delete(files_instance):
 # ===========================================================
 
 
-def vertexai_patch(server_conn):
+def vertexai_patch():
     """
     Patch Vertex AI API to use persistent cache and edits.
     """
@@ -649,12 +648,12 @@ def vertexai_patch(server_conn):
 
     def new_init(self, *args, **kwargs):
         original_init(self, *args, **kwargs)
-        patch_vertexai_models_generate_content(self.models, server_conn)
+        patch_vertexai_models_generate_content(self.models)
 
     genai.Client.__init__ = new_init
 
 
-def patch_vertexai_models_generate_content(models_instance, server_conn):
+def patch_vertexai_models_generate_content(models_instance):
     """
     Patch the .generate_content method of a Vertex AI models instance to handle caching and edits.
     """
@@ -696,7 +695,6 @@ def patch_vertexai_models_generate_content(models_instance, server_conn):
 
         # Send to server (graph node/edges)
         _send_graph_node_and_edges(
-            server_conn=server_conn,
             node_id=node_id,
             input=input_to_use,
             output_obj=result,
@@ -714,7 +712,7 @@ def patch_vertexai_models_generate_content(models_instance, server_conn):
 # Patch function registry
 # ===========================================================
 
-# Only include patch functions that can be called at global patch time (with server_conn as argument).
+# Only include patch functions that can be called at global patch time.
 # Subclient patching must be done inside the OpenAI.__init__ patch (see v2_openai_patch).
 CUSTOM_PATCH_FUNCTIONS = [
     v1_openai_patch,  # TODO: Doesn't work currently.

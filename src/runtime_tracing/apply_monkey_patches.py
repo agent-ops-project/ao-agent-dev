@@ -6,7 +6,7 @@ from runtime_tracing.monkey_patches import (
 )
 
 
-def patch_by_path(dotted_path, *, notify=False, server_conn=None):
+def patch_by_path(dotted_path, *, notify=False):
     """
     Import the module+attr from `dotted_path`, wrap it with no_notify_patch,
     and re-assign it in-place. Returns the original function.
@@ -16,7 +16,7 @@ def patch_by_path(dotted_path, *, notify=False, server_conn=None):
     original = getattr(module, attr)
 
     if notify:
-        wrapped = notify_server_patch(original, server_conn)
+        wrapped = notify_server_patch(original)
     else:
         wrapped = no_notify_patch(original)
 
@@ -36,7 +36,7 @@ def _import_from_qualified_name(qualified_name):
     return obj, module, parts
 
 
-def apply_all_monkey_patches(server_conn):
+def apply_all_monkey_patches():
     """
     Apply all monkey patches as specified in the YAML config and custom patch list.
     This includes generic patches (from YAML) and custom patch functions.
@@ -56,4 +56,4 @@ def apply_all_monkey_patches(server_conn):
 
     # 2. Apply custom patches (these handle their own logic and server notification)
     for patch_func in CUSTOM_PATCH_FUNCTIONS:
-        patch_func(server_conn)
+        patch_func()

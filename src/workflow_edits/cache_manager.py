@@ -23,7 +23,7 @@ class CacheManager:
 
     def get_subrun_id(self, parent_session_id, name):
         result = db.query_one(
-            "SELECT session_id FROM experiments WHERE parent_session_id = ? AND title = ?",
+            "SELECT session_id FROM experiments WHERE parent_session_id = ? AND name = ?",
             (parent_session_id, name),
         )
         if result is None:
@@ -134,7 +134,7 @@ class CacheManager:
     def get_all_experiments_sorted(self):
         """Get all experiments sorted by timestamp (most recent first)"""
         return db.query_all(
-            "SELECT session_id, timestamp, color_preview, title, success, notes, log FROM experiments ORDER BY timestamp DESC",
+            "SELECT session_id, timestamp, color_preview, name, success, notes, log FROM experiments ORDER BY timestamp DESC",
             (),
         )
 
@@ -177,6 +177,10 @@ class CacheManager:
         db.execute("DELETE FROM experiments")
         db.execute("DELETE FROM llm_calls")
         # TODO: Should we delete the entire DB file + all attachments?
+
+    def get_session_name(self, session_id):
+        row = db.query_one("SELECT name FROM experiments WHERE session_id=?", (session_id,))
+        return row["name"]
 
 
 CACHE = CacheManager()

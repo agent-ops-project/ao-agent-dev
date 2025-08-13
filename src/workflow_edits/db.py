@@ -56,11 +56,12 @@ def _init_db(conn):
             command TEXT,
             environment TEXT,
             code_hash TEXT,
-            title TEXT,
-            success TEXT CHECK (success IN ('', 'Satisfatory', 'Failed')),
+            name TEXT,
+            success TEXT CHECK (success IN ('', 'Satisfactory', 'Failed')),
             notes TEXT,
             log TEXT,
-            FOREIGN KEY (parent_session_id) REFERENCES experiments (session_id)
+            FOREIGN KEY (parent_session_id) REFERENCES experiments (session_id),
+            UNIQUE (parent_session_id, name)
         )
     """
     )

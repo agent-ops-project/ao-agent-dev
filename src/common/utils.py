@@ -1,33 +1,8 @@
+import json
 import os
 from pathlib import Path
+import threading
 from typing import Optional, Union
-
-
-def rel_path_to_abs(abs_file_path, rel_to_file):
-    """
-    Use __file__ as first argumante (abs_fil_path).
-    Then use "agent-copilot/foo/bar.json" if your path is relative to the repo root.
-    or just whatever if it's relative to the file (e.g., "../foo/bar.json")
-    """
-    # Normalize rel_to_file
-    rel_to_file = os.path.normpath(rel_to_file)
-
-    if rel_to_file.startswith("agent-copilot" + os.sep) or rel_to_file == "agent-copilot":
-        # Assume project root is one of the parent directories containing "agent-copilot"
-        current = abs_file_path
-        while True:
-            current = os.path.dirname(current)
-            if os.path.basename(current) == "agent-copilot":
-                project_root = current
-                break
-            if current == os.path.dirname(current):  # Reached filesystem root
-                raise ValueError("Could not find 'agent-copilot' project root.")
-        return os.path.abspath(
-            os.path.join(project_root, os.path.relpath(rel_to_file, "agent-copilot"))
-        )
-    else:
-        # Treat as relative to the current file's directory
-        return os.path.abspath(os.path.join(os.path.dirname(abs_file_path), rel_to_file))
 
 
 def scan_user_py_files_and_modules(root_dir):
@@ -50,6 +25,42 @@ def scan_user_py_files_and_modules(root_dir):
                     mod_name = mod_name[:-9]  # remove .__init__
                 file_to_module[abs_path] = mod_name
     return user_py_files, file_to_module
+
+
+# ==============================================================================
+# Communication with server.
+# ==============================================================================
+
+# Global lock for thread-safe server communication
+_server_lock = threading.Lock()
+
+
+def send_to_server(msg):
+    """Thread-safe send message to server (no response expected)."""
+    from agent_copilot.context_manager import server_file
+
+    if isinstance(msg, dict):
+        msg = json.dumps(msg) + "\n"
+    elif isinstance(msg, str) and msg[-1] != "\n":
+        msg += "\n"
+    with _server_lock:
+        server_file.write(msg)
+        server_file.flush()
+
+
+def send_to_server_and_receive(msg):
+    """Thread-safe send message to server and receive response."""
+    from agent_copilot.context_manager import server_file
+
+    if isinstance(msg, dict):
+        msg = json.dumps(msg) + "\n"
+    elif isinstance(msg, str) and msg[-1] != "\n":
+        msg += "\n"
+    with _server_lock:
+        server_file.write(msg)
+        server_file.flush()
+        response = json.loads(server_file.readline().strip())
+        return response
 
 
 # ==============================================================================

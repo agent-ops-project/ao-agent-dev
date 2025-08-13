@@ -1,5 +1,7 @@
 """
-TODO: The below example doesn't have any concurrency since there aren't any awaits. We need to use and patch `openai.AsyncOpenAI` client before.
+TODO: The below example doesn't have any concurrency since there
+aren't any awaits. We need to use and patch `openai.AsyncOpenAI`
+client before.
 """
 
 import asyncio

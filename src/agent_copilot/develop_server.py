@@ -76,7 +76,7 @@ class DevelopServer:
 
             # Get data from DB entries.
             timestamp = row["timestamp"]
-            title = row["title"]
+            title = row["name"]
             success = row["success"]
             notes = row["notes"]
             log = row["log"]
@@ -168,9 +168,8 @@ class DevelopServer:
 
         # Add or update the node
         graph = self.session_graphs.setdefault(sid, {"nodes": [], "edges": []})
-        for i, n in enumerate(graph["nodes"]):
+        for n in graph["nodes"]:
             if n["id"] == node["id"]:
-                graph["nodes"][i] = node
                 break
         else:
             # Get title for tab where user edits input/output.
@@ -244,8 +243,50 @@ class DevelopServer:
             )
         logger.debug("Output overwrite completed")
 
+    def handle_log(self, msg: dict) -> None:
+        session_id = msg["session_id"]
+        success = msg["success"]
+        entry = msg["entry"]
+        EDIT.add_log(session_id, success, entry)
+        self.broadcast_experiment_list_to_uis()
+
     def handle_get_graph(self, msg: dict, conn: socket.socket) -> None:
         self.handle_graph_request(conn, msg["session_id"])
+
+    def handle_add_subrun(self, msg: dict, conn: socket.socket) -> None:
+        # If rerun, use previous session_id. Else, assign new one.
+        prev_session_id = msg.get("prev_session_id")
+        if prev_session_id is not None:
+            session_id = prev_session_id
+        else:
+            session_id = str(uuid.uuid4())
+            # Insert new experiment into DB.
+            cwd = msg.get("cwd")
+            command = msg.get("command")
+            environment = msg.get("environment")
+            timestamp = datetime.now().strftime("%d/%m %H:%M")
+            name = msg.get("name")
+            parent_session_id = msg.get("parent_session_id")
+            EDIT.add_experiment(
+                session_id,
+                name,
+                timestamp,
+                cwd,
+                command,
+                environment,
+                parent_session_id,
+            )
+        # Insert session if not present.
+        with self.lock:
+            if session_id not in self.sessions:
+                self.sessions[session_id] = Session(session_id)
+            session = self.sessions[session_id]
+        with session.lock:
+            session.shim_conn = conn
+        session.status = "running"
+        self.broadcast_experiment_list_to_uis()
+        self.conn_info[conn] = {"role": "shim-control", "session_id": session_id}
+        send_json(conn, {"type": "session_id", "session_id": session_id})
 
     def handle_erase(self, msg):
         session_id = msg.get("session_id")
@@ -311,7 +352,6 @@ class DevelopServer:
                 # Insert session_id into environment so shim-control uses the same session_id
                 env = os.environ.copy()
                 env["AGENT_COPILOT_SESSION_ID"] = session_id
-                env["AGENT_COPILOT_PREV_SESSION_ID"] = session_id
 
                 # Restore the user's original environment variables
                 env.update(environment)
@@ -393,6 +433,10 @@ class DevelopServer:
             self.handle_edit_input(msg)
         elif msg_type == "edit_output":
             self.handle_edit_output(msg)
+        elif msg_type == "log":
+            self.handle_log(msg)
+        elif msg_type == "add_subrun":
+            self.handle_add_subrun(msg, conn)
         elif msg_type == "get_graph":
             self.handle_get_graph(msg, conn)
         elif msg_type == "erase":
@@ -420,29 +464,28 @@ class DevelopServer:
             if role == "shim-control":
                 # If rerun, use previous session_id. Else, assign new one.
                 prev_session_id = handshake.get("prev_session_id")
-                if prev_session_id is None:
-                    session_id = str(uuid.uuid4())
-                else:
+                if prev_session_id is not None:
                     session_id = prev_session_id
+                else:
+                    session_id = str(uuid.uuid4())
+                    # Insert new experiment into DB.
+                    cwd = handshake.get("cwd")
+                    command = handshake.get("command")
+                    environment = handshake.get("environment")
+                    timestamp = datetime.now().strftime("%d/%m %H:%M")
+                    name = handshake.get("name")
+                    EDIT.add_experiment(
+                        session_id,
+                        name,
+                        timestamp,
+                        cwd,
+                        command,
+                        environment,
+                    )
+                # Insert session if not present.
                 with self.lock:
                     if session_id not in self.sessions:
                         self.sessions[session_id] = Session(session_id)
-                        # Insert new experiment row using edit_manager
-                        cwd = handshake.get("cwd")
-                        command = handshake.get("command")
-                        environment = handshake.get("environment")
-                        timestamp = datetime.now().strftime("%d/%m %H:%M")
-                        name = handshake.get("name")
-                        parent_session_id = handshake.get("parent_session_id")
-                        EDIT.add_experiment(
-                            session_id,
-                            name,
-                            timestamp,
-                            cwd,
-                            command,
-                            environment,
-                            parent_session_id,
-                        )
                     session = self.sessions[session_id]
                 with session.lock:
                     session.shim_conn = conn

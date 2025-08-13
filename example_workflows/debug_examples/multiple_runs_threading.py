@@ -42,7 +42,7 @@ def threaded_parallel_example():
     print("\n5. Threaded parallel runs with ThreadPoolExecutor:")
 
     # Run all evaluations in parallel threads
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         futures = [executor.submit(run_single_threaded_eval, prompt) for prompt in prompts]
         results = [f.result() for f in futures]
 
