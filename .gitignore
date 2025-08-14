@@ -203,4 +203,4 @@ src/static_analysis/CodeQL-Analyst/databases
 **/results/**
 
 # DocBench
-**/doc_bench/data/*
+**/doc_bench/data/
