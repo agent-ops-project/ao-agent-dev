@@ -21,5 +21,5 @@ The folder [configs/](./config/) controls the settings of the agent. This includ
 ## Running a simple task
 Try to run
 ```bash
-python simple_task.py
+python ./example_workflows/DeepResearch/single_task.py
 ```
