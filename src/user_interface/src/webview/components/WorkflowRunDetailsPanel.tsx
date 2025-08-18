@@ -105,7 +105,7 @@ export const WorkflowRunDetailsPanel: React.FC<Props> = ({
         )}
         Workflow run
       </div>
-      {/* Título */}
+      {/* Title */}
       <label style={{ fontSize: "20px" }}>Run name</label>
       <input
         type="text"
@@ -154,7 +154,7 @@ export const WorkflowRunDetailsPanel: React.FC<Props> = ({
         style={textareaStyle}
       />
 
-      {/* Botón Open in tab */}
+      {/* Button open in tab */}
       <button onClick={onOpenInTab} style={buttonStyle}>
         Open in tab
       </button>
@@ -163,7 +163,7 @@ export const WorkflowRunDetailsPanel: React.FC<Props> = ({
       <label style={{ fontSize: "20px" }}>Log</label>
       <textarea value={log} readOnly style={textareaStyle} />
 
-      {/* Botón Open in tab */}
+      {/* Button open in tab */}
       <button onClick={onOpenInTab} style={buttonStyle}>
         Open in tab
       </button>

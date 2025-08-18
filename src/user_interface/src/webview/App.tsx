@@ -6,6 +6,8 @@ import { GraphNode, GraphEdge, GraphData, ProcessInfo } from './types';
 import { sendReady, sendGetGraph, sendMessage } from './utils/messaging';
 import { useIsVsCodeDarkTheme } from './utils/themeUtils';
 import { useLocalStorage } from './hooks/useLocalStorage';
+// Import telemetry test utilities (for debugging)
+import './utils/telemetry-test';
 
 // Add global type augmentation for window.vscode
 declare global {
@@ -23,7 +25,7 @@ export const App: React.FC = () => {
   const [allGraphs, setAllGraphs] = useLocalStorage<Record<string, GraphData>>("graphs", {});
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
   const isDarkTheme = useIsVsCodeDarkTheme();
-  // Escuchar el evento personalizado para abrir el panel de detalles
+  // Listen to events from experiment-meta data panel
   useEffect(() => {
     const handler = () => setShowDetailsPanel(true);
     window.addEventListener('open-details-panel', handler);

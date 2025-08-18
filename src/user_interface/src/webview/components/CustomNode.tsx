@@ -8,6 +8,7 @@ import { LabelEditor } from './LabelEditor';
 import { sendNavigateToCode } from '../utils/messaging';
 import { NODE_BORDER_WIDTH } from '../utils/layoutConstants';
 import { useIsVsCodeDarkTheme } from '../utils/themeUtils';
+import { trackNodeInputOutputView } from '../utils/telemetry';
 
 declare const vscode: any;
 
@@ -61,9 +62,17 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
     top: `${HANDLE_SOURCE_POSITION}%`,
   };
 
-  const handleAction = (action: string) => {
+  const handleAction = async (action: string) => {
     switch (action) {
       case "editInput":
+        // Track node input view
+        await trackNodeInputOutputView(
+          id,
+          'input',
+          data.session_id || '',
+          data.label || ''
+        );
+        
         vscode.postMessage({
           type: "showEditDialog",
           payload: {
@@ -77,6 +86,14 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
         });
         break;
       case "editOutput":
+        // Track node output view
+        await trackNodeInputOutputView(
+          id,
+          'output',
+          data.session_id || '',
+          data.label || ''
+        );
+        
         vscode.postMessage({
           type: "showEditDialog",
           payload: {
