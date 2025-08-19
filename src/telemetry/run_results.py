@@ -1,16 +1,28 @@
 from telemetry.client import supabase_client
+from typing import Optional
 
 
-def store_run_result(user_id: str, session_id: str, sample_id: str, result: str) -> bool:
-    """Store a run result in Supabase."""
+def store_run_result(
+    user_id: str, session_id: str, sample_id: str, result: str, user_actions: Optional[str] = None
+) -> bool:
+    """Store a run result in Supabase with optional UI event reference."""
     if not supabase_client.is_available():
         print("Supabase not available, skipping run result storage")
         return False
 
     try:
-        supabase_client.client.table("run_results").insert(
-            {"user_id": user_id, "session_id": session_id, "sample_id": sample_id, "result": result}
-        ).execute()
+        data = {
+            "user_id": user_id,
+            "session_id": session_id,
+            "sample_id": sample_id,
+            "result": result,
+        }
+
+        # Add user_actions foreign key if provided
+        if user_actions:
+            data["user_actions"] = user_actions
+
+        supabase_client.client.table("run_results").insert(data).execute()
 
         print(f"Run result stored: {sample_id} -> {result}")
         return True

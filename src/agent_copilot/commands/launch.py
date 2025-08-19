@@ -3,6 +3,8 @@ import yaml
 from argparse import ArgumentParser, REMAINDER
 from common.constants import ACO_CONFIG, ACO_PROJECT_ROOT
 from agent_copilot.develop_shim import DevelopShim
+from telemetry.snapshots import get_user_id
+from common.logger import logger
 
 
 def launch_command_parser():
@@ -78,6 +80,9 @@ def _validate_launch_command(args):
 
 def launch_command(args):
     args = _validate_launch_command(args)
+
+    # Note: UI event logging moved to DevelopShim where session_id is available
+
     shim = DevelopShim(
         script_path=args.script_path,
         script_args=args.script_args,

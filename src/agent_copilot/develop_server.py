@@ -13,6 +13,8 @@ from workflow_edits.edit_manager import EDIT
 from workflow_edits.cache_manager import CACHE
 from common.logger import logger
 from common.constants import HOST, PORT
+from telemetry.user_actions import log_node_edit, log_experiment_rerun
+from telemetry.snapshots import get_user_id
 
 
 def send_json(conn: socket.socket, msg: dict) -> None:
@@ -208,6 +210,32 @@ class DevelopServer:
         session_id = msg["session_id"]
         node_id = msg["node_id"]
         new_input = msg["value"]
+
+        # Log input edit to telemetry
+        old_input = ""
+
+        # Get old value from in-memory graph
+        if session_id in self.session_graphs:
+            for node in self.session_graphs[session_id]["nodes"]:
+                if node["id"] == node_id:
+                    old_input = node.get("input", "")
+                    break
+
+        # Log the edit event
+        try:
+            user_id = get_user_id()
+            event_id = log_node_edit(
+                user_id=user_id,
+                session_id=session_id,
+                node_id=node_id,
+                field="input",
+                old_value=str(old_input)[:500],  # Truncate to avoid excessive data
+                new_value=str(new_input)[:500],
+            )
+            logger.info(f"Input edit logged to telemetry - Event ID: {event_id}")
+        except Exception as e:
+            logger.error(f"Failed to log input edit telemetry: {e}")
+
         EDIT.set_input_overwrite(session_id, node_id, new_input)
         if session_id in self.session_graphs:
             for node in self.session_graphs[session_id]["nodes"]:
@@ -228,6 +256,32 @@ class DevelopServer:
         session_id = msg["session_id"]
         node_id = msg["node_id"]
         new_output = msg["value"]
+
+        # Log output edit to telemetry
+        old_output = ""
+
+        # Get old value from in-memory graph
+        if session_id in self.session_graphs:
+            for node in self.session_graphs[session_id]["nodes"]:
+                if node["id"] == node_id:
+                    old_output = node.get("output", "")
+                    break
+
+        # Log the edit event
+        try:
+            user_id = get_user_id()
+            event_id = log_node_edit(
+                user_id=user_id,
+                session_id=session_id,
+                node_id=node_id,
+                field="output",
+                old_value=str(old_output)[:500],  # Truncate to avoid excessive data
+                new_value=str(new_output)[:500],
+            )
+            logger.info(f"Output edit logged to telemetry - Event ID: {event_id}")
+        except Exception as e:
+            logger.error(f"Failed to log output edit telemetry: {e}")
+
         EDIT.set_output_overwrite(session_id, node_id, new_output)
         if session_id in self.session_graphs:
             for node in self.session_graphs[session_id]["nodes"]:
@@ -251,7 +305,23 @@ class DevelopServer:
         self.broadcast_experiment_list_to_uis()
 
     def handle_get_graph(self, msg: dict, conn: socket.socket) -> None:
-        self.handle_graph_request(conn, msg["session_id"])
+        session_id = msg["session_id"]
+
+        # Log experiment view to telemetry
+        try:
+            user_id = get_user_id()
+            from telemetry.user_actions import log_user_actions
+
+            log_user_actions(
+                user_id=user_id,
+                session_id=session_id,
+                event_type="experiment_view",
+                event_data={"action": "view_experiment"},
+            )
+        except Exception as e:
+            logger.debug(f"Failed to log experiment view telemetry: {e}")
+
+        self.handle_graph_request(conn, session_id)
 
     def handle_add_subrun(self, msg: dict, conn: socket.socket) -> None:
         # If rerun, use previous session_id. Else, assign new one.
@@ -290,6 +360,21 @@ class DevelopServer:
 
     def handle_erase(self, msg):
         session_id = msg.get("session_id")
+
+        # Log erase action to telemetry
+        try:
+            user_id = get_user_id()
+            from telemetry.user_actions import log_user_actions
+
+            log_user_actions(
+                user_id=user_id,
+                session_id=session_id,
+                event_type="experiment_erase",
+                event_data={"action": "erase_experiment"},
+            )
+        except Exception as e:
+            logger.debug(f"Failed to log erase telemetry: {e}")
+
         EDIT.erase(session_id)
         # Clear color preview in database
         CACHE.update_color_preview(session_id, [])
@@ -308,6 +393,16 @@ class DevelopServer:
             logger.error("Restart message missing session_id. Ignoring.")
             return
         session = self.sessions.get(session_id)
+
+        # Log experiment rerun to telemetry
+        try:
+            user_id = get_user_id()
+            event_id = log_experiment_rerun(user_id, session_id)
+            logger.debug(
+                f"Logged experiment rerun for session_id: {session_id}, event_id: {event_id}"
+            )
+        except Exception as e:
+            logger.debug(f"Failed to log experiment rerun telemetry: {e}")
 
         # Reset color previews.
         CACHE.update_color_preview(child_session_id, [])

@@ -53,9 +53,9 @@ The telemetry system gets its configuration from:
 
 ## Database Schema
 
-Events are stored in the `ui_events` table with the following structure:
+Events are stored in the `user_actions` table with the following structure:
 ```sql
-CREATE TABLE ui_events (
+CREATE TABLE user_actions (
   id SERIAL PRIMARY KEY,
   user_id TEXT NOT NULL,
   session_id TEXT,

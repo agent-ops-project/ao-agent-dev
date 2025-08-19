@@ -21,7 +21,7 @@ CREATE TABLE code_snapshots (
 );
 
 -- Table for UI interaction events  
-CREATE TABLE ui_events (
+CREATE TABLE user_actions (
     id BIGSERIAL PRIMARY KEY,
     user_id TEXT NOT NULL,
     session_id TEXT,
@@ -67,7 +67,7 @@ pip install supabase
 
 ```python
 from telemetry.snapshots import store_code_snapshot
-from telemetry.ui_events import log_experiment_click
+from telemetry.user_actions import log_experiment_click
 from telemetry.run_results import store_run_result
 
 # Test code snapshot upload

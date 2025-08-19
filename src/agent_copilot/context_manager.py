@@ -7,6 +7,8 @@ import os
 from common.logger import logger
 from workflow_edits.cache_manager import CACHE
 from common.utils import send_to_server, send_to_server_and_receive
+from telemetry.user_actions import log_user_actions
+from telemetry.snapshots import get_user_id
 
 
 # Store the current session_id and connections
@@ -75,6 +77,24 @@ def aco_launch(run_name="Workflow run"):
     response = send_to_server_and_receive(msg)
     session_id = response["session_id"]
     current_session_id.set(session_id)
+
+    # Log subrun start event
+    try:
+        user_id = get_user_id()
+        log_user_actions(
+            user_id=user_id,
+            session_id=session_id,
+            event_type="subrun_start",
+            event_data={
+                "run_name": run_name,
+                "parent_session_id": parent_session_id,
+                "prev_session_id": prev_session_id,
+                "cwd": parent_env["cwd"],
+                "command": parent_env["command"],
+            },
+        )
+    except Exception as e:
+        logger.debug(f"Failed to log subrun start telemetry: {e}")
 
     try:
         # Run user code

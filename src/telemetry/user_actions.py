@@ -4,35 +4,43 @@ from common.logger import logger
 from telemetry.client import supabase_client
 
 
-def log_ui_event(
+def log_user_actions(
     user_id: str, event_type: str, event_data: Dict[str, Any], session_id: Optional[str] = None
-) -> bool:
-    """Log a UI interaction event to Supabase."""
+) -> Optional[str]:
+    """Log a UI interaction event to Supabase and return the event ID."""
     if not supabase_client.is_available():
         logger.debug("Supabase not available, skipping UI event logging")
-        return False
+        return None
 
     try:
-        supabase_client.client.table("ui_events").insert(
-            {
-                "user_id": user_id,
-                "session_id": session_id,
-                "event_type": event_type,
-                "event_data": json.dumps(event_data),
-            }
-        ).execute()
+        response = (
+            supabase_client.client.table("user_actions")
+            .insert(
+                {
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "event_type": event_type,
+                    "event_data": json.dumps(event_data),
+                }
+            )
+            .execute()
+        )
 
         logger.debug(f"UI event logged: {event_type}")
-        return True
+
+        # Return the ID of the inserted event
+        if response.data and len(response.data) > 0:
+            return response.data[0].get("id")
+        return None
 
     except Exception as e:
         logger.error(f"Failed to log UI event: {e}")
-        return False
+        return None
 
 
-def log_experiment_click(user_id: str, session_id: str, experiment_name: str) -> bool:
-    """Log when user clicks on an experiment card."""
-    return log_ui_event(
+def log_experiment_click(user_id: str, session_id: str, experiment_name: str) -> Optional[str]:
+    """Log when user clicks on an experiment card and return the event ID."""
+    return log_user_actions(
         user_id=user_id,
         session_id=session_id,
         event_type="experiment_click",
@@ -40,9 +48,11 @@ def log_experiment_click(user_id: str, session_id: str, experiment_name: str) ->
     )
 
 
-def log_node_click(user_id: str, session_id: str, node_id: str, node_type: str = "") -> bool:
-    """Log when user clicks on a graph node."""
-    return log_ui_event(
+def log_node_click(
+    user_id: str, session_id: str, node_id: str, node_type: str = ""
+) -> Optional[str]:
+    """Log when user clicks on a graph node and return the event ID."""
+    return log_user_actions(
         user_id=user_id,
         session_id=session_id,
         event_type="node_click",
@@ -57,9 +67,9 @@ def log_node_edit(
     field: str,
     old_value: str = "",
     new_value: str = "",
-) -> bool:
-    """Log when user edits a node."""
-    return log_ui_event(
+) -> Optional[str]:
+    """Log when user edits a node and return the event ID."""
+    return log_user_actions(
         user_id=user_id,
         session_id=session_id,
         event_type="node_edit",
@@ -69,6 +79,16 @@ def log_node_edit(
             "old_value": old_value,
             "new_value": new_value,
         },
+    )
+
+
+def log_experiment_rerun(user_id: str, session_id: str, experiment_name: str = "") -> Optional[str]:
+    """Log when user triggers an experiment rerun and return the event ID."""
+    return log_user_actions(
+        user_id=user_id,
+        session_id=session_id,
+        event_type="experiment_rerun",
+        event_data={"experiment_name": experiment_name, "action": "rerun_experiment"},
     )
 
 
@@ -102,7 +122,7 @@ if __name__ == "__main__":
         print("❌ Node edit logging failed")
 
     print("\n4. Testing custom event logging...")
-    success = log_ui_event(
+    success = log_user_actions(
         test_user,
         "custom_action",
         {"button": "save", "timestamp": "2024-01-01T10:00:00Z"},

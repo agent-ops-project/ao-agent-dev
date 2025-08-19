@@ -69,7 +69,7 @@ class TelemetryClient {
     try {
       console.log('Attempting to log telemetry event:', event);
       
-      const { data, error } = await this.client!.from('ui_events').insert({
+      const { data, error } = await this.client!.from('user_actions').insert({
         user_id: event.user_id,
         session_id: event.session_id,
         event_type: event.event_type,

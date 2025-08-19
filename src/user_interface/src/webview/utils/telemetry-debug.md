@@ -57,7 +57,7 @@ import('/src/webview/utils/telemetry.js').then(async (telemetry) => {
 In Supabase dashboard:
 
 1. Go to **Table Editor**
-2. Select **ui_events** table
+2. Select **user_actions** table
 3. Check if any rows appear after interactions
 
 ## Common Issues

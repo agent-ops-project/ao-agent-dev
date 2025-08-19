@@ -4,48 +4,29 @@ import tempfile
 import asyncio
 import threading
 import base64
+import getpass
 from pathlib import Path
 from common.logger import logger
 from telemetry.client import supabase_client
+from typing import Optional
 
 
-# Patterns to exclude from code snapshots
-EXCLUDE_PATTERNS = {
-    ".git",
-    "__pycache__",
-    ".pytest_cache",
-    "node_modules",
-    ".venv",
-    "venv",
-    ".env",
-    "*.pyc",
-    "*.pyo",
-    ".DS_Store",
-    "Thumbs.db",
-    ".cache",
-    "dist",
-    "build",
-    "*.egg-info",
-    ".mypy_cache",
-    ".coverage",
-    "data",
-}
+# File extensions to include in code snapshots
+INCLUDE_EXTENSIONS = {".py", ".ipynb"}
 
 
-def _should_exclude(path: Path, project_root: Path) -> bool:
-    """Check if a path should be excluded from the snapshot."""
-    relative_path = path.relative_to(project_root)
+def get_user_id() -> str:
+    """Get a user identifier for telemetry purposes."""
+    try:
+        return getpass.getuser()
+    except Exception:
+        # Fallback to environment variables if getpass fails
+        return os.getenv("USER", os.getenv("USERNAME", "unknown_user"))
 
-    # Check each part of the path
-    for part in relative_path.parts:
-        if part in EXCLUDE_PATTERNS:
-            return True
-        # Check wildcard patterns
-        if part.endswith((".pyc", ".pyo")) or part.startswith("."):
-            if part in EXCLUDE_PATTERNS:
-                return True
 
-    return False
+def _should_include(path: Path) -> bool:
+    """Check if a file should be included in the snapshot."""
+    return path.suffix in INCLUDE_EXTENSIONS
 
 
 def create_code_zip(project_root: str) -> bytes:
@@ -55,7 +36,7 @@ def create_code_zip(project_root: str) -> bytes:
     with tempfile.NamedTemporaryFile() as temp_file:
         with zipfile.ZipFile(temp_file.name, "w", zipfile.ZIP_DEFLATED) as zipf:
             for file_path in project_path.rglob("*"):
-                if file_path.is_file() and not _should_exclude(file_path, project_path):
+                if file_path.is_file() and _should_include(file_path):
                     # Add file to zip with relative path
                     arcname = file_path.relative_to(project_path)
                     try:
@@ -68,8 +49,10 @@ def create_code_zip(project_root: str) -> bytes:
         return temp_file.read()
 
 
-def store_code_snapshot(user_id: str, project_root: str) -> bool:
-    """Store a code snapshot synchronously."""
+def store_code_snapshot(
+    user_id: str, project_root: str, user_actions: Optional[str] = None
+) -> bool:
+    """Store a code snapshot synchronously with optional UI event reference."""
     if not supabase_client.is_available():
         logger.debug("Supabase not available, skipping code snapshot")
         return False
@@ -87,10 +70,15 @@ def store_code_snapshot(user_id: str, project_root: str) -> bool:
         logger.debug(f"Base64 preview: {zip_data_b64[:50]}...")
         logger.debug(f"Base64 is valid text: {zip_data_b64.isprintable()}")
 
+        # Prepare data for storage
+        data = {"user_id": user_id, "code_snapshot": zip_data_b64, "snapshot_size": len(zip_data)}
+
+        # Add user_actions foreign key if provided
+        if user_actions:
+            data["user_actions"] = user_actions
+
         # Store in Supabase
-        supabase_client.client.table("code_snapshots").insert(
-            {"user_id": user_id, "code_snapshot": zip_data_b64, "snapshot_size": len(zip_data)}
-        ).execute()
+        supabase_client.client.table("code_snapshots").insert(data).execute()
 
         logger.info(f"Code snapshot stored successfully ({len(zip_data)} bytes)")
         return True
@@ -100,20 +88,46 @@ def store_code_snapshot(user_id: str, project_root: str) -> bool:
         return False
 
 
-async def store_code_snapshot_async(user_id: str, project_root: str) -> bool:
+async def store_code_snapshot_async(
+    user_id: str, project_root: str, user_actions: Optional[str] = None
+) -> bool:
     """Store a code snapshot asynchronously in a thread pool."""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, store_code_snapshot, user_id, project_root)
+    return await loop.run_in_executor(
+        None, store_code_snapshot, user_id, project_root, user_actions
+    )
 
 
-def store_code_snapshot_background(user_id: str, project_root: str) -> None:
+def store_code_snapshot_background(
+    user_id: str, project_root: str, user_actions: Optional[str] = None
+) -> None:
     """Store a code snapshot in the background using threading."""
 
     def _background_task():
-        store_code_snapshot(user_id, project_root)
+        store_code_snapshot(user_id, project_root, user_actions)
 
     thread = threading.Thread(target=_background_task, daemon=True)
     thread.start()
+
+
+def capture_current_project_snapshot(
+    project_root: str = None, user_actions: Optional[str] = None
+) -> bool:
+    """
+    Convenience function to capture a snapshot of the current project.
+
+    Args:
+        project_root: Optional project root path. If None, uses current working directory.
+        user_actions: Optional UI event ID for foreign key reference.
+
+    Returns:
+        bool: True if snapshot was successful, False otherwise.
+    """
+    if project_root is None:
+        project_root = os.getcwd()
+
+    user_id = get_user_id()
+    return store_code_snapshot(user_id, project_root, user_actions)
 
 
 if __name__ == "__main__":
@@ -127,8 +141,9 @@ if __name__ == "__main__":
         # Create some test files
         test_files = {
             "main.py": "print('hello world')",
-            "README.md": "# Test Project",
+            "README.md": "# Test Project",  # Should be excluded
             "src/utils.py": "def helper(): pass",
+            "notebook.ipynb": '{"cells": []}',
             ".env": "SECRET=123",  # Should be excluded
             "__pycache__/cache.pyc": "cached",  # Should be excluded
         }
