@@ -214,3 +214,7 @@ src/static_analysis/CodeQL-Analyst/databases
 **/SWE-bench/logs
 **/SWE-bench/*.jsonl
 **/SWE-bench/*.json
+
+# human-eval
+**/human-eval/data
+**/human-eval/outputs
