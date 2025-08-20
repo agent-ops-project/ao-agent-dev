@@ -79,6 +79,7 @@ class CacheManager:
 
         # Pickle input object.
         input_dict = untaint_if_needed(input_dict)
+
         input_pickle = dill.dumps(input_dict)
         input_hash = db.hash_input(input_pickle)
 

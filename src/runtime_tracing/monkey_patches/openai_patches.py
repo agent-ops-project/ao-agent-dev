@@ -50,15 +50,24 @@ def patch_openai_responses_create(responses):
 
     # Original OpenAI.responses.create function
     original_function = responses.create
+    # Get the unbound function for signature inspection to avoid "invalid method signature" error
+    # Use the class function directly as it has the correct signature for inspect.signature()
+    from openai.resources.responses import Responses
+
+    unbound_function = Responses.create
 
     # Patched function (executed instead of OpenAI.responses.create)
     @wraps(original_function)
     def patched_function(*args, **kwargs):
+
         # 1. Set API identifier to fully qualified name of patched function.
         api_type = "OpenAI.responses.create"
 
         # 2. Get full input dict.
-        input_dict = get_input_dict(original_function, *args, **kwargs)
+        input_dict = get_input_dict(unbound_function, *args, **kwargs)
+        # Remove 'self' from input_dict as it's not relevant for caching and contains unpicklable objects
+        if "self" in input_dict:
+            del input_dict["self"]
 
         # 3. Get taint origins (did another LLM produce the input?).
         taint_origins = get_taint_origins(input_dict)
