@@ -231,6 +231,18 @@ def test_api_calls(program_file, api_type, create_response_func, create_input_fu
     print(f"  CI: {os.environ.get('CI', 'Not set')}")
     print(f"  GITHUB_ACTIONS: {os.environ.get('GITHUB_ACTIONS', 'Not set')}")
 
+    # Check OpenAI version and environment
+    try:
+        import openai
+
+        print(f"OpenAI version: {openai.__version__}")
+    except Exception as e:
+        print(f"Failed to import openai: {e}")
+
+    print(f"OPENAI_API_KEY set: {'OPENAI_API_KEY' in os.environ}")
+    print(f"ANTHROPIC_API_KEY set: {'ANTHROPIC_API_KEY' in os.environ}")
+    print(f"GOOGLE_API_KEY set: {'GOOGLE_API_KEY' in os.environ}")
+
     # Start server
     print("Starting daemon server...")
     launch_daemon_server()
