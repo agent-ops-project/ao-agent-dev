@@ -16,9 +16,15 @@ from runtime_tracing.taint_wrappers import get_taint_origins, taint_wrap
 
 
 def openai_patch():
+    print("[openai_patch] Starting OpenAI patch application")
     try:
         from openai import OpenAI
+
+        print(
+            f"[openai_patch] OpenAI imported successfully, version: {getattr(__import__('openai'), '__version__', 'unknown')}"
+        )
     except ImportError:
+        print("[openai_patch] OpenAI not installed, skipping OpenAI patches")
         logger.info("OpenAI not installed, skipping OpenAI patches")
         return
 
@@ -26,26 +32,33 @@ def openai_patch():
 
         @wraps(original_init)
         def patched_init(self, *args, **kwargs):
+            print(f"[openai_patch] OpenAI.__init__ called with args={args}, kwargs={kwargs}")
             original_init(self, *args, **kwargs)
+            print("[openai_patch] Original OpenAI.__init__ completed, now applying sub-patches")
             patch_openai_responses_create(self.responses)
             patch_openai_chat_completions_create(self.chat.completions)
             patch_openai_beta_assistants_create(self.beta.assistants)
             patch_openai_beta_threads_create(self.beta.threads)
             patch_openai_beta_threads_runs_create_and_poll(self.beta.threads.runs)
             patch_openai_files_create(self.files)
+            print("[openai_patch] All OpenAI sub-patches applied successfully")
             # patch_openai_chat_completions_create(self.)
 
         return patched_init
 
+    print("[openai_patch] Patching OpenAI.__init__")
     OpenAI.__init__ = create_patched_init(OpenAI.__init__)
+    print("[openai_patch] OpenAI.__init__ patched successfully")
 
 
 # Patch for OpenAI.responses.create is called patch_openai_responses_create
 def patch_openai_responses_create(responses):
     # Maybe the user doesn't have OpenAI installed.
+    print("[openai_patch] Patching OpenAI.responses.create")
     try:
         from openai.resources.responses import Responses
     except ImportError:
+        print("[openai_patch] Failed to import openai.resources.responses.Responses")
         return
 
     # Original OpenAI.responses.create function
@@ -91,7 +104,9 @@ def patch_openai_responses_create(responses):
         return taint_wrap(result, [node_id])
 
     # Install patch.
+    print("[openai_patch] Installing OpenAI.responses.create patch")
     responses.create = patched_function.__get__(responses, Responses)
+    print("[openai_patch] OpenAI.responses.create patch installed successfully")
 
 
 def patch_openai_chat_completions_create(completions):
