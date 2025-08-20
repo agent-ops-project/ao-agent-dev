@@ -20,12 +20,13 @@ def block_external_http():
         yield
         return
 
-    with responses.RequestsMock() as rsps:
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
         # Allow local connections for our develop server
         rsps.add_passthru("http://localhost")
         rsps.add_passthru("http://127.0.0.1")
 
-        # Block everything else
+        # Block everything else - but don't assert that this mock is called
+        # since cached responses might not make HTTP calls
         rsps.add(
             responses.POST,
             re.compile(r"https?://(?!localhost|127\.0\.0\.1).*"),
