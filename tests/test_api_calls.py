@@ -137,16 +137,16 @@ def run_add_numbers_test(program_file, api_type, create_response_func, create_in
     "program_file,api_type,create_response_func,create_input_func",
     [
         (
-            "openai_add_numbers.py",
-            "OpenAI.responses.create",
-            create_openai_response,
-            create_openai_input,
-        ),
-        (
             "anthropic_add_numbers.py",
             "Anthropic.messages.create",
             create_anthropic_response,
             create_anthropic_input,
+        ),
+        (
+            "openai_add_numbers.py",
+            "OpenAI.responses.create",
+            create_openai_response,
+            create_openai_input,
         ),
         # ("vertexai_add_numbers.py", "vertexai_generate_content", create_vertexai_response, create_vertexai_input),
     ],
