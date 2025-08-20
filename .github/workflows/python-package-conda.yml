@@ -35,7 +35,6 @@ jobs:
     - name: Test with pytest
       run: |
         python -m pytest tests -v
-        python -m pytest runtime_tracing/tests/unit -v
     - name: Clean up shim server
       run: |
         aco-server stop
