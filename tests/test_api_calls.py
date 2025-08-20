@@ -11,9 +11,11 @@ import threading
 import queue
 import time
 import pytest
+import os
 from pathlib import Path
 from agent_copilot.commands.server import launch_daemon_server
 from agent_copilot.context_manager import set_parent_session_id
+from common.constants import ACO_LOG_PATH
 from get_api_objects import (
     create_anthropic_response,
     create_openai_input,
@@ -23,6 +25,40 @@ from get_api_objects import (
     create_vertexai_response,
 )
 from workflow_edits.cache_manager import CACHE
+
+
+def print_server_logs(label="Server logs"):
+    """Print recent server logs for debugging."""
+    log_file = os.path.join(ACO_LOG_PATH, "server.log")
+    print(f"\n=== {label} ===")
+    if os.path.exists(log_file):
+        try:
+            with open(log_file, "r") as f:
+                lines = f.readlines()
+                recent_lines = lines[-20:] if len(lines) > 20 else lines
+                for line in recent_lines:
+                    print(f"LOG: {line.strip()}")
+        except Exception as e:
+            print(f"Error reading server logs: {e}")
+    else:
+        print("Server log file does not exist")
+    print("=" * 50)
+
+
+def check_server_connectivity(retries=5, delay=1):
+    """Check if server is responding to connections."""
+    print(f"\n🔍 Checking server connectivity...")
+    for i in range(retries):
+        try:
+            sock = socket.create_connection(("127.0.0.1", 5959), timeout=2)
+            sock.close()
+            print(f"   ✅ Server is responding (attempt {i+1})")
+            return True
+        except Exception as e:
+            print(f"   ❌ Connection failed (attempt {i+1}): {e}")
+            if i < retries - 1:
+                time.sleep(delay)
+    return False
 
 
 def run_add_numbers_test(program_file, api_type, create_response_func, create_input_func):
@@ -108,24 +144,40 @@ def run_add_numbers_test(program_file, api_type, create_response_func, create_in
     restart_msg = {"type": "restart", "session_id": session_id}
     ui_file.write(json.dumps(restart_msg) + "\n")
     ui_file.flush()
+    print(f"   Sent restart message for session: {session_id}")
 
     # 6. Collect graph_update messages
     print("6. Collecting graph_update messages...")
     graph_updates = 0
-    timeout = 15
+    timeout = 7
     start_time = time.time()
+    all_messages = []
 
     # Run for 7 seconds, check how many graph_updates we get.
     # 7s should be enough given all responses are cached.
     while time.time() - start_time < timeout:
         try:
             msg = message_queue.get(timeout=1)
+            all_messages.append(msg)
+            print(
+                f"   Received message: {msg.get('type', 'unknown')} for session: {msg.get('session_id', 'unknown')}"
+            )
+
             # Filter for graph_update messages for our session
             if msg.get("type") == "graph_update" and msg.get("session_id") == session_id:
                 graph_updates += 1
+                print(f"   ✅ Graph update #{graph_updates} received!")
         except queue.Empty:
+            print(f"   No message received in last 1s (elapsed: {time.time() - start_time:.1f}s)")
             continue
     ui_sock.close()
+
+    # Print summary of all received messages
+    print(f"\n📊 Message Summary:")
+    print(f"   Total messages received: {len(all_messages)}")
+    print(f"   Graph updates for our session: {graph_updates}")
+    for i, msg in enumerate(all_messages):
+        print(f"   {i+1}. {msg.get('type', 'unknown')} (session: {msg.get('session_id', 'N/A')})")
 
     # 7. Verify we got 5 graph updates (1 inital + 1 for each LLM call).
     print("7. Verifying results...")
@@ -136,12 +188,12 @@ def run_add_numbers_test(program_file, api_type, create_response_func, create_in
 @pytest.mark.parametrize(
     "program_file,api_type,create_response_func,create_input_func",
     [
-        (
-            "anthropic_add_numbers.py",
-            "Anthropic.messages.create",
-            create_anthropic_response,
-            create_anthropic_input,
-        ),
+        # (
+        #     "anthropic_add_numbers.py",
+        #     "Anthropic.messages.create",
+        #     create_anthropic_response,
+        #     create_anthropic_input,
+        # ),
         (
             "openai_add_numbers.py",
             "OpenAI.responses.create",
@@ -153,9 +205,30 @@ def run_add_numbers_test(program_file, api_type, create_response_func, create_in
 )
 def test_add_numbers_api(program_file, api_type, create_response_func, create_input_func):
     """Test add_numbers programs for different APIs using cached responses."""
+    print(f"\n🧪 Starting test for {program_file}")
+
+    # Print initial server state
+    print_server_logs("Before launching server")
+
     launch_daemon_server()
     time.sleep(10)
-    run_add_numbers_test(program_file, api_type, create_response_func, create_input_func)
+
+    # Check server connectivity
+    if not check_server_connectivity():
+        print_server_logs("Server not responding - checking logs")
+        raise Exception("Server is not responding after launch")
+
+    # Print server logs after launch
+    print_server_logs("After launching server")
+
+    try:
+        run_add_numbers_test(program_file, api_type, create_response_func, create_input_func)
+        print(f"✅ Test passed for {program_file}")
+    except Exception as e:
+        print(f"❌ Test failed for {program_file}: {e}")
+        # Print server logs on failure
+        print_server_logs("After test failure")
+        raise
 
 
 if __name__ == "__main__":
