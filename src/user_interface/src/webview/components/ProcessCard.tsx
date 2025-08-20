@@ -2,7 +2,7 @@ import React from 'react';
 import styles from './ProcessCard.module.css';
 import { ProcessInfo } from '../types';
 import { getDateOnly } from '../utils/timeSpan';
-import { trackExperimentClick } from '../utils/telemetry';
+
 
 export interface ProcessCardProps {
   process: ProcessInfo;
@@ -28,13 +28,7 @@ export const ProcessCard: React.FC<ProcessCardProps> = React.memo(
     console.log(`ProcessCard render for ${process.session_id}:`, { nodeColors, color_preview: process.color_preview });
     
     const handleClick = async () => {
-      // Track experiment click
-      await trackExperimentClick(
-        process.title || 'Untitled',
-        process.session_id
-      );
-      
-      // Call original onClick
+      // Call original onClick (experiment clicks now handled by server)
       onClick?.();
     };
     

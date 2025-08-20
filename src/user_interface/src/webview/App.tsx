@@ -6,8 +6,7 @@ import { GraphNode, GraphEdge, GraphData, ProcessInfo } from './types';
 import { sendReady, sendGetGraph, sendMessage } from './utils/messaging';
 import { useIsVsCodeDarkTheme } from './utils/themeUtils';
 import { useLocalStorage } from './hooks/useLocalStorage';
-// Import telemetry test utilities (for debugging)
-import './utils/telemetry-test';
+
 
 // Add global type augmentation for window.vscode
 declare global {

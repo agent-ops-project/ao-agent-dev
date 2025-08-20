@@ -28,7 +28,7 @@ CREATE TABLE code_snapshots (
     timestamp TIMESTAMPTZ DEFAULT NOW(),
     code_snapshot TEXT NOT NULL,  -- Base64 encoded binary data
     snapshot_size INTEGER,
-    ui_event BIGINT REFERENCES user_actions(id)
+    user_action_id BIGINT REFERENCES user_actions(id)
 );
 
 -- Table for aco.log(...) entries
@@ -38,7 +38,8 @@ CREATE TABLE user_logs (
     session_id TEXT,
     log_msg TEXT,
     success BOOLEAN,
-    timestamp TIMESTAMPTZ DEFAULT NOW()
+    timestamp TIMESTAMPTZ DEFAULT NOW(),
+    user_action_id BIGINT REFERENCES user_actions(id)
 );
 ```
 
@@ -67,21 +68,53 @@ pip install supabase
 ## 6. Test the Setup
 
 ```python
+from telemetry.server_logger import log_server_message, log_shim_control_registration
 from telemetry.snapshots import store_code_snapshot
-from telemetry.user_actions import log_experiment_click
-from telemetry.run_results import store_run_result
 
-# Test code snapshot upload
-success = store_code_snapshot("test_user", "/path/to/project")
+# Test server message logging
+test_msg = {
+    "type": "test_message",
+    "session_id": "test_session_123",
+    "data": "test_data"
+}
+log_server_message(test_msg)
+print("Server message logged")
+
+# Test shim control registration
+test_handshake = {
+    "cwd": "/test/path",
+    "command": "python test.py",
+    "name": "test_experiment"
+}
+log_shim_control_registration(test_handshake, "test_session_123")
+print("Shim control registration logged")
+
+# Test enhanced message handling
+session_graphs = {"test_session": {"nodes": [], "edges": []}}
+
+test_log_msg = {
+    "type": "log",
+    "session_id": "test_session_log",
+    "entry": "Test log message",
+    "success": True
+}
+log_server_message(test_log_msg, session_graphs)
+print("Log message processed")
+
+# Test input edit with previous value
+test_edit_msg = {
+    "type": "edit_input", 
+    "session_id": "test_session",
+    "node_id": "node_1",
+    "value": "new input"
+}
+log_server_message(test_edit_msg, session_graphs)
+print("Edit message processed")
+
+# Test code snapshot upload (automatic for runs, but can test manually)
+from telemetry.snapshots import store_code_snapshot
+success = store_code_snapshot("ferdi", "/path/to/project")
 print(f"Snapshot uploaded: {success}")
-
-# Test UI event upload
-success = log_experiment_click("test_user", "session_123", "my_experiment")
-print(f"Event uploaded: {success}")
-
-# Test run result upload
-success = store_run_result("test_user", "session_123", "sample_1", "success")
-print(f"Result uploaded: {success}")
 ```
 
 ## 7. Integration Points

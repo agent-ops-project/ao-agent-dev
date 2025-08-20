@@ -14,8 +14,6 @@ from runtime_tracing.fstring_rewriter import install_fstring_rewriter, set_user_
 from common.logger import logger
 from common.utils import scan_user_py_files_and_modules
 from agent_copilot.launch_scripts import SCRIPT_WRAPPER_TEMPLATE, MODULE_WRAPPER_TEMPLATE
-from telemetry.user_actions import log_user_actions
-from telemetry.snapshots import store_code_snapshot_background, get_user_id
 
 
 # Configuration constants
@@ -62,31 +60,6 @@ class DevelopShim:
         # Register signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
-
-    def _log_script_launch_telemetry(self) -> None:
-        """Log script launch event and capture code snapshot with session_id."""
-        try:
-            user_id = get_user_id()
-            logger.info(f"Capturing code snapshot for user: {user_id}")
-
-            # Log the launch event with session_id
-            user_actions_id = log_user_actions(
-                user_id=user_id,
-                session_id=self.session_id,
-                event_type="script_launch",
-                event_data={
-                    "script_path": self.script_path,
-                    "script_args": self.script_args,
-                    "is_module": self.is_module_execution,
-                    "project_root": self.project_root,
-                },
-            )
-
-            # Store code snapshot with reference to the UI event
-            store_code_snapshot_background(user_id, self.project_root, user_actions_id)
-        except Exception as e:
-            logger.debug(f"Failed to capture script launch telemetry: {e}")
-            # Don't fail the launch if telemetry fails
 
     def _send_message(self, msg_type: str, **kwargs) -> None:
         """Send a message to the develop server."""
@@ -240,8 +213,6 @@ class DevelopShim:
                     self.session_id = session_msg.get("session_id")
                     logger.info(f"[shim-control] Registered with session_id: {self.session_id}")
 
-                    # Log script launch event with session_id and capture code snapshot
-                    self._log_script_launch_telemetry()
                 except Exception:
                     pass
         except Exception:

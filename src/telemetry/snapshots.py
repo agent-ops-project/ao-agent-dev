@@ -73,9 +73,9 @@ def store_code_snapshot(
         # Prepare data for storage
         data = {"user_id": user_id, "code_snapshot": zip_data_b64, "snapshot_size": len(zip_data)}
 
-        # Add user_actions foreign key if provided
+        # Add ui_event foreign key if provided
         if user_actions:
-            data["user_actions"] = user_actions
+            data["user_action_id"] = user_actions
 
         # Store in Supabase
         supabase_client.client.table("code_snapshots").insert(data).execute()
@@ -168,7 +168,7 @@ if __name__ == "__main__":
 
         # Test snapshot storage
         print("\n2. Testing snapshot upload...")
-        success = store_code_snapshot("test_user", temp_dir)
+        success = store_code_snapshot("ferdi", temp_dir)
         if success:
             print("✅ Snapshot uploaded successfully!")
         else:
@@ -176,5 +176,5 @@ if __name__ == "__main__":
 
         # Test background upload
         print("\n3. Testing background upload...")
-        store_code_snapshot_background("test_user", temp_dir)
+        store_code_snapshot_background("ferdi", temp_dir)
         print("✅ Background upload started (check logs for completion)")

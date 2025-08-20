@@ -89,49 +89,41 @@ class TelemetryClient {
     }
   }
 
-  public async logExperimentClick(
-    userId: string, 
-    sessionId: string, 
-    experimentName: string
-  ): Promise<boolean> {
-    return this.logEvent({
-      user_id: userId,
-      session_id: sessionId,
-      event_type: 'experiment_click',
-      event_data: { experiment_name: experimentName }
-    });
-  }
-
-  public async logNodeInputOutputView(
+  public async logNodeInputView(
     userId: string,
     sessionId: string,
     nodeId: string,
-    viewType: 'input' | 'output',
+    inputValue: string,
     nodeType: string = ''
   ): Promise<boolean> {
     return this.logEvent({
       user_id: userId,
       session_id: sessionId,
-      event_type: 'node_input_output_view',
+      event_type: 'node_input_view',
       event_data: { 
         node_id: nodeId, 
-        view_type: viewType,
+        input_value: inputValue,
         node_type: nodeType 
       }
     });
   }
 
-  public async logCustomEvent(
+  public async logNodeOutputView(
     userId: string,
-    eventType: string,
-    eventData: Record<string, any>,
-    sessionId?: string
+    sessionId: string,
+    nodeId: string,
+    outputValue: string,
+    nodeType: string = ''
   ): Promise<boolean> {
     return this.logEvent({
       user_id: userId,
       session_id: sessionId,
-      event_type: eventType,
-      event_data: eventData
+      event_type: 'node_output_view',
+      event_data: { 
+        node_id: nodeId, 
+        output_value: outputValue,
+        node_type: nodeType 
+      }
     });
   }
 }
@@ -139,38 +131,29 @@ class TelemetryClient {
 // Export singleton instance
 export const telemetryClient = TelemetryClient.getInstance();
 
-// Utility functions for common telemetry actions
-export const trackExperimentClick = async (
-  experimentName: string, 
-  sessionId: string, 
-  userId?: string
-) => {
-  console.log('🎯 trackExperimentClick called:', { experimentName, sessionId, userId });
-  const config = getTelemetryConfig();
-  const finalUserId = userId || config.userId || 'default_user';
-  return telemetryClient.logExperimentClick(finalUserId, sessionId, experimentName);
-};
-
-export const trackNodeInputOutputView = async (
+// Utility functions for node input/output view tracking
+export const trackNodeInputView = async (
   nodeId: string,
-  viewType: 'input' | 'output',
+  inputValue: string,
   sessionId: string,
   nodeType: string = '',
   userId?: string
 ) => {
-  console.log('🎯 trackNodeInputOutputView called:', { nodeId, viewType, sessionId, nodeType, userId });
+  console.log('🎯 trackNodeInputView called:', { nodeId, sessionId, nodeType, userId, valueLength: inputValue.length });
   const config = getTelemetryConfig();
   const finalUserId = userId || config.userId || 'default_user';
-  return telemetryClient.logNodeInputOutputView(finalUserId, sessionId, nodeId, viewType, nodeType);
+  return telemetryClient.logNodeInputView(finalUserId, sessionId, nodeId, inputValue, nodeType);
 };
 
-export const trackCustomEvent = async (
-  eventType: string,
-  eventData: Record<string, any>,
-  sessionId?: string,
+export const trackNodeOutputView = async (
+  nodeId: string,
+  outputValue: string,
+  sessionId: string,
+  nodeType: string = '',
   userId?: string
 ) => {
+  console.log('🎯 trackNodeOutputView called:', { nodeId, sessionId, nodeType, userId, valueLength: outputValue.length });
   const config = getTelemetryConfig();
   const finalUserId = userId || config.userId || 'default_user';
-  return telemetryClient.logCustomEvent(finalUserId, eventType, eventData, sessionId);
+  return telemetryClient.logNodeOutputView(finalUserId, sessionId, nodeId, outputValue, nodeType);
 }; 

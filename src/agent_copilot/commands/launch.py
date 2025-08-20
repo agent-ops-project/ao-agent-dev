@@ -3,7 +3,7 @@ import yaml
 from argparse import ArgumentParser, REMAINDER
 from common.constants import ACO_CONFIG, ACO_PROJECT_ROOT
 from agent_copilot.develop_shim import DevelopShim
-from telemetry.snapshots import get_user_id
+
 from common.logger import logger
 
 

@@ -7,8 +7,6 @@ import os
 from common.logger import logger
 from workflow_edits.cache_manager import CACHE
 from common.utils import send_to_server, send_to_server_and_receive
-from telemetry.user_actions import log_user_actions
-from telemetry.snapshots import get_user_id
 
 
 # Store the current session_id and connections
@@ -78,24 +76,6 @@ def aco_launch(run_name="Workflow run"):
     session_id = response["session_id"]
     current_session_id.set(session_id)
 
-    # Log subrun start event
-    try:
-        user_id = get_user_id()
-        log_user_actions(
-            user_id=user_id,
-            session_id=session_id,
-            event_type="subrun_start",
-            event_data={
-                "run_name": run_name,
-                "parent_session_id": parent_session_id,
-                "prev_session_id": prev_session_id,
-                "cwd": parent_env["cwd"],
-                "command": parent_env["command"],
-            },
-        )
-    except Exception as e:
-        logger.debug(f"Failed to log subrun start telemetry: {e}")
-
     try:
         # Run user code
         yield run_name
@@ -113,25 +93,13 @@ def log(entry=None, success=None):
         raise TypeError(f"`success` must be a boolean or None, got {type(success).__name__}")
 
     # Send to server.
-    shim_sock = socket.create_connection(("127.0.0.1", 5959))
-    shim_file = shim_sock.makefile("rw")
-    session_id = get_session_id()
-    handshake = {
-        "type": "hello",
-        "role": "shim-control",
-        "name": "hello",
-        "parent_session_id": parent_session_id,
-        "cwd": "example_workflows/debug_examples",
-        "command": "develop openai_add_numbers.py",
-        "environment": {},
-        "prev_session_id": None,
-    }
-    shim_file.write(json.dumps(handshake) + "\n")
-    shim_file.flush()
-    msg = {"type": "log", "session_id": session_id, "success": success, "entry": entry}
-    shim_file.write(json.dumps(msg) + "\n")
-    shim_file.flush()
-    shim_sock.close()
+    server_file.write(
+        json.dumps(
+            {"type": "log", "session_id": get_session_id(), "success": success, "entry": entry}
+        )
+        + "\n"
+    )
+    server_file.flush()
 
 
 def get_session_id():
