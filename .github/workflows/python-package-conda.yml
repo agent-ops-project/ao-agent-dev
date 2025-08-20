@@ -1,4 +1,4 @@
-name: Python Package using Conda
+name: Pytest
 
 on: [push]
 
@@ -26,7 +26,13 @@ jobs:
         conda install flake8
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    - name: Launch shim server
+      run: |
+        aco-server start
     - name: Test with pytest
       run: |
         python -m pytest tests -v
         python -m pytest runtime_tracing/tests/unit -v
+    - name: Clean up shim server
+      run: |
+        aco-server stop
