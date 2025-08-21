@@ -85,7 +85,7 @@ def _set_input_openai_responses_create(prev_input_pickle: bytes, new_input_text:
     return dill.dumps(input_obj)
 
 
-def _get_output_openai_responses_create(response_obj: bytes):
+def _get_output_openai_responses_create(response_obj: bytes) -> str:
     return response_obj.output[-1].content[-1].text
 
 
@@ -258,11 +258,65 @@ def _get_model_vertex_client_models_generate_content(input_obj: any) -> str:
 
 
 # ===============================================
+# together.resources.chat.completions.ChatCompletions.create
+# ===============================================
+
+
+def _get_input_together_resources_chat_completions_ChatCompletions_create(
+    input_obj: any,
+) -> tuple[str, list]:
+    """Extract input text and attachments from Together chat completions input."""
+    messages = input_obj.get("messages", [])
+    if not messages:
+        return "", []
+
+    # Get the first message as the primary input
+    first_message = messages[0]
+    content = first_message.get("content", "")
+
+    # For now, no attachment support in chat completions
+    return content, []
+
+
+def _set_input_together_resources_chat_completions_ChatCompletions_create(
+    prev_input_pickle: bytes, new_input_text: str
+) -> bytes:
+    """Set new input text in Together chat completions input."""
+    input_obj = dill.loads(prev_input_pickle)
+    input_obj["messages"][0]["content"] = new_input_text
+    return dill.dumps(input_obj)
+
+
+def _get_output_together_resources_chat_completions_ChatCompletions_create(
+    response_obj: bytes,
+) -> str:
+    """Extract output text from Together chat completions response."""
+    import json
+
+    response = json.loads(response_obj)
+    return response["choices"][0]["message"]["content"]
+
+
+def _set_output_together_resources_chat_completions_ChatCompletions_create(
+    prev_input_pickle: bytes, new_output_text: str
+) -> bytes:
+    """Set new output text in Together chat completions response."""
+    response_obj = dill.loads(prev_input_pickle)
+    response_obj.choices[0].message.content = new_output_text
+    return dill.dumps(response_obj)
+
+
+def _get_model_together_resources_chat_completions_ChatCompletions_create(input_obj: any) -> str:
+    """Extract model name from Together chat completions input."""
+    return input_obj.get("model", "unknown")
+
+
+# ===============================================
 # API onject helpers
 # ===============================================
 
 
-def get_input(input_obj: any, api_type: str) -> str:
+def get_input_string(input_obj: any, api_type: str) -> str:
     if api_type == "OpenAI.chat.completions.create":
         return _get_input_openai_chat_completions_create(input_obj)
     elif api_type == "AsyncOpenAI.chat.completions.create":
@@ -277,6 +331,8 @@ def get_input(input_obj: any, api_type: str) -> str:
         return _get_input_vertex_client_models_generate_content(input_obj)
     elif api_type == "OpenAI.beta.threads.create":
         return _get_input_openai_beta_threads_create(input_obj)
+    elif api_type == "together.resources.chat.completions.ChatCompletions.create":
+        return _get_input_together_resources_chat_completions_ChatCompletions_create(input_obj)
     else:
         raise ValueError(f"Unknown API type {api_type}")
 
@@ -297,6 +353,10 @@ def set_input_string(prev_input_pickle: bytes, new_input_text: str, api_type):
         return _set_input_vertex_client_models_generate_content(prev_input_pickle, new_input_text)
     elif api_type == "OpenAI.beta.threads.create":
         return _set_input_openai_beta_threads_create(prev_input_pickle, new_input_text)
+    elif api_type == "together.resources.chat.completions.ChatCompletions.create":
+        return _set_input_together_resources_chat_completions_ChatCompletions_create(
+            prev_input_pickle, new_input_text
+        )
     else:
         raise ValueError(f"Unknown API type {api_type}")
 
@@ -316,6 +376,10 @@ def get_output_string(response_pickle: bytes, api_type: str) -> str:
         return _get_output_vertex_client_models_generate_content(response_pickle)
     elif api_type == "OpenAI.beta.threads.create":
         return _get_output_openai_beta_threads_create(response_pickle)
+    elif api_type == "together.resources.chat.completions.ChatCompletions.create":
+        return _get_output_together_resources_chat_completions_ChatCompletions_create(
+            response_pickle
+        )
     else:
         raise ValueError(f"Unknown API type {api_type}")
 
@@ -337,6 +401,10 @@ def set_output_string(prev_output_pickle: bytes, new_output_text: str, api_type)
         )
     elif api_type == "OpenAI.beta.threads.create":
         return _get_output_openai_beta_threads_create(prev_output_pickle, new_output_text)
+    elif api_type == "together.resources.chat.completions.ChatCompletions.create":
+        return _set_output_together_resources_chat_completions_ChatCompletions_create(
+            prev_output_pickle, new_output_text
+        )
     else:
         raise ValueError(f"Unknown API type {api_type}")
 
@@ -356,5 +424,7 @@ def get_model_name(input_obj: bytes, api_type: str) -> str:
         return _get_model_vertex_client_models_generate_content(input_obj)
     elif api_type == "OpenAI.beta.threads.create":
         return _get_model_openai_beta_threads_create(input_obj)
+    elif api_type == "together.resources.chat.completions.ChatCompletions.create":
+        return _get_model_together_resources_chat_completions_ChatCompletions_create(input_obj)
     else:
         raise ValueError(f"Unknown API type {api_type}")

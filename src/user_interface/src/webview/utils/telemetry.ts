@@ -140,9 +140,24 @@ export const trackNodeInputView = async (
   userId?: string
 ) => {
   console.log('🎯 trackNodeInputView called:', { nodeId, sessionId, nodeType, userId, valueLength: inputValue.length });
+  console.log('🔍 Window globals check:', {
+    SUPABASE_URL: (window as any).SUPABASE_URL,
+    SUPABASE_ANON_KEY: (window as any).SUPABASE_ANON_KEY ? 'present' : 'missing',
+    USER_ID: (window as any).USER_ID
+  });
+  console.log('🔍 Process env check:', {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY ? 'present' : 'missing',
+    USER_ID: process.env.USER_ID
+  });
+  
   const config = getTelemetryConfig();
+  console.log('🎯 Got config in trackNodeInputView:', config);
   const finalUserId = userId || config.userId || 'default_user';
-  return telemetryClient.logNodeInputView(finalUserId, sessionId, nodeId, inputValue, nodeType);
+  
+  const result = await telemetryClient.logNodeInputView(finalUserId, sessionId, nodeId, inputValue, nodeType);
+  console.log('📝 trackNodeInputView result:', result);
+  return result;
 };
 
 export const trackNodeOutputView = async (
@@ -153,7 +168,22 @@ export const trackNodeOutputView = async (
   userId?: string
 ) => {
   console.log('🎯 trackNodeOutputView called:', { nodeId, sessionId, nodeType, userId, valueLength: outputValue.length });
+  console.log('🔍 Window globals check:', {
+    SUPABASE_URL: (window as any).SUPABASE_URL,
+    SUPABASE_ANON_KEY: (window as any).SUPABASE_ANON_KEY ? 'present' : 'missing',
+    USER_ID: (window as any).USER_ID
+  });
+  console.log('🔍 Process env check:', {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY ? 'present' : 'missing',
+    USER_ID: process.env.USER_ID
+  });
+  
   const config = getTelemetryConfig();
+  console.log('🎯 Got config in trackNodeOutputView:', config);
   const finalUserId = userId || config.userId || 'default_user';
-  return telemetryClient.logNodeOutputView(finalUserId, sessionId, nodeId, outputValue, nodeType);
+  
+  const result = await telemetryClient.logNodeOutputView(finalUserId, sessionId, nodeId, outputValue, nodeType);
+  console.log('📝 trackNodeOutputView result:', result);
+  return result;
 }; 

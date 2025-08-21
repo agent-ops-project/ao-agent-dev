@@ -204,5 +204,6 @@ dev = [
     'black==25.1.0',
     'pytest',
     'pre-commit',
-    'responses'
+    'responses',
+    'claude_code_sdk'
 ]
