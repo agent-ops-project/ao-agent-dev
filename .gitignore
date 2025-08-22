@@ -208,3 +208,13 @@ src/static_analysis/CodeQL-Analyst/databases
 # DeepResearch
 **/DeepResearch/logs
 **/DeepResearch/data
+
+# SWE-bench
+**/SWE-bench/data
+**/SWE-bench/logs
+**/SWE-bench/*.jsonl
+**/SWE-bench/*.json
+
+# human-eval
+**/human-eval/data
+**/human-eval/outputs
