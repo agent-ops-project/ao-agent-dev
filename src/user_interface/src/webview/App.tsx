@@ -38,6 +38,11 @@ export const App: React.FC = () => {
       switch (message.type) {
         case "session_id":
           break;
+        case "configUpdate":
+          // Config changed - reinitialize telemetry
+          console.log('Config update received:', message.config);
+          window.dispatchEvent(new CustomEvent('configUpdate', { detail: message.config }));
+          break;
         case "graph_update": {
           const sid = message.session_id;
           const payload = message.payload;         

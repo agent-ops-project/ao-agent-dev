@@ -4,8 +4,6 @@ from argparse import ArgumentParser, REMAINDER
 from common.constants import ACO_CONFIG, ACO_PROJECT_ROOT
 from agent_copilot.develop_shim import DevelopShim
 
-from common.logger import logger
-
 
 def launch_command_parser():
     parser = ArgumentParser(

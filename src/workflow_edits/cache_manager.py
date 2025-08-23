@@ -82,9 +82,6 @@ class CacheManager:
         input_pickle = dill.dumps(input_dict)
         input_hash = db.hash_input(input_pickle)
 
-        print(f"[DEBUG] CacheManager.get_in_out - api_type: {api_type}")
-        print(f"[DEBUG] CacheManager.get_in_out - Original input_dict: {input_dict}")
-
         # Check if API call with same session_id & input has been made before.
         session_id = get_session_id()
         row = db.query_one(
@@ -95,7 +92,6 @@ class CacheManager:
         if row is None:
             # Insert new row with a new node_id.
             node_id = str(uuid.uuid4())
-            print(f"[DEBUG] CacheManager.get_in_out - New call, creating node_id: {node_id}")
             if cache:
                 db.execute(
                     "INSERT INTO llm_calls (session_id, input, input_hash, node_id, api_type) VALUES (?, ?, ?, ?, ?)",
@@ -107,20 +103,10 @@ class CacheManager:
         node_id = row["node_id"]
         output = None
 
-        print(f"[DEBUG] CacheManager.get_in_out - Found existing call with node_id: {node_id}")
-        print(
-            f"[DEBUG] CacheManager.get_in_out - Has input_overwrite: {row['input_overwrite'] is not None}"
-        )
-        print(f"[DEBUG] CacheManager.get_in_out - Has cached output: {row['output'] is not None}")
-
         if row["input_overwrite"] is not None:
             input_dict = dill.loads(row["input_overwrite"])
-            print(f"[DEBUG] CacheManager.get_in_out - Loaded input_overwrite: {input_dict}")
         if row["output"] is not None:
             output = dill.loads(row["output"])
-            print(f"[DEBUG] CacheManager.get_in_out - Loaded cached output: {output}")
-
-        print(f"[DEBUG] CacheManager.get_in_out - Returning input_dict: {input_dict}")
         return input_dict, output, node_id
 
     def cache_output(self, node_id, output_obj):

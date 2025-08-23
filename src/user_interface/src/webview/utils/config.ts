@@ -1,5 +1,6 @@
 // Configuration utilities for telemetry
 export interface TelemetryConfig {
+  collectTelemetry: boolean;
   supabaseUrl: string;
   supabaseKey: string;
   userId: string;
@@ -8,7 +9,7 @@ export interface TelemetryConfig {
 declare const vscode: any;
 
 /**
- * Get telemetry configuration from VS Code extension settings or environment
+ * Get telemetry configuration from config (via window globals set by extension)
  */
 export const getTelemetryConfig = (): Partial<TelemetryConfig> => {
   console.log('🔍 Getting telemetry config...');
@@ -17,6 +18,7 @@ export const getTelemetryConfig = (): Partial<TelemetryConfig> => {
   const config: Partial<TelemetryConfig> = {};
 
   console.log('Window globals:', {
+    collectTelemetry: (window as any).COLLECT_TELEMETRY,
     hasSupabaseUrl: !!(window as any).SUPABASE_URL,
     hasSupabaseKey: !!(window as any).SUPABASE_ANON_KEY,
     hasUserId: !!(window as any).USER_ID,
@@ -24,11 +26,14 @@ export const getTelemetryConfig = (): Partial<TelemetryConfig> => {
     userId: (window as any).USER_ID
   });
 
-  if ((window as any).SUPABASE_URL) {
+  // First check if telemetry collection is enabled
+  config.collectTelemetry = (window as any).COLLECT_TELEMETRY || false;
+
+  if ((window as any).SUPABASE_URL && config.collectTelemetry) {
     config.supabaseUrl = (window as any).SUPABASE_URL;
   }
   
-  if ((window as any).SUPABASE_ANON_KEY) {
+  if ((window as any).SUPABASE_ANON_KEY && config.collectTelemetry) {
     config.supabaseKey = (window as any).SUPABASE_ANON_KEY;
   }
 
@@ -36,23 +41,16 @@ export const getTelemetryConfig = (): Partial<TelemetryConfig> => {
     config.userId = (window as any).USER_ID;
   }
 
-  // Fallback to process.env for development
-  if (!config.supabaseUrl && process.env.SUPABASE_URL) {
-    config.supabaseUrl = process.env.SUPABASE_URL;
-    console.log('📦 Using SUPABASE_URL from process.env');
-  }
-  
-  if (!config.supabaseKey && process.env.SUPABASE_ANON_KEY) {
-    config.supabaseKey = process.env.SUPABASE_ANON_KEY;
-    console.log('📦 Using SUPABASE_ANON_KEY from process.env');
-  }
-
-  if (!config.userId) {
-    config.userId = 'default_user'; // Default fallback
-    console.log('📦 Using default userId');
+  // No fallbacks - if values are missing, log error and disable telemetry
+  if (config.collectTelemetry && (!config.supabaseUrl || !config.supabaseKey || !config.userId)) {
+    console.error('❌ Telemetry enabled but missing required config values. Disabling telemetry.');
+    config.collectTelemetry = false;
+    config.supabaseUrl = undefined;
+    config.supabaseKey = undefined;
   }
 
   console.log('🎯 Final config:', {
+    collectTelemetry: config.collectTelemetry,
     hasUrl: !!config.supabaseUrl,
     hasKey: !!config.supabaseKey,
     userId: config.userId

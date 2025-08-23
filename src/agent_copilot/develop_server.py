@@ -12,7 +12,7 @@ from typing import Optional
 from workflow_edits.edit_manager import EDIT
 from workflow_edits.cache_manager import CACHE
 from common.logger import logger
-from common.constants import HOST, PORT
+from common.constants import ACO_CONFIG, HOST, PORT
 from telemetry.server_logger import log_server_message, log_shim_control_registration
 
 
@@ -210,22 +210,11 @@ class DevelopServer:
         node_id = msg["node_id"]
         new_input = msg["value"]
 
-        print(f"[DEBUG] handle_edit_input - session_id: {session_id}")
-        print(f"[DEBUG] handle_edit_input - node_id: {node_id}")
-        print(f"[DEBUG] handle_edit_input - new_input value: {repr(new_input)}")
-        print(f"[DEBUG] handle_edit_input - new_input type: {type(new_input)}")
-
         EDIT.set_input_overwrite(session_id, node_id, new_input)
         if session_id in self.session_graphs:
             for node in self.session_graphs[session_id]["nodes"]:
                 if node["id"] == node_id:
-                    print(f"[DEBUG] handle_edit_input - Found node in graph with id: {node_id}")
-                    print(f"[DEBUG] handle_edit_input - Node label: {node.get('label', 'Unknown')}")
-                    print(
-                        f"[DEBUG] handle_edit_input - Previous node input: {repr(node.get('input', 'None'))}"
-                    )
                     node["input"] = new_input
-                    print(f"[DEBUG] handle_edit_input - Updated node input to: {repr(new_input)}")
                     break
             self.broadcast_to_all_uis(
                 {
@@ -523,9 +512,11 @@ class DevelopServer:
                 # Always reload finished runs from the DB before sending experiment list
                 self.load_finished_runs()
                 self.ui_connections.add(conn)
-                # Send session_id to this UI connection (None for UI)
+                # Send session_id and config_path to this UI connection (None for UI)
                 self.conn_info[conn] = {"role": role, "session_id": None}
-                send_json(conn, {"type": "session_id", "session_id": None})
+                send_json(
+                    conn, {"type": "session_id", "session_id": None, "config_path": ACO_CONFIG}
+                )
                 # Send experiment_list only to this UI connection
                 self.broadcast_experiment_list_to_uis(conn)
 
