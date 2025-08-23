@@ -77,9 +77,6 @@ def patch_openai_responses_create(responses):
 
         # 2. Get full input dict.
         input_dict = get_input_dict(unbound_function, *args, **kwargs)
-        # Remove 'self' from input_dict as it's not relevant for caching and contains unpicklable objects
-        if "self" in input_dict:
-            del input_dict["self"]
 
         # 3. Get taint origins (did another LLM produce the input?).
         taint_origins = get_taint_origins(input_dict)
@@ -103,9 +100,7 @@ def patch_openai_responses_create(responses):
         return taint_wrap(result, [node_id])
 
     # Install patch.
-    print("[openai_patch] Installing OpenAI.responses.create patch")
     responses.create = patched_function.__get__(responses, Responses)
-    print("[openai_patch] OpenAI.responses.create patch installed successfully")
 
 
 def patch_openai_chat_completions_create(completions):
