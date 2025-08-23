@@ -1,11 +1,9 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import * as path from 'path';
-import * as yaml from 'js-yaml';
-import * as os from 'os';
 import { EditDialogProvider } from './EditDialogProvider';
 import { NotesLogTabProvider } from './NotesLogTabProvider';
 import { PythonServerClient } from './PythonServerClient';
+import { configManager } from './ConfigManager';
 
 export class GraphViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'graphExtension.graphView';
@@ -14,86 +12,14 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     private _notesLogTabProvider?: NotesLogTabProvider;
     private _pendingMessages: any[] = [];
     private _pythonClient: PythonServerClient | null = null;
-    private _configWatcher?: fs.StatWatcher;
-    private _configPath?: string;
     // The Python server connection is deferred until the webview sends 'ready'.
     // Buffering is needed to ensure no messages are lost if the server sends messages before the webview is ready.
 
     constructor(private readonly _extensionUri: vscode.Uri) {
         // Set up Python server message forwarding with buffering
         // Removed _pendingEdit
-        // Config file watcher will be set up after Python server handshake provides config_path
     }
 
-    private setupConfigWatcherWithPath(configPath: string): void {
-        try {
-            // Clean up existing watcher if any
-            if (this._configWatcher) {
-                fs.unwatchFile(configPath);
-                this._configWatcher = undefined;
-            }
-            
-            // Watch for changes to the config file
-            this._configWatcher = fs.watchFile(configPath, (current, previous) => {
-                if (current.mtime !== previous.mtime) {
-                    console.log('Config file changed, refreshing webview...');
-                    this.refreshWebviewConfig();
-                }
-            });
-        } catch (error) {
-            console.warn('Failed to set up config watcher:', error);
-        }
-    }
-
-    private refreshWebviewConfig(): void {
-        if (!this._configPath || !this._view) {
-            return;
-        }
-        
-        // Read current config values
-        const config = this.getConfigValuesFromPath(this._configPath);
-        
-        // Send config update to webview
-        this._view.webview.postMessage({
-            type: 'configUpdate',
-            config: config
-        });
-    }
-
-    private getConfigValuesFromPath(configPath: string): { collectTelemetry: boolean; telemetryUrl: string | null; telemetryKey: string | null; userId: string } {
-        try {
-            if (fs.existsSync(configPath)) {
-                const configData = yaml.load(fs.readFileSync(configPath, 'utf8')) as any;
-                return {
-                    collectTelemetry: configData?.collect_telemetry || false,
-                    telemetryUrl: configData?.telemetry_url || null,
-                    telemetryKey: configData?.telemetry_key || null,
-                    userId: configData?.user_id || 'default_user'
-                };
-            }
-        } catch (error) {
-            console.warn('Failed to read config from path:', configPath, error);
-        }
-
-        // This shouldn't happen since Python server ensures config exists
-        throw new Error(`Config file not found at: ${configPath}`);
-    }
-
-    private getConfigValues(): { collectTelemetry: boolean; telemetryUrl: string | null; telemetryKey: string | null; userId: string } {
-        // Use config path from handshake if available, otherwise this is called before handshake
-        if (this._configPath) {
-            return this.getConfigValuesFromPath(this._configPath);
-        }
-        
-        // This shouldn't be called before handshake, but provide fallback
-        console.warn('getConfigValues called before config_path received from Python server');
-        return {
-            collectTelemetry: false,
-            telemetryUrl: null,
-            telemetryKey: null,
-            userId: 'default_user'
-        };
-    }
 
     public setNotesLogTabProvider(provider: NotesLogTabProvider): void {
         this._notesLogTabProvider = provider;
@@ -213,12 +139,19 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                         this._pythonClient = PythonServerClient.getInstance();
                         // Forward all messages from the Python server to the webview, buffer if not ready
                         this._pythonClient.onMessage((msg) => {
-                            // Intercept session_id message to get config_path
+                            // Intercept session_id message to set up config management
                             if (msg.type === 'session_id' && msg.config_path) {
-                                this._configPath = msg.config_path;
-                                this.setupConfigWatcherWithPath(msg.config_path);
-                                // Initial config read and send to webview
-                                this.refreshWebviewConfig();
+                                configManager.setConfigPath(msg.config_path);
+                                
+                                // Set up config forwarding to webview
+                                configManager.onConfigChange((config) => {
+                                    if (this._view) {
+                                        this._view.webview.postMessage({
+                                            type: 'configUpdate',
+                                            detail: config
+                                        });
+                                    }
+                                });
                             }
                             
                             if (this._view) {
@@ -276,7 +209,6 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
-        const fs = require('fs');
         const path = require('path');
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview.js'));
         const templatePath = path.join(
@@ -288,19 +220,24 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
         );
         let html = fs.readFileSync(templatePath, 'utf8');
         
-        // Get telemetry configuration from config
-        const { collectTelemetry, telemetryUrl, telemetryKey, userId } = this.getConfigValues();
-        
-        // Inject telemetry configuration
-        const telemetryConfig = `
-            window.COLLECT_TELEMETRY = ${collectTelemetry};
-            window.SUPABASE_URL = ${telemetryUrl && collectTelemetry ? `"${telemetryUrl}"` : 'undefined'};
-            window.SUPABASE_ANON_KEY = ${telemetryKey && collectTelemetry ? `"${telemetryKey}"` : 'undefined'};
-            window.USER_ID = "${userId}";
+        // Set up ConfigManager bridge to webview
+        const configBridge = `
+            window.configManager = {
+                currentConfig: null,
+                onConfigChange: function(callback) {
+                    window.addEventListener('configUpdate', function(event) {
+                        window.configManager.currentConfig = event.detail;
+                        callback(event.detail);
+                    });
+                },
+                getCurrentConfig: function() {
+                    return window.configManager.currentConfig;
+                }
+            };
         `;
         
         html = html.replace('const vscode = acquireVsCodeApi();', 
-            `${telemetryConfig}\n        const vscode = acquireVsCodeApi();`);
+            `${configBridge}\n        const vscode = acquireVsCodeApi();`);
         html = html.replace(/{{scriptUri}}/g, scriptUri.toString());
         return html;
     }
@@ -318,10 +255,6 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     public dispose(): void {
-        // Clean up config file watcher
-        if (this._configWatcher && this._configPath) {
-            fs.unwatchFile(this._configPath);
-            this._configWatcher = undefined;
-        }
+        // Clean up is handled by ConfigManager
     }
 }

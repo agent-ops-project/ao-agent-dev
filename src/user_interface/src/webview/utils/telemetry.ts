@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { getTelemetryConfig } from './config';
+import { Config } from '../../providers/ConfigManager';
 
 interface TelemetryEvent {
   user_id: string;
@@ -14,8 +14,8 @@ class TelemetryClient {
   private initialized = false;
 
   private constructor() {
-    // Listen for config updates
-    this.setupConfigListener();
+    // Set up config integration - will be initialized when config becomes available
+    this.setupConfigIntegration();
   }
 
   public static getInstance(): TelemetryClient {
@@ -25,25 +25,20 @@ class TelemetryClient {
     return TelemetryClient.instance;
   }
 
-  private initialize(providedConfig?: any): void {
-    if (this.initialized) return;
+  private initializeWithConfig(config: Config): void {
+    if (this.initialized) {
+      // Reset for reinitialization
+      this.initialized = false;
+      this.client = null;
+    }
 
     console.log('🔧 Initializing telemetry client...');
-
-    // Use provided config if available, otherwise get from config utility
-    const config = providedConfig ? {
-      collectTelemetry: providedConfig.collectTelemetry,
-      supabaseUrl: providedConfig.telemetryUrl,
-      supabaseKey: providedConfig.telemetryKey,
-      userId: providedConfig.userId
-    } : getTelemetryConfig();
-    
     console.log('📋 Telemetry config:', {
       collectTelemetry: config.collectTelemetry,
-      hasUrl: !!config.supabaseUrl,
-      hasKey: !!config.supabaseKey,
+      hasUrl: !!config.telemetryUrl,
+      hasKey: !!config.telemetryKey,
       userId: config.userId,
-      urlPrefix: config.supabaseUrl?.substring(0, 30) + '...'
+      urlPrefix: config.telemetryUrl?.substring(0, 30) + '...'
     });
 
     if (!config.collectTelemetry) {
@@ -52,14 +47,14 @@ class TelemetryClient {
       return;
     }
 
-    if (!config.supabaseUrl || !config.supabaseKey) {
+    if (!config.telemetryUrl || !config.telemetryKey) {
       console.warn('❌ Telemetry enabled but credentials not found. Telemetry will be disabled.');
       this.initialized = true;
       return;
     }
 
     try {
-      this.client = createClient(config.supabaseUrl, config.supabaseKey);
+      this.client = createClient(config.telemetryUrl, config.telemetryKey);
       console.log('✅ Telemetry client initialized successfully');
     } catch (error) {
       console.error('❌ Failed to initialize telemetry client:', error);
@@ -69,9 +64,8 @@ class TelemetryClient {
   }
 
   public isAvailable(): boolean {
-    if (!this.initialized) {
-      this.initialize();
-    }
+    // With ConfigManager approach, we don't initialize on-demand
+    // Client will be initialized when config becomes available
     return this.client !== null;
   }
 
@@ -142,22 +136,19 @@ class TelemetryClient {
     });
   }
 
-  private setupConfigListener(): void {
-    window.addEventListener('configUpdate', (event: Event) => {
-      console.log('🔄 Config update received in telemetry client, reinitializing...');
-      const customEvent = event as CustomEvent;
-      console.log('New config details:', customEvent.detail);
-      this.reinitialize(customEvent.detail);
-    });
-  }
-
-  private reinitialize(newConfig?: any): void {
-    // Reset initialization state
-    this.initialized = false;
-    this.client = null;
-    
-    // Initialize again with new config (if provided) or read from globals
-    this.initialize(newConfig);
+  private setupConfigIntegration(): void {
+    // In webview context, we need to wait for ConfigManager to be available
+    // This will be set up when the extension initializes ConfigManager
+    if (typeof window !== 'undefined' && (window as any).configManager) {
+      const configManager = (window as any).configManager;
+      configManager.onConfigChange((config: Config) => {
+        console.log('🔄 Config update received in telemetry client, reinitializing...');
+        this.initializeWithConfig(config);
+      });
+    } else {
+      // ConfigManager not available yet, try again later
+      setTimeout(() => this.setupConfigIntegration(), 100);
+    }
   }
 }
 
@@ -173,8 +164,9 @@ export const trackNodeInputView = async (
   userId?: string
 ) => {
   console.log('🎯 trackNodeInputView called:', { nodeId, sessionId, nodeType, userId, valueLength: inputValue.length });
-  const config = getTelemetryConfig();
-  const finalUserId = userId || config.userId || 'default_user';
+  const configManager = (window as any).configManager;
+  const config = configManager?.getCurrentConfig();
+  const finalUserId = userId || config?.userId || 'default_user';
   return telemetryClient.logNodeInputView(finalUserId, sessionId, nodeId, inputValue, nodeType);
 };
 
@@ -186,7 +178,8 @@ export const trackNodeOutputView = async (
   userId?: string
 ) => {
   console.log('🎯 trackNodeOutputView called:', { nodeId, sessionId, nodeType, userId, valueLength: outputValue.length });
-  const config = getTelemetryConfig();
-  const finalUserId = userId || config.userId || 'default_user';
+  const configManager = (window as any).configManager;
+  const config = configManager?.getCurrentConfig();
+  const finalUserId = userId || config?.userId || 'default_user';
   return telemetryClient.logNodeOutputView(finalUserId, sessionId, nodeId, outputValue, nodeType);
 }; 

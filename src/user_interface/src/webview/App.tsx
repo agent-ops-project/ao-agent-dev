@@ -39,9 +39,9 @@ export const App: React.FC = () => {
         case "session_id":
           break;
         case "configUpdate":
-          // Config changed - reinitialize telemetry
-          console.log('Config update received:', message.config);
-          window.dispatchEvent(new CustomEvent('configUpdate', { detail: message.config }));
+          // Config changed - forward to config bridge
+          console.log('Config update received:', message.detail);
+          window.dispatchEvent(new CustomEvent('configUpdate', { detail: message.detail }));
           break;
         case "graph_update": {
           const sid = message.session_id;
