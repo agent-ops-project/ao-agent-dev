@@ -5,6 +5,7 @@ from common.constants import ACO_ATTACHMENT_CACHE
 from workflow_edits import db
 from common.utils import stream_hash, save_io_stream
 from runtime_tracing.taint_wrappers import untaint_if_needed
+from workflow_edits.utils import cache_format, set_input_string
 
 
 class CacheManager:
@@ -79,8 +80,9 @@ class CacheManager:
 
         # Pickle input object.
         input_dict = untaint_if_needed(input_dict)
+        cacheable_input = cache_format(input_dict, api_type)
 
-        input_pickle = dill.dumps(input_dict)
+        input_pickle = dill.dumps(cacheable_input)
         input_hash = db.hash_input(input_pickle)
         print(f"[cache] Input hash: {input_hash}")
 
@@ -88,7 +90,7 @@ class CacheManager:
         session_id = get_session_id()
         print(f"[cache] Looking up in session: {session_id}, hash: {input_hash}")
         row = db.query_one(
-            "SELECT node_id, input, input_overwrite, output FROM llm_calls WHERE session_id=? AND input_hash=?",
+            "SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=? AND input_hash=?",
             (session_id, input_hash),
         )
         print(f"[cache] Database lookup result: {'FOUND' if row else 'NOT_FOUND'}")
@@ -111,7 +113,10 @@ class CacheManager:
 
         if row["input_overwrite"] is not None:
             print(f"[cache] Using input_overwrite")
-            input_dict = dill.loads(row["input_overwrite"])
+            # input_overwrite = dill.loads(row["input_overwrite"])
+            # input_overwrite = dill.dumps(input_overwrite) # TODO: Tmp, need to refactor the unnecessary dills
+            print("DICT:", row["input_overwrite"])
+            input_dict = set_input_string(input_dict, row["input_overwrite"], api_type)
         if row["output"] is not None:
             print(f"[cache] Found cached output!")
             output = dill.loads(row["output"])
