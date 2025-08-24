@@ -84,20 +84,16 @@ class CacheManager:
 
         input_pickle = dill.dumps(cacheable_input)
         input_hash = db.hash_input(input_pickle)
-        print(f"[cache] Input hash: {input_hash}")
 
         # Check if API call with same session_id & input has been made before.
         session_id = get_session_id()
-        print(f"[cache] Looking up in session: {session_id}, hash: {input_hash}")
         row = db.query_one(
             "SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=? AND input_hash=?",
             (session_id, input_hash),
         )
-        print(f"[cache] Database lookup result: {'FOUND' if row else 'NOT_FOUND'}")
 
         if row is None:
             # Insert new row with a new node_id.
-            print(f"[cache] Row is None, creating new entry")
             node_id = str(uuid.uuid4())
             if cache:
                 db.execute(
@@ -107,24 +103,15 @@ class CacheManager:
             return input_dict, None, node_id
 
         # Use data from previous LLM call.
-        print(f"[cache] Row found! node_id: {row['node_id']}")
         node_id = row["node_id"]
         output = None
 
         if row["input_overwrite"] is not None:
-            print(f"[cache] Using input_overwrite")
             # input_overwrite = dill.loads(row["input_overwrite"])
             # input_overwrite = dill.dumps(input_overwrite) # TODO: Tmp, need to refactor the unnecessary dills
-            print("DICT:", row["input_overwrite"])
             input_dict = set_input_string(input_dict, row["input_overwrite"], api_type)
         if row["output"] is not None:
-            print(f"[cache] Found cached output!")
             output = dill.loads(row["output"])
-        else:
-            print(f"[cache] No cached output found (output column is None)")
-        print(
-            f"[cache] Returning input_dict, output={'FOUND' if output else 'NONE'}, node_id={node_id}"
-        )
         return input_dict, output, node_id
 
     def cache_output(self, node_id, output_obj):
