@@ -33,12 +33,18 @@ Run the below steps in VS Code or Cursor:
 2. Launch explorer window with extension installed by selecting "Run Extension" from the debugger options ([more details](/src/user_interface/README.md)).
 3. Normally use VS Code with our extension installed. E.g., run `aco-launch your_script.py` to use our tool on your code base.
 
-### Dependencies
-The project has python dependencies but also others (for front end). We recommend to use a conda env. After installing conda, run the following in the project root dir:
+### Installation
+If you're starting from a clean sheet, create a blank conda environment and activate it.
+```bash
+conda create -n aco python=3.8 -y && conda activate aco
+```
+
+> [!NOTE]  
+> If you are a developer of this project, jump to the [Development](#development) section for installation instructions.
+
 
 ```bash
-conda env create -f conda-environment.yaml
-conda activate aco
+pip install -e .
 cd src/user_interface && npm install
 ```
 
