@@ -8,24 +8,8 @@ from anthropic.types import Message, TextBlock, Usage
 
 def create_anthropic_input(text):
     return {
-        "max_tokens": 10,
         "messages": [{"role": "user", "content": text}],
         "model": "undefined_model",  # Make sure cache is used.
-        "metadata": ANTHROPIC_NOT_GIVEN,
-        "service_tier": ANTHROPIC_NOT_GIVEN,
-        "stop_sequences": ANTHROPIC_NOT_GIVEN,
-        "stream": ANTHROPIC_NOT_GIVEN,
-        "system": ANTHROPIC_NOT_GIVEN,
-        "temperature": ANTHROPIC_NOT_GIVEN,
-        "thinking": ANTHROPIC_NOT_GIVEN,
-        "tool_choice": ANTHROPIC_NOT_GIVEN,
-        "tools": ANTHROPIC_NOT_GIVEN,
-        "top_k": ANTHROPIC_NOT_GIVEN,
-        "top_p": ANTHROPIC_NOT_GIVEN,
-        "extra_headers": None,
-        "extra_query": None,
-        "extra_body": None,
-        "timeout": ANTHROPIC_NOT_GIVEN,
     }
 
 
@@ -54,27 +38,6 @@ def create_openai_input(text):
     return {
         "input": text,
         "model": "undefined_model",  # Make sure cache is used.
-        "include": OPENAI_NOT_GIVEN,
-        "instructions": OPENAI_NOT_GIVEN,
-        "max_output_tokens": OPENAI_NOT_GIVEN,
-        "metadata": OPENAI_NOT_GIVEN,
-        "parallel_tool_calls": OPENAI_NOT_GIVEN,
-        "previous_response_id": OPENAI_NOT_GIVEN,
-        "reasoning": OPENAI_NOT_GIVEN,
-        "service_tier": OPENAI_NOT_GIVEN,
-        "store": OPENAI_NOT_GIVEN,
-        "stream": OPENAI_NOT_GIVEN,
-        "temperature": 0,
-        "text": OPENAI_NOT_GIVEN,
-        "tool_choice": OPENAI_NOT_GIVEN,
-        "tools": OPENAI_NOT_GIVEN,
-        "top_p": OPENAI_NOT_GIVEN,
-        "truncation": OPENAI_NOT_GIVEN,
-        "user": OPENAI_NOT_GIVEN,
-        "extra_headers": None,
-        "extra_query": None,
-        "extra_body": None,
-        "timeout": OPENAI_NOT_GIVEN,
     }
 
 
@@ -124,10 +87,6 @@ def create_vertexai_input(text):
     return {
         "model": "gemini-2.5-flash",
         "contents": text,
-        "extra_headers": None,
-        "extra_query": None,
-        "extra_body": None,
-        "timeout": OPENAI_NOT_GIVEN,  # Using OpenAI's NOT_GIVEN as placeholder
     }
 
 

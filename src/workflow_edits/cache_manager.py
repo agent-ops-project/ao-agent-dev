@@ -5,6 +5,7 @@ from common.constants import ACO_ATTACHMENT_CACHE
 from workflow_edits import db
 from common.utils import stream_hash, save_io_stream
 from runtime_tracing.taint_wrappers import untaint_if_needed
+from workflow_edits.utils import cache_format, set_input_string
 
 
 class CacheManager:
@@ -74,35 +75,41 @@ class CacheManager:
         # assert all(f is not None for f in file_paths), "All file paths should be non-None"
         return [f for f in file_paths if f is not None]
 
-    def get_in_out(self, input_dict, api_type):
+    def get_in_out(self, input_dict, api_type, cache=True):
         from agent_copilot.context_manager import get_session_id
 
         # Pickle input object.
         input_dict = untaint_if_needed(input_dict)
-        input_pickle = dill.dumps(input_dict)
+        cacheable_input = cache_format(input_dict, api_type)
+
+        input_pickle = dill.dumps(cacheable_input)
         input_hash = db.hash_input(input_pickle)
 
         # Check if API call with same session_id & input has been made before.
         session_id = get_session_id()
         row = db.query_one(
-            "SELECT node_id, input, input_overwrite, output FROM llm_calls WHERE session_id=? AND input_hash=?",
+            "SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=? AND input_hash=?",
             (session_id, input_hash),
         )
 
         if row is None:
             # Insert new row with a new node_id.
             node_id = str(uuid.uuid4())
-            db.execute(
-                "INSERT INTO llm_calls (session_id, input, input_hash, node_id, api_type) VALUES (?, ?, ?, ?, ?)",
-                (session_id, input_pickle, input_hash, node_id, api_type),
-            )
+            if cache:
+                db.execute(
+                    "INSERT INTO llm_calls (session_id, input, input_hash, node_id, api_type) VALUES (?, ?, ?, ?, ?)",
+                    (session_id, input_pickle, input_hash, node_id, api_type),
+                )
             return input_dict, None, node_id
 
         # Use data from previous LLM call.
         node_id = row["node_id"]
         output = None
+
         if row["input_overwrite"] is not None:
-            input_dict = dill.loads(row["input_overwrite"])
+            # input_overwrite = dill.loads(row["input_overwrite"])
+            # input_overwrite = dill.dumps(input_overwrite) # TODO: Tmp, need to refactor the unnecessary dills
+            input_dict = set_input_string(input_dict, row["input_overwrite"], api_type)
         if row["output"] is not None:
             output = dill.loads(row["output"])
         return input_dict, output, node_id
@@ -170,8 +177,11 @@ class CacheManager:
         # TODO: Should we delete the entire DB file + all attachments?
 
     def get_session_name(self, session_id):
-        row = db.query_one("SELECT name FROM experiments WHERE session_id=?", (session_id,))
-        return row["name"]
+        # Get all subrun names for this parent session
+        rows = db.query_all("SELECT name FROM experiments WHERE parent_session_id=?", (session_id,))
+        if not rows:
+            return []  # Return empty list if no subruns found
+        return [row["name"] for row in rows if row["name"] is not None]
 
 
 CACHE = CacheManager()

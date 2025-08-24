@@ -4,9 +4,6 @@ from runtime_tracing.utils import get_input_dict, send_graph_node_and_edges
 from agent_copilot.context_manager import get_session_id
 from workflow_edits.cache_manager import CACHE
 from common.logger import logger
-from workflow_edits.utils import (
-    get_cachable_input_openai_beta_threads_create,
-)
 from runtime_tracing.taint_wrappers import get_taint_origins, taint_wrap
 
 
@@ -16,9 +13,15 @@ from runtime_tracing.taint_wrappers import get_taint_origins, taint_wrap
 
 
 def openai_patch():
+    print("[openai_patch] Starting OpenAI patch application")
     try:
         from openai import OpenAI
+
+        print(
+            f"[openai_patch] OpenAI imported successfully, version: {getattr(__import__('openai'), '__version__', 'unknown')}"
+        )
     except ImportError:
+        print("[openai_patch] OpenAI not installed, skipping OpenAI patches")
         logger.info("OpenAI not installed, skipping OpenAI patches")
         return
 
@@ -26,39 +29,51 @@ def openai_patch():
 
         @wraps(original_init)
         def patched_init(self, *args, **kwargs):
+            print(f"[openai_patch] OpenAI.__init__ called with args={args}, kwargs={kwargs}")
             original_init(self, *args, **kwargs)
+            print("[openai_patch] Original OpenAI.__init__ completed, now applying sub-patches")
             patch_openai_responses_create(self.responses)
             patch_openai_chat_completions_create(self.chat.completions)
             patch_openai_beta_assistants_create(self.beta.assistants)
             patch_openai_beta_threads_create(self.beta.threads)
             patch_openai_beta_threads_runs_create_and_poll(self.beta.threads.runs)
             patch_openai_files_create(self.files)
-            # patch_openai_chat_completions_create(self.)
+            print("[openai_patch] All OpenAI sub-patches applied successfully")
 
         return patched_init
 
+    print("[openai_patch] Patching OpenAI.__init__")
     OpenAI.__init__ = create_patched_init(OpenAI.__init__)
+    print("[openai_patch] OpenAI.__init__ patched successfully")
 
 
 # Patch for OpenAI.responses.create is called patch_openai_responses_create
 def patch_openai_responses_create(responses):
     # Maybe the user doesn't have OpenAI installed.
+    print("[openai_patch] Patching OpenAI.responses.create")
     try:
         from openai.resources.responses import Responses
     except ImportError:
+        print("[openai_patch] Failed to import openai.resources.responses.Responses")
         return
 
     # Original OpenAI.responses.create function
     original_function = responses.create
+    # Get the unbound function for signature inspection to avoid "invalid method signature" error
+    # Use the class function directly as it has the correct signature for inspect.signature()
+    from openai.resources.responses import Responses
+
+    unbound_function = Responses.create
 
     # Patched function (executed instead of OpenAI.responses.create)
     @wraps(original_function)
     def patched_function(*args, **kwargs):
+
         # 1. Set API identifier to fully qualified name of patched function.
         api_type = "OpenAI.responses.create"
 
         # 2. Get full input dict.
-        input_dict = get_input_dict(original_function, *args, **kwargs)
+        input_dict = get_input_dict(unbound_function, *args, **kwargs)
 
         # 3. Get taint origins (did another LLM produce the input?).
         taint_origins = get_taint_origins(input_dict)
@@ -142,6 +157,12 @@ corresponding requests).
 
 
 def patch_openai_files_create(files_resource):
+    # Maybe the user doesn't have OpenAI installed.
+    try:
+        from openai.resources.files import Files
+    except ImportError:
+        return
+
     original_function = files_resource.create
 
     @wraps(original_function)
@@ -179,7 +200,8 @@ def patch_openai_files_create(files_resource):
         taint_origins = get_taint_origins(fileobj)
         return taint_wrap(result, taint_origins)
 
-    files_resource.create = patched_function
+    # Install patch.
+    files_resource.create = patched_function.__get__(files_resource, Files)
 
 
 """
@@ -220,16 +242,11 @@ def patch_openai_beta_threads_create(threads_instance):
         taint_origins = get_taint_origins(input_dict)
 
         # 2. Get input to use and create thread.
-        # We need to cache an input object that does not depend on
-        # dynamically assigned OpenAI ids.
-        cachable_input = get_cachable_input_openai_beta_threads_create(input_dict)
-        input_to_use, _, _ = CACHE.get_in_out(cachable_input, api_type)
-        input_dict["messages"][-1]["content"] = input_to_use["messages"]
-        # FIXME: Overwriting attachments is not supported. Need UI support and
-        # handle caveat that OAI can delete files online (and reassign IDs
-        # different than the cached ones). Therefore below is commented out.
-        # input_dict['messages'][-1]['attachments'] = input_to_use["attachments"]
-        result = original_function(**input_dict)
+        input_to_use, _, _ = CACHE.get_in_out(input_dict, api_type)
+
+        # FIXME: Overwriting attachments is not supported. Also need to
+        # implement in UI.
+        result = original_function(**input_to_use)
 
         # 3. Taint and return.
         return taint_wrap(result, taint_origins)
@@ -259,8 +276,10 @@ def patch_openai_beta_threads_runs_create_and_poll(runs):
         # 1. Get inputs
         # Full input dict (returned dict is ordered).
         input_dict = get_input_dict(original_function, **kwargs)
+
         # Input object with actual thread content (last message). Read-only.
         input_obj = client.beta.threads.messages.list(thread_id=thread_id).data[0]
+
         # Overwrite model to get cached result.
         input_obj.model = model
 
@@ -271,11 +290,12 @@ def patch_openai_beta_threads_runs_create_and_poll(runs):
         # NOTE: Editing attachments is not supported.
         # TODO: Caching inputs and outputs currently not supported.
         # TODO: Output caching.
-        cachable_input = get_cachable_input_openai_beta_threads_create(input_obj)
-        _, _, node_id = CACHE.get_in_out(cachable_input, api_type)
+        _, _, node_id = CACHE.get_in_out(input_obj, api_type, cache=False)
+
         # input_dict = overwrite_input(original_function, **kwargs)
         # input_dict["messages"][-1]["content"] = input_to_use["messages"]
         # input_dict['messages'][-1]['attachments'] = input_to_use["attachments"]
+
         result = original_function(**input_dict)  # Call LLM.
         # CACHE.cache_output(node_id, result)
 
@@ -420,6 +440,7 @@ def patch_async_openai_files_create(files_resource):
         taint_origins = get_taint_origins(fileobj)
         return taint_wrap(result, taint_origins)
 
+    # Install patch.
     files_resource.create = patched_function
 
 
@@ -507,14 +528,13 @@ def patch_async_openai_beta_threads_create(threads_instance):
         # 2. Get input to use and create thread.
         # We need to cache an input object that does not depend on
         # dynamically assigned OpenAI ids.
-        cachable_input = get_cachable_input_openai_beta_threads_create(input_dict)
-        input_to_use, _, _ = CACHE.get_in_out(cachable_input, api_type)
-        input_dict["messages"][-1]["content"] = input_to_use["messages"]
+        input_to_use, _, _ = CACHE.get_in_out(input_dict, api_type)
+
         # FIXME: Overwriting attachments is not supported. Need UI support and
         # handle caveat that OAI can delete files online (and reassign IDs
         # different than the cached ones). Therefore below is commented out.
         # input_dict['messages'][-1]['attachments'] = input_to_use["attachments"]
-        result = await original_function(**input_dict)
+        result = await original_function(**input_to_use)
 
         # 3. Taint and return.
         return taint_wrap(result, taint_origins)
@@ -544,8 +564,10 @@ def patch_async_openai_beta_threads_runs_create_and_poll(runs):
         # 1. Get inputs
         # Full input dict (returned dict is ordered).
         input_dict = get_input_dict(original_function, **kwargs)
+
         # Input object with actual thread content (last message). Read-only.
         input_obj = (await client.beta.threads.messages.list(thread_id=thread_id)).data[0]
+
         # Overwrite model to get cached result.
         input_obj.model = model
 
@@ -556,11 +578,12 @@ def patch_async_openai_beta_threads_runs_create_and_poll(runs):
         # NOTE: Editing attachments is not supported.
         # TODO: Caching inputs and outputs currently not supported.
         # TODO: Output caching.
-        cachable_input = get_cachable_input_openai_beta_threads_create(input_obj)
-        _, _, node_id = CACHE.get_in_out(cachable_input, api_type)
+        _, _, node_id = CACHE.get_in_out(input_dict, api_type)
+
         # input_dict = overwrite_input(original_function, **kwargs)
         # input_dict["messages"][-1]["content"] = input_to_use["messages"]
         # input_dict['messages'][-1]['attachments'] = input_to_use["attachments"]
+
         result = await original_function(**input_dict)  # Call LLM.
         # CACHE.cache_output(node_id, result)
 
