@@ -51,12 +51,12 @@ Open this project in a new window. Select the "Run Extension" option from the de
 ![Setup Extension](media/setup_extension.gif)
 
 ### Try an example
-In the new window, you can now open any project that you are working on. We will run an example from our [examples](./example_workflows/debug_examples/) folder:
+In the new window, you can now open any project that you are working on. We will run an example from our [examples](./example_workflows/debug_examples/) folder. Note that this example depends on the OpenAI API.
 ```bash
 aco-launch ./example_workflows/debug_examples/openai_add_numbers.py
 ```
 
-![Running Example](media/setup_extension.gif)
+![Running Example](media/execute_example.gif)
 
 ### Start and stop server
 Currently, you need to manually start and stop our server. Just do:
@@ -100,11 +100,3 @@ These are the processes running.
 3. UI (red): The red boxes are the UI of the VS Code extension. The UI gets updated by the `develop server`. TODO: The VS Code extension spawns the `develop server` and tears it down. They also exchange a heart beat for failures and unclean VS Code exits.
 
 ![Processes overview](./media/processes.png)
-
-### Keep dependencies up to date
-
-Activate the conda environment whose dependencies you want to export. 
-
-- If you want that any user has to install all of your dependencies, run `python update_dependencies.py`. Your dependencies will be installed upon `pip install -e .` .
-
-- If you're in a dev conda environment (only devs need to install all your dependencies), run `python update_dependencies.py --dev`. Any dependencies which are present in your conda env, but not in the general dependency list, are only installed upon `pip install -e ".[dev]"`.
