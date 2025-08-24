@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional
 from common.logger import logger
 from telemetry.client import supabase_client
 from telemetry.snapshots import get_user_id, store_code_snapshot_background
+from common.constants import COLLECT_TELEMETRY
 
 
 def log_server_message(msg: Dict[str, Any], session_graphs: Dict[str, Any]) -> None:
@@ -14,6 +15,9 @@ def log_server_message(msg: Dict[str, Any], session_graphs: Dict[str, Any]) -> N
         msg: The message dictionary containing type, session_id, and other data
         session_graphs: Dictionary of session_id -> graph_data for accessing current state
     """
+    if not COLLECT_TELEMETRY:
+        return
+
     if not supabase_client.is_available():
         logger.debug("Supabase not available, skipping server message logging")
         return
@@ -224,6 +228,9 @@ def log_shim_control_registration(handshake: Dict[str, Any], session_id: str) ->
         handshake: The handshake dictionary from the shim-control
         session_id: The assigned session ID
     """
+    if not COLLECT_TELEMETRY:
+        return
+
     if not supabase_client.is_available():
         logger.debug("Supabase not available, skipping shim-control registration logging")
         return

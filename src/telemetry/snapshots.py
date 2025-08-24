@@ -6,6 +6,7 @@ import threading
 import base64
 import getpass
 from pathlib import Path
+from common.constants import COLLECT_TELEMETRY
 from common.logger import logger
 from telemetry.client import supabase_client
 from typing import Optional
@@ -53,6 +54,9 @@ def store_code_snapshot(
     user_id: str, project_root: str, user_actions: Optional[str] = None
 ) -> bool:
     """Store a code snapshot synchronously with optional UI event reference."""
+    if not COLLECT_TELEMETRY:
+        return False
+
     if not supabase_client.is_available():
         logger.debug("Supabase not available, skipping code snapshot")
         return False
@@ -92,6 +96,9 @@ async def store_code_snapshot_async(
     user_id: str, project_root: str, user_actions: Optional[str] = None
 ) -> bool:
     """Store a code snapshot asynchronously in a thread pool."""
+    if not COLLECT_TELEMETRY:
+        return False
+
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
         None, store_code_snapshot, user_id, project_root, user_actions
@@ -102,6 +109,8 @@ def store_code_snapshot_background(
     user_id: str, project_root: str, user_actions: Optional[str] = None
 ) -> None:
     """Store a code snapshot in the background using threading."""
+    if not COLLECT_TELEMETRY:
+        return
 
     def _background_task():
         store_code_snapshot(user_id, project_root, user_actions)
@@ -128,53 +137,3 @@ def capture_current_project_snapshot(
 
     user_id = get_user_id()
     return store_code_snapshot(user_id, project_root, user_actions)
-
-
-if __name__ == "__main__":
-    import tempfile
-    import os
-
-    print("Testing code snapshot functionality...")
-
-    # Create a temporary test directory with some files
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Create some test files
-        test_files = {
-            "main.py": "print('hello world')",
-            "README.md": "# Test Project",  # Should be excluded
-            "src/utils.py": "def helper(): pass",
-            "notebook.ipynb": '{"cells": []}',
-            ".env": "SECRET=123",  # Should be excluded
-            "__pycache__/cache.pyc": "cached",  # Should be excluded
-        }
-
-        for file_path, content in test_files.items():
-            full_path = os.path.join(temp_dir, file_path)
-            os.makedirs(os.path.dirname(full_path), exist_ok=True)
-            with open(full_path, "w") as f:
-                f.write(content)
-
-        print(f"Created test project in: {temp_dir}")
-        print("Files created:", list(test_files.keys()))
-
-        # Test zip creation
-        print("\n1. Testing zip creation...")
-        try:
-            zip_data = create_code_zip(temp_dir)
-            print(f"✅ Zip created successfully! Size: {len(zip_data)} bytes")
-        except Exception as e:
-            print(f"❌ Zip creation failed: {e}")
-            exit(1)
-
-        # Test snapshot storage
-        print("\n2. Testing snapshot upload...")
-        success = store_code_snapshot("ferdi", temp_dir)
-        if success:
-            print("✅ Snapshot uploaded successfully!")
-        else:
-            print("❌ Snapshot upload failed (check Supabase connection)")
-
-        # Test background upload
-        print("\n3. Testing background upload...")
-        store_code_snapshot_background("ferdi", temp_dir)
-        print("✅ Background upload started (check logs for completion)")

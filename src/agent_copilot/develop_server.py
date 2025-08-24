@@ -12,7 +12,7 @@ from typing import Optional
 from workflow_edits.edit_manager import EDIT
 from workflow_edits.cache_manager import CACHE
 from common.logger import logger
-from common.constants import HOST, PORT
+from common.constants import ACO_CONFIG, HOST, PORT
 from telemetry.server_logger import log_server_message, log_shim_control_registration
 
 
@@ -512,9 +512,11 @@ class DevelopServer:
                 # Always reload finished runs from the DB before sending experiment list
                 self.load_finished_runs()
                 self.ui_connections.add(conn)
-                # Send session_id to this UI connection (None for UI)
+                # Send session_id and config_path to this UI connection (None for UI)
                 self.conn_info[conn] = {"role": role, "session_id": None}
-                send_json(conn, {"type": "session_id", "session_id": None})
+                send_json(
+                    conn, {"type": "session_id", "session_id": None, "config_path": ACO_CONFIG}
+                )
                 # Send experiment_list only to this UI connection
                 self.broadcast_experiment_list_to_uis(conn)
 
@@ -561,7 +563,7 @@ class DevelopServer:
         """Main server loop: accept clients and spawn handler threads."""
         self.server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_sock.bind((HOST, PORT))
+        self.server_sock.bind((HOST, PORT))  # BUG: OSError: [Errno 48] Address already in use
         self.server_sock.listen()
         logger.info(f"Develop server listening on {HOST}:{PORT}")
 

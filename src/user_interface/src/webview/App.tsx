@@ -38,6 +38,11 @@ export const App: React.FC = () => {
       switch (message.type) {
         case "session_id":
           break;
+        case "configUpdate":
+          // Config changed - forward to config bridge
+          console.log('Config update received:', message.detail);
+          window.dispatchEvent(new CustomEvent('configUpdate', { detail: message.detail }));
+          break;
         case "graph_update": {
           const sid = message.session_id;
           const payload = message.payload;         

@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import { EditDialogProvider } from './EditDialogProvider';
 import { NotesLogTabProvider } from './NotesLogTabProvider';
 import { PythonServerClient } from './PythonServerClient';
+import { configManager } from './ConfigManager';
 
 export class GraphViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'graphExtension.graphView';
@@ -17,6 +19,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
         // Set up Python server message forwarding with buffering
         // Removed _pendingEdit
     }
+
 
     public setNotesLogTabProvider(provider: NotesLogTabProvider): void {
         this._notesLogTabProvider = provider;
@@ -136,6 +139,21 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                         this._pythonClient = PythonServerClient.getInstance();
                         // Forward all messages from the Python server to the webview, buffer if not ready
                         this._pythonClient.onMessage((msg) => {
+                            // Intercept session_id message to set up config management
+                            if (msg.type === 'session_id' && msg.config_path) {
+                                configManager.setConfigPath(msg.config_path);
+                                
+                                // Set up config forwarding to webview
+                                configManager.onConfigChange((config) => {
+                                    if (this._view) {
+                                        this._view.webview.postMessage({
+                                            type: 'configUpdate',
+                                            detail: config
+                                        });
+                                    }
+                                });
+                            }
+                            
                             if (this._view) {
                                 this._view.webview.postMessage(msg);
                             } else {
@@ -191,7 +209,6 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
-        const fs = require('fs');
         const path = require('path');
         const os = require('os');
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview.js'));
@@ -204,67 +221,26 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
         );
         let html = fs.readFileSync(templatePath, 'utf8');
         
-        // Try to read telemetry configuration from global config file
-        let supabaseUrl: string | undefined;
-        let supabaseKey: string | undefined;
-        let userId: string | undefined;
-        
-        try {
-            const configPath = path.join(os.homedir(), '.cache', 'agent-copilot', 'config.yaml');
-            console.log('🔍 Trying to read config from:', configPath);
-            
-            if (fs.existsSync(configPath)) {
-                const configContent = fs.readFileSync(configPath, 'utf8');
-                console.log('📄 Config file content:', configContent);
-                
-                // Simple YAML parsing for our specific format
-                const lines = configContent.split('\n');
-                for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (trimmed.startsWith('SUPABASE_URL:')) {
-                        supabaseUrl = trimmed.split('SUPABASE_URL:')[1].trim();
-                    } else if (trimmed.startsWith('SUPABASE_ANON_KEY:')) {
-                        supabaseKey = trimmed.split('SUPABASE_ANON_KEY:')[1].trim();
-                    } else if (trimmed.startsWith('USER_ID:')) {
-                        userId = trimmed.split('USER_ID:')[1].trim();
-                    }
+        // Set up ConfigManager bridge to webview
+        const configBridge = `
+            window.configManager = {
+                currentConfig: null,
+                onConfigChange: function(callback) {
+                    window.addEventListener('configUpdate', function(event) {
+                        window.configManager.currentConfig = event.detail;
+                        callback(event.detail);
+                    });
+                },
+                getCurrentConfig: function() {
+                    return window.configManager.currentConfig;
                 }
-                console.log('✅ Parsed config from YAML:', {
-                    supabaseUrl: supabaseUrl ? 'present' : 'missing',
-                    supabaseKey: supabaseKey ? 'present' : 'missing',
-                    userId
-                });
-            } else {
-                console.log('❌ Config file not found at:', configPath);
-            }
-        } catch (error) {
-            console.error('❌ Error reading config file:', error);
-        }
-        
-        // Fallback to VS Code settings or environment variables if config file doesn't have the values
-        const config = vscode.workspace.getConfiguration('agent-copilot');
-        supabaseUrl = supabaseUrl || config.get('telemetry.supabaseUrl') || process.env.SUPABASE_URL;
-        supabaseKey = supabaseKey || config.get('telemetry.supabaseKey') || process.env.SUPABASE_ANON_KEY;
-        userId = userId || config.get('telemetry.userId') || process.env.USER_ID || 'default_user';
-        
-        // Debug logging
-        console.log('🔧 GraphViewProvider final telemetry config:', {
-            finalUrl: supabaseUrl ? 'present' : 'missing',
-            finalKey: supabaseKey ? 'present' : 'missing',
-            finalUserId: userId
-        });
-        
-        // Inject telemetry configuration
-        const telemetryConfig = `
-            window.SUPABASE_URL = ${supabaseUrl ? `"${supabaseUrl}"` : 'undefined'};
-            window.SUPABASE_ANON_KEY = ${supabaseKey ? `"${supabaseKey}"` : 'undefined'};
-            window.USER_ID = "${userId}";
+            };
         `;
         
         console.log('🚀 Injecting telemetry config into webview');
         
         html = html.replace('const vscode = acquireVsCodeApi();', 
-            `${telemetryConfig}\n        const vscode = acquireVsCodeApi();`);
+            `${configBridge}\n        const vscode = acquireVsCodeApi();`);
         html = html.replace(/{{scriptUri}}/g, scriptUri.toString());
         return html;
     }
@@ -279,5 +255,9 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
             };
         }
         return { filePath: undefined, line: undefined };
+    }
+
+    public dispose(): void {
+        // Clean up is handled by ConfigManager
     }
 }

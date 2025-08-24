@@ -8,8 +8,8 @@ from common.constants import CERTAINTY_GREEN, CERTAINTY_RED, CERTAINTY_YELLOW
 from common.utils import send_to_server
 from workflow_edits.cache_manager import CACHE
 from common.logger import logger
-from workflow_edits.utils import get_input_string, get_model_name, get_output_string
-from runtime_tracing.taint_wrappers import get_taint_origins, taint_wrap
+from workflow_edits.utils import get_input, get_model_name, get_output_string
+from runtime_tracing.taint_wrappers import get_taint_origins, taint_wrap, untaint_if_needed
 
 
 # ===========================================================
@@ -136,7 +136,10 @@ def get_input_dict(func, *args, **kwargs):
         # Many APIs only accept kwargs
         bound = sig.bind(**kwargs)
     bound.apply_defaults()
-    return bound.arguments
+    input_dict = dict(bound.arguments)
+    if "self" in input_dict:
+        del input_dict["self"]
+    return input_dict
 
 
 def send_graph_node_and_edges(node_id, input_dict, output_obj, source_node_ids, api_type):
@@ -149,12 +152,13 @@ def send_graph_node_and_edges(node_id, input_dict, output_obj, source_node_ids, 
     codeLocation = f"{file_name}:{line_no}"
 
     # Get strings to display in UI.
-    input_string, attachments = get_input_string(input_dict, api_type)
-    output_string = get_output_string(output_obj, api_type)
+    input_string, attachments = get_input(input_dict, api_type)
+    # Untaint the output object before processing to avoid Pydantic validation issues
+    untainted_output_obj = untaint_if_needed(output_obj)
+    output_string = get_output_string(untainted_output_obj, api_type)
     model = get_model_name(input_dict, api_type)
 
     # Send node
-    logger.debug(f"Send add node {get_session_id()}")
     node_msg = {
         "type": "add_node",
         "session_id": get_session_id(),
@@ -171,7 +175,7 @@ def send_graph_node_and_edges(node_id, input_dict, output_obj, source_node_ids, 
         "incoming_edges": source_node_ids,
     }
 
-    # try:
-    send_to_server(node_msg)
-    # except Exception as e:
-    #     logger.error(f"Failed to send add_node: {e}")
+    try:
+        send_to_server(node_msg)
+    except Exception as e:
+        logger.error(f"Failed to send add_node: {e}")
