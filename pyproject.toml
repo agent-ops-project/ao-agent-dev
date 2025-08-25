@@ -12,14 +12,14 @@ packages = ["cli", "common", "runner", "server"]
 
 [project.scripts]
 # Console commands for the agent-copilot package
-aco-launch = "cli.launch:main"
-aco-config = "cli.config:main"
-aco-server = "cli.server:main"
+aco-launch = "cli.aco_launch:main"
+aco-config = "cli.aco_config:main"
+aco-server = "cli.aco_server:main"
 
 # Let's keep them around for now, aco-launch is confusing 
 # when quickly showing the tool.
-develop = "cli.launch:main"
-server = "cli.server:main"
+develop = "cli.aco_launch:main"
+server = "cli.aco_server:main"
 
 [tool.black]
 line-length = 100
