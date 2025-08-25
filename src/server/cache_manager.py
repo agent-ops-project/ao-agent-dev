@@ -6,7 +6,7 @@ from common.constants import ACO_ATTACHMENT_CACHE
 from server import db
 from common.utils import stream_hash, save_io_stream
 from runner.taint_wrappers import untaint_if_needed
-from runner.api_parser import cache_format, set_input_string
+from runner.monkey_patching.api_parser import cache_format, set_input_string
 
 
 class CacheManager:

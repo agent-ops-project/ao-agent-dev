@@ -1,5 +1,5 @@
 from functools import wraps
-from runner.utils import get_input_dict, send_graph_node_and_edges
+from runner.monkey_patching.patching_utils import get_input_dict, send_graph_node_and_edges
 from server.cache_manager import CACHE
 from common.logger import logger
 from runner.taint_wrappers import get_taint_origins, taint_wrap

@@ -35,7 +35,7 @@ install_fstring_rewriter()
 # Connect to server and pply monkey patches if enabled via environment variable.
 from runner.context_manager import set_parent_session_id, set_server_connection
 from common.constants import HOST, PORT, SOCKET_TIMEOUT
-from runner.apply_monkey_patches import apply_all_monkey_patches
+from runner.monkey_patching.apply_monkey_patches import apply_all_monkey_patches
 
 if os.environ.get("AGENT_COPILOT_ENABLE_TRACING"):
     host = os.environ.get("AGENT_COPILOT_SERVER_HOST", HOST)

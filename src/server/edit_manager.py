@@ -9,7 +9,7 @@ from common.constants import (
     SUCCESS_STRING,
 )
 from server import db
-from runner.api_parser import set_output_string
+from runner.monkey_patching.api_parser import set_output_string
 
 
 class EditManager:

@@ -1,12 +1,12 @@
 import importlib
-from runner.utils import (
+from runner.monkey_patching.patching_utils import (
     no_notify_patch,
     notify_server_patch,
 )
 
-from runner.monkey_patches.openai_patches import openai_patch, async_openai_patch
-from runner.monkey_patches.anthropic_patches import anthropic_patch
-from runner.monkey_patches.vertexai_patches import vertexai_patch
+from runner.monkey_patching.patches.openai_patches import openai_patch, async_openai_patch
+from runner.monkey_patching.patches.anthropic_patches import anthropic_patch
+from runner.monkey_patching.patches.vertexai_patches import vertexai_patch
 
 
 def patch_by_path(dotted_path, *, notify=False):

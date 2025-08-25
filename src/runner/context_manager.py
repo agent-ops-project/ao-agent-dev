@@ -1,7 +1,6 @@
 import contextvars
 from contextlib import contextmanager
 import json
-import socket
 import threading
 import os
 from common.logger import logger
@@ -9,13 +8,16 @@ from server.cache_manager import CACHE
 from common.utils import send_to_server, send_to_server_and_receive
 
 
-# Store the current session_id and connections
+# Store the current session_id and connection
+# We use this same connection throughout the process.
+# current_session_id maintains a mapping for thread -> session_id,
+# which is needed as different threads might have different session_ids.
 current_session_id = contextvars.ContextVar("session_id", default=None)
 parent_session_id = None
 server_conn = None
 server_file = None
 
-# Run names that have been used.
+# All names of subruns in the process. Used to ensure run names are unique.
 run_names = None
 
 
@@ -39,8 +41,8 @@ def get_run_name(run_name):
 def aco_launch(run_name="Workflow run"):
     """
     Context manager for launching runs with a specific name.
-    NOTE: We need to rerun all subruns if we use a context manager.
-    Other subruns' expensive calls should be cached though. We also
+    NOTE: Upon rerun of one subrun, we rerun all subruns. Other
+    subruns' expensive calls should be cached though. We also
     hide this somewhat in the UI.
 
     Args:

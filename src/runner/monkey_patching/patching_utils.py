@@ -8,7 +8,7 @@ from common.constants import CERTAINTY_GREEN, CERTAINTY_RED, CERTAINTY_YELLOW
 from common.utils import send_to_server
 from server.cache_manager import CACHE
 from common.logger import logger
-from runner.api_parser import get_input, get_model_name, get_output_string
+from runner.monkey_patching.api_parser import get_input, get_model_name, get_output_string
 from runner.taint_wrappers import untaint_if_needed
 
 
