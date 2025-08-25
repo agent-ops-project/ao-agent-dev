@@ -27,14 +27,16 @@ def vertexai_patch():
 
 
 def patch_client_models_generate_content(models_instance):
-    """
-    Patch the .generate_content method of a Vertex AI models instance to handle caching and edits.
-    """
+    try:
+        from google.genai.models import Models
+    except ImportError:
+        return
+
     original_function = models_instance.generate_content
 
     @wraps(original_function)
-    def patched_function(*args, **kwargs):
-        # 1. API identifier.
+    def patched_function(self, *args, **kwargs):
+        # 1. Set API identifier to fully qualified name of patched function.
         api_type = "vertexai client_models_generate_content"
 
         # 2. Get full input dict.
@@ -45,7 +47,6 @@ def patch_client_models_generate_content(models_instance):
 
         # 4. Get result from cache or call LLM.
         input_to_use, result, node_id = CACHE.get_in_out(input_dict, api_type)
-
         if result is None:
             result = original_function(**input_to_use)
             CACHE.cache_output(node_id, result)
@@ -62,4 +63,5 @@ def patch_client_models_generate_content(models_instance):
         # 6. Taint the output object and return it.
         return taint_wrap(result, [node_id])
 
-    models_instance.generate_content = patched_function
+    # Install patch.
+    models_instance.generate_content = patched_function.__get__(models_instance, Models)
