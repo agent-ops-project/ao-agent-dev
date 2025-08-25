@@ -6,7 +6,7 @@ client before.
 
 import asyncio
 from openai import OpenAI  # TODO: AsyncOpenAI
-from agent_copilot.context_manager import aco_launch
+from runner.context_manager import aco_launch
 
 client = OpenAI()
 model = "gpt-3.5-turbo"

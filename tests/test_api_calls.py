@@ -11,8 +11,8 @@ import pytest
 import os
 import sys
 from pathlib import Path
-from agent_copilot.commands.server import launch_daemon_server
-from agent_copilot.context_manager import set_parent_session_id
+from cli.server import launch_daemon_server
+from runner.context_manager import set_parent_session_id
 from common.constants import ACO_LOG_PATH
 from get_api_objects import (
     create_anthropic_response,
@@ -20,7 +20,7 @@ from get_api_objects import (
     create_openai_response,
     create_anthropic_input,
 )
-from workflow_edits.cache_manager import CACHE
+from server.cache_manager import CACHE
 
 
 # expected_calls = {

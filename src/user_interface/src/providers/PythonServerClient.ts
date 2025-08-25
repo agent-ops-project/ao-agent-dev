@@ -89,7 +89,7 @@ export class PythonServerClient {
     public startServerIfNeeded() {
         // Try to connect, and if connection fails, spawn the server
         // (You can implement a more robust check here)
-        const proc = child_process.spawn('python', ['src/agent_copilot/develop_server.py', 'start'], {
+        const proc = child_process.spawn('python', ['src/server/develop_server.py', 'start'], {
             detached: true,
             stdio: 'ignore'
         });

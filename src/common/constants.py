@@ -1,6 +1,6 @@
 import os
-from agent_copilot.commands.config.utils import Config
-from agent_copilot.commands.config.utils import derive_project_root
+from common.config import Config
+from common.config import derive_project_root
 
 
 # default home directory for configs and temporary/cached files
