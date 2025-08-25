@@ -4,7 +4,7 @@ from unittest.mock import Mock, MagicMock
 from types import SimpleNamespace
 
 from workflow_edits.utils import (
-    get_input_string,
+    get_input,
     set_input_string,
     get_output_string,
     set_output_string,
@@ -29,7 +29,7 @@ class TestWorkflowEditsUtils:
         }
 
         # Test get_input
-        input_text, attachments = get_input_string(input_obj, api_type)
+        input_text, attachments = get_input(input_obj, api_type)
         assert input_text == "Hello world"
         assert attachments == []
 
@@ -39,7 +39,7 @@ class TestWorkflowEditsUtils:
         modified_pickle = set_input_string(input_pickle, new_input_text, api_type)
         modified_obj = dill.loads(modified_pickle)
 
-        modified_input_text, _ = get_input_string(modified_obj, api_type)
+        modified_input_text, _ = get_input(modified_obj, api_type)
         assert modified_input_text == new_input_text
 
         # Test output
@@ -71,7 +71,7 @@ class TestWorkflowEditsUtils:
 
         input_obj = {"model": "gpt-4", "messages": [{"role": "user", "content": "Test async"}]}
 
-        input_text, _ = get_input_string(input_obj, api_type)
+        input_text, _ = get_input(input_obj, api_type)
         assert input_text == "Test async"
 
         input_pickle = dill.dumps(input_obj)
@@ -79,7 +79,7 @@ class TestWorkflowEditsUtils:
         modified_pickle = set_input_string(input_pickle, new_text, api_type)
         modified_obj = dill.loads(modified_pickle)
 
-        modified_input_text, _ = get_input_string(modified_obj, api_type)
+        modified_input_text, _ = get_input(modified_obj, api_type)
         assert modified_input_text == new_text
 
     def test_openai_responses_create(self):
@@ -89,7 +89,7 @@ class TestWorkflowEditsUtils:
         input_obj = {"input": "Test input", "model": "text-davinci-003"}
 
         # Test get_input - note: returns tuple but function signature suggests string
-        input_text, attachments = get_input_string(input_obj, api_type)
+        input_text, attachments = get_input(input_obj, api_type)
         assert input_text == "Test input"
         assert attachments is None
 
@@ -110,7 +110,7 @@ class TestWorkflowEditsUtils:
             "messages": [{"role": "user", "content": "Hello Claude"}],
         }
 
-        input_text, attachments = get_input_string(input_obj, api_type)
+        input_text, attachments = get_input(input_obj, api_type)
         assert input_text == "Hello Claude"
         assert attachments == []
 
@@ -128,7 +128,7 @@ class TestWorkflowEditsUtils:
             ],
         }
 
-        input_text, attachments = get_input_string(input_obj_multimodal, api_type)
+        input_text, attachments = get_input(input_obj_multimodal, api_type)
         assert input_text == "Analyze this document"
         assert len(attachments) == 1
         assert attachments[0] == ("document.pdf", "base64_embedded")
@@ -139,7 +139,7 @@ class TestWorkflowEditsUtils:
         modified_pickle = set_input_string(input_pickle, new_input_text, api_type)
         modified_obj = dill.loads(modified_pickle)
 
-        modified_input_text, _ = get_input_string(modified_obj, api_type)
+        modified_input_text, _ = get_input(modified_obj, api_type)
         assert modified_input_text == new_input_text
 
         # Test output
@@ -165,7 +165,7 @@ class TestWorkflowEditsUtils:
 
         input_obj = {"contents": "Test VertexAI input", "model": "gemini-pro"}
 
-        input_text, attachments = get_input_string(input_obj, api_type)
+        input_text, attachments = get_input(input_obj, api_type)
         assert input_text == "Test VertexAI input"
         assert attachments is None
 
@@ -198,7 +198,7 @@ class TestWorkflowEditsUtils:
         input_obj.attachments = []
         input_obj.model = "gpt-4"
 
-        input_text, attachments = get_input_string(input_obj, api_type)
+        input_text, attachments = get_input(input_obj, api_type)
         assert input_text == "Thread input"
         assert attachments == []
 
@@ -220,7 +220,7 @@ class TestWorkflowEditsUtils:
             "messages": [{"role": "user", "content": "Together input"}],
         }
 
-        input_text, attachments = get_input_string(input_obj, api_type)
+        input_text, attachments = get_input(input_obj, api_type)
         assert input_text == "Together input"
         assert attachments == []
 
@@ -230,7 +230,7 @@ class TestWorkflowEditsUtils:
         modified_pickle = set_input_string(input_pickle, new_input_text, api_type)
         modified_obj = dill.loads(modified_pickle)
 
-        modified_input_text, _ = get_input_string(modified_obj, api_type)
+        modified_input_text, _ = get_input(modified_obj, api_type)
         assert modified_input_text == new_input_text
 
         # Test output - Together returns JSON string
@@ -244,7 +244,7 @@ class TestWorkflowEditsUtils:
         unknown_api_type = "unknown.api.type"
 
         with pytest.raises(ValueError, match="Unknown API type"):
-            get_input_string({}, unknown_api_type)
+            get_input({}, unknown_api_type)
 
         with pytest.raises(ValueError, match="Unknown API type"):
             set_input_string(b"", "test", unknown_api_type)
@@ -291,12 +291,12 @@ class TestWorkflowEditsUtils:
 
         for api_type, input_obj in test_cases:
             # Test input roundtrip
-            original_input = get_input_string(input_obj, api_type)[0]
+            original_input = get_input(input_obj, api_type)[0]
 
             input_pickle = dill.dumps(input_obj)
             new_input = "modified test input"
             modified_pickle = set_input_string(input_pickle, new_input, api_type)
             modified_obj = dill.loads(modified_pickle)
 
-            retrieved_input = get_input_string(modified_obj, api_type)[0]
+            retrieved_input = get_input(modified_obj, api_type)[0]
             assert retrieved_input == new_input, f"Input roundtrip failed for {api_type}"

@@ -20,8 +20,10 @@ run_names = None
 
 
 def get_run_name(run_name):
+    logger.debug(f"Active runs in run_names set: {run_names}")
     # Run names must be unique for a given parent_session_id.
     if run_name not in run_names:
+        run_names.add(run_name)
         return run_name
 
     i = 1
@@ -120,4 +122,4 @@ def set_server_connection(server_connection):
     global server_conn, server_file
     server_conn = server_connection
     server_file = server_connection.makefile("rw")
-    logger.debug(f"set server file {server_conn} {server_file}")
+    logger.debug(f"Set server connection in context_manager")

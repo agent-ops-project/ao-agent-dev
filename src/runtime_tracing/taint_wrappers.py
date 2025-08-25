@@ -787,9 +787,7 @@ class TaintedOpenAIObject:
 
     def __getattr__(self, name):
         value = getattr(self._wrapped, name)
-        print(f"DEBUG: TaintedOpenAIObject.__getattr__({name}) -> {type(value).__name__}: {value}")
         wrapped_value = taint_wrap(value, taint_origin=self._taint_origin)
-        print(f"DEBUG: After wrapping -> {type(wrapped_value).__name__}")
         return wrapped_value
 
     def __getitem__(self, key):

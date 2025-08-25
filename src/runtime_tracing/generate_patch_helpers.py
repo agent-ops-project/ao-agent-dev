@@ -73,7 +73,7 @@ def _set_output_together_resources_chat_completions_ChatCompletions_create(prev_
     return dill.dumps(response_obj)
 ```
 
-Add them to the src/workflow_edits/utils.py file and include them in the case switches of `get_input_string`, `set_input_string`, `get_output_string` and `set_output_string` function respectively.
+Add them to the src/workflow_edits/utils.py file and include them in the case switches of `get_input`, `set_input_string`, `get_output_string` and `set_output_string` function respectively.
 """
 
     options = ClaudeCodeOptions(

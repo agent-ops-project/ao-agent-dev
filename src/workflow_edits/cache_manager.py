@@ -83,9 +83,6 @@ class CacheManager:
         input_dict = untaint_if_needed(input_dict)
         cacheable_input = cache_format(input_dict, api_type)
 
-        print("INPUT TO USE IN_OUT:", input_dict)
-        print("INPUT AFTER CACHEABLE", cacheable_input)
-
         input_pickle = dill.dumps(cacheable_input)
         input_hash = db.hash_input(input_pickle)
 
@@ -97,7 +94,6 @@ class CacheManager:
         )
 
         if row is None:
-            print("ROW IS NONE")
             # Insert new row with a new node_id.
             node_id = str(uuid.uuid4())
             if cache:
@@ -105,23 +101,18 @@ class CacheManager:
                     "INSERT INTO llm_calls (session_id, input, input_hash, node_id, api_type) VALUES (?, ?, ?, ?, ?)",
                     (session_id, input_pickle, input_hash, node_id, api_type),
                 )
-            print("ROW NONE RETURN", input_dict, None, node_id)
             return input_dict, None, node_id
 
         # Use data from previous LLM call.
-        print("ROW IS NOT NONE")
         node_id = row["node_id"]
         output = None
 
         if row["input_overwrite"] is not None:
-            logger.debug("INPUT IS OVERWRITTEN")
             # input_overwrite = dill.loads(row["input_overwrite"])
             # input_overwrite = dill.dumps(input_overwrite) # TODO: Tmp, need to refactor the unnecessary dills
             input_dict = set_input_string(input_dict, row["input_overwrite"], api_type)
         if row["output"] is not None:
-            logger.debug("OUTPUT IS OVERWRITTEN")
             output = dill.loads(row["output"])
-        logger.debug("returned input", input_dict, output, node_id)
         return input_dict, output, node_id
 
     def cache_output(self, node_id, output_obj):
@@ -188,10 +179,10 @@ class CacheManager:
 
     def get_session_name(self, session_id):
         # Get all subrun names for this parent session
-        rows = db.query_all("SELECT name FROM experiments WHERE parent_session_id=?", (session_id,))
-        if not rows:
+        row = db.query_one("SELECT name FROM experiments WHERE session_id=?", (session_id,))
+        if not row:
             return []  # Return empty list if no subruns found
-        return [row["name"] for row in rows if row["name"] is not None]
+        return [row["name"]]
 
 
 CACHE = CacheManager()

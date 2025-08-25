@@ -1,7 +1,6 @@
 from functools import wraps
 from io import BytesIO
 from runtime_tracing.utils import get_input_dict, send_graph_node_and_edges
-from agent_copilot.context_manager import get_session_id
 from workflow_edits.cache_manager import CACHE
 from common.logger import logger
 from runtime_tracing.taint_wrappers import get_taint_origins, taint_wrap
@@ -38,7 +37,6 @@ def openai_patch():
 
 # Patch for OpenAI.responses.create is called patch_openai_responses_create
 def patch_openai_responses_create(responses):
-    # Maybe the user doesn't have OpenAI installed.
     try:
         from openai.resources.responses import Responses
     except ImportError:
@@ -46,21 +44,15 @@ def patch_openai_responses_create(responses):
 
     # Original OpenAI.responses.create function
     original_function = responses.create
-    # Get the unbound function for signature inspection to avoid "invalid method signature" error
-    # Use the class function directly as it has the correct signature for inspect.signature()
-    from openai.resources.responses import Responses
-
-    unbound_function = Responses.create
 
     # Patched function (executed instead of OpenAI.responses.create)
     @wraps(original_function)
-    def patched_function(*args, **kwargs):
-
+    def patched_function(self, *args, **kwargs):
         # 1. Set API identifier to fully qualified name of patched function.
         api_type = "OpenAI.responses.create"
 
         # 2. Get full input dict.
-        input_dict = get_input_dict(unbound_function, *args, **kwargs)
+        input_dict = get_input_dict(original_function, *args, **kwargs)
 
         # 3. Get taint origins (did another LLM produce the input?).
         taint_origins = get_taint_origins(input_dict)
@@ -98,13 +90,11 @@ def patch_openai_chat_completions_create(completions):
 
     # Patched function (executed instead of OpenAI.chat.completions.create)
     @wraps(original_function)
-    def patched_function(*args, **kwargs):
+    def patched_function(self, *args, **kwargs):
         # 1. Set API identifier to fully qualified name of patched function.
         api_type = "OpenAI.chat.completions.create"
 
         # 2. Get full input dict.
-        # "messages" is an iterable over a struct that has three fields: "content", "role",
-        # Optional: "name" --- "name" is an optional name for the participant.
         input_dict = get_input_dict(original_function, *args, **kwargs)
 
         # 3. Get taint origins (did another LLM produce the input?).
@@ -112,12 +102,9 @@ def patch_openai_chat_completions_create(completions):
 
         # 4. Get result from cache or call LLM.
         input_to_use, result, node_id = CACHE.get_in_out(input_dict, api_type)
-        print("result cache", result, "\n")
         if result is None:
-            print("result prev", result, "\n")
             result = original_function(**input_to_use)  # Call LLM.
             CACHE.cache_output(node_id, result)
-            print("result after", result)
 
         # 5. Tell server that this LLM call happened.
         send_graph_node_and_edges(
@@ -140,14 +127,13 @@ Files are uploaded to OpenAI, which returns a reference to them.
 OpenAI keeps them around for ~30 days and deletes them after. Users
 may call files.create only providing a file-like object (no path).
 
-Therefore we allow the user to cache the files he uploads locally
+Therefore, we allow the user to cache the files they upload locally
 (i.e., create copies of the files and associate them with the 
 corresponding requests).
 """
 
 
 def patch_openai_files_create(files_resource):
-    # Maybe the user doesn't have OpenAI installed.
     try:
         from openai.resources.files import Files
     except ImportError:
@@ -156,7 +142,7 @@ def patch_openai_files_create(files_resource):
     original_function = files_resource.create
 
     @wraps(original_function)
-    def patched_function(self, **kwargs):
+    def patched_function(self, *args, **kwargs):
         # Extract file argument
         file_arg = kwargs.get("file")
         if isinstance(file_arg, tuple) and len(file_arg) >= 2:
@@ -180,13 +166,11 @@ def patch_openai_files_create(files_resource):
         fileobj_copy.name = getattr(fileobj, "name", "unknown")
 
         # Call the original method
-        result = original_function(**kwargs)
+        result = original_function(*args, **kwargs)
         # Get file_id from result
         file_id = getattr(result, "id", None)
-        if file_id is None:
-            raise ValueError("OpenAI did not return a file id after file upload.")
         CACHE.cache_file(file_id, file_name, fileobj_copy)
-        # Propagate taint from fileobj if present
+        # Pass on taint from fileobj if present.
         taint_origins = get_taint_origins(fileobj)
         return taint_wrap(result, taint_origins)
 
@@ -206,10 +190,15 @@ TODO: Output overwrites are not supported.
 
 
 def patch_openai_beta_assistants_create(assistants_instance):
+    try:
+        from openai.resources.beta.assistants import Assistants
+    except ImportError:
+        return
+
     original_function = assistants_instance.create
 
     @wraps(original_function)
-    def patched_function(*args, **kwargs):
+    def patched_function(self, *args, **kwargs):
         # Collect taint origins from all args and kwargs
         input_dict = get_input_dict(original_function, *args, **kwargs)
         taint_origins = get_taint_origins(input_dict)
@@ -218,14 +207,19 @@ def patch_openai_beta_assistants_create(assistants_instance):
         # Propagate taint
         return taint_wrap(result, list(taint_origins))
 
-    assistants_instance.create = patched_function
+    assistants_instance.create = patched_function.__get__(assistants_instance, Assistants)
 
 
 def patch_openai_beta_threads_create(threads_instance):
+    try:
+        from openai.resources.beta.threads import Threads
+    except ImportError:
+        return
+
     original_function = threads_instance.create
 
     @wraps(original_function)
-    def patched_function(*args, **kwargs):
+    def patched_function(self, *args, **kwargs):
         api_type = "OpenAI.beta.threads.create"
         # 1. Get taint origins.
         input_dict = get_input_dict(original_function, *args, **kwargs)
@@ -241,14 +235,19 @@ def patch_openai_beta_threads_create(threads_instance):
         # 3. Taint and return.
         return taint_wrap(result, taint_origins)
 
-    threads_instance.create = patched_function
+    threads_instance.create = patched_function.__get__(threads_instance, Threads)
 
 
 def patch_openai_beta_threads_runs_create_and_poll(runs):
+    try:
+        from openai.resources.beta.threads.runs import Runs
+    except ImportError:
+        return
+
     original_function = runs.create_and_poll
 
     @wraps(original_function)
-    def patched_create_and_poll(self, **kwargs):
+    def patched_function(self, *args, **kwargs):
         api_type = "OpenAI.beta.threads.create"
         client = self._client
         thread_id = kwargs.get("thread_id")
@@ -304,7 +303,7 @@ def patch_openai_beta_threads_runs_create_and_poll(runs):
         # 5. Taint the output object and return it.
         return taint_wrap(result, [node_id])
 
-    runs.create_and_poll = patched_create_and_poll.__get__(runs, type(original_function))
+    runs.create_and_poll = patched_function.__get__(runs, Runs)
 
 
 # ===========================================================
@@ -338,7 +337,6 @@ def async_openai_patch():
 
 # Patch for OpenAI.responses.create is called patch_openai_responses_create
 def patch_async_openai_responses_create(responses):
-    # Maybe the user doesn't have OpenAI installed.
     try:
         from openai.resources.responses import AsyncResponses
     except ImportError:
@@ -349,7 +347,7 @@ def patch_async_openai_responses_create(responses):
 
     # Patched function (executed instead of OpenAI.responses.create)
     @wraps(original_function)
-    async def patched_function(*args, **kwargs):
+    async def patched_function(self, *args, **kwargs):
         # 1. Set API identifier to fully qualified name of patched function.
         api_type = "AsyncOpenAI.responses.create"
 
@@ -361,10 +359,8 @@ def patch_async_openai_responses_create(responses):
 
         # 4. Get result from cache or call LLM.
         input_to_use, result, node_id = CACHE.get_in_out(input_dict, api_type)
-        logger.debug(f"INPUT TO USE: {input_to_use}")
         if result is None:
             result = await original_function(**input_to_use)  # Call LLM.
-            print(f"AFTER CALL {result}")
             CACHE.cache_output(node_id, result)
 
         # 5. Tell server that this LLM call happened.
@@ -375,7 +371,6 @@ def patch_async_openai_responses_create(responses):
             source_node_ids=taint_origins,
             api_type=api_type,
         )
-        print("sent node")
 
         # 6. Taint the output object and return it.
         return taint_wrap(result, [node_id])
@@ -396,10 +391,15 @@ corresponding requests).
 
 
 def patch_async_openai_files_create(files_resource):
+    try:
+        from openai.resources.files import AsyncFiles
+    except ImportError:
+        return
+
     original_function = files_resource.create
 
     @wraps(original_function)
-    async def patched_function(self, **kwargs):
+    async def patched_function(self, *args, **kwargs):
         # Extract file argument
         file_arg = kwargs.get("file")
         if isinstance(file_arg, tuple) and len(file_arg) >= 2:
@@ -434,13 +434,12 @@ def patch_async_openai_files_create(files_resource):
         return taint_wrap(result, taint_origins)
 
     # Install patch.
-    files_resource.create = patched_function
+    files_resource.create = patched_function.__get__(files_resource, AsyncFiles)
 
 
 def patch_async_openai_chat_completions_create(completions):
     try:
         from openai.resources.chat.completions import AsyncCompletions
-        from openai.types.chat import ChatCompletionMessageParam
     except ImportError:
         return
 
@@ -449,7 +448,7 @@ def patch_async_openai_chat_completions_create(completions):
 
     # Patched function (executed instead of AsyncOpenAI.chat.completions.create)
     @wraps(original_function)
-    async def patched_function(*args, **kwargs):
+    async def patched_function(self, *args, **kwargs):
         # 1. Set API identifier to fully qualified name of patched function.
         api_type = "AsyncOpenAI.chat.completions.create"
 
@@ -493,10 +492,15 @@ TODO: Output overwrites are not supported.
 
 
 def patch_async_openai_beta_assistants_create(assistants_instance):
+    try:
+        from openai.resources.beta.assistants import AsyncAssistants
+    except ImportError:
+        return
+
     original_function = assistants_instance.create
 
     @wraps(original_function)
-    async def patched_function(*args, **kwargs):
+    async def patched_function(self, *args, **kwargs):
         # Collect taint origins from all args and kwargs
         input_dict = get_input_dict(original_function, *args, **kwargs)
         taint_origins = get_taint_origins(input_dict)
@@ -505,14 +509,19 @@ def patch_async_openai_beta_assistants_create(assistants_instance):
         # Propagate taint
         return taint_wrap(result, list(taint_origins))
 
-    assistants_instance.create = patched_function
+    assistants_instance.create = patched_function.__get__(assistants_instance, AsyncAssistants)
 
 
 def patch_async_openai_beta_threads_create(threads_instance):
+    try:
+        from openai.resources.beta.threads import AsyncThreads
+    except ImportError:
+        return
+
     original_function = threads_instance.create
 
     @wraps(original_function)
-    async def patched_function(*args, **kwargs):
+    async def patched_function(self, *args, **kwargs):
         api_type = "OpenAI.beta.threads.create"
         # 1. Get taint origins.
         input_dict = get_input_dict(original_function, *args, **kwargs)
@@ -532,14 +541,19 @@ def patch_async_openai_beta_threads_create(threads_instance):
         # 3. Taint and return.
         return taint_wrap(result, taint_origins)
 
-    threads_instance.create = patched_function
+    threads_instance.create = patched_function.__get__(threads_instance, AsyncThreads)
 
 
 def patch_async_openai_beta_threads_runs_create_and_poll(runs):
+    try:
+        from openai.resources.beta.threads.runs import AsyncRuns
+    except ImportError:
+        return
+
     original_function = runs.create_and_poll
 
     @wraps(original_function)
-    async def patched_create_and_poll(self, **kwargs):
+    async def patched_function(self, *args, **kwargs):
         api_type = "OpenAI.beta.threads.create"
         client = self._client
         thread_id = kwargs.get("thread_id")
@@ -595,49 +609,4 @@ def patch_async_openai_beta_threads_runs_create_and_poll(runs):
         # 5. Taint the output object and return it.
         return taint_wrap(result, [node_id])
 
-    runs.create_and_poll = patched_create_and_poll.__get__(runs, type(original_function))
-
-
-def patch_async_openai_chat_completions_create(completions):
-    try:
-        from openai.resources.chat.completions import Completions
-    except ImportError:
-        return
-
-    # Original OpenAI.chat.completions.create
-    original_function = completions.create
-
-    # Patched function (executed instead of OpenAI.chat.completions.create)
-    @wraps(original_function)
-    async def patched_function(*args, **kwargs):
-        # 1. Set API identifier to fully qualified name of patched function.
-        api_type = "AsyncOpenAI.chat.completions.create"
-
-        # 2. Get full input dict.
-        # "messages" is an iterable over a struct that has three fields: "content", "role",
-        # Optional: "name" --- "name" is an optional name for the participant.
-        input_dict = get_input_dict(original_function, *args, **kwargs)
-
-        # 3. Get taint origins (did another LLM produce the input?).
-        taint_origins = get_taint_origins(input_dict)
-
-        # 4. Get result from cache or call LLM.
-        input_to_use, result, node_id = CACHE.get_in_out(input_dict, api_type)
-        if result is None:
-            result = await original_function(**input_to_use)  # Call LLM.
-            CACHE.cache_output(node_id, result)
-
-        # 5. Tell server that this LLM call happened.
-        send_graph_node_and_edges(
-            node_id=node_id,
-            input_dict=input_to_use,
-            output_obj=result,
-            source_node_ids=taint_origins,
-            api_type=api_type,
-        )
-
-        # 6. Taint the output object and return it.
-        return taint_wrap(result, [node_id])
-
-    # Install patch.
-    completions.create = patched_function.__get__(completions, Completions)
+    runs.create_and_poll = patched_function.__get__(runs, AsyncRuns)

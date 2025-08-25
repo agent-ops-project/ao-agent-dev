@@ -9,7 +9,7 @@ from common.utils import send_to_server
 from workflow_edits.cache_manager import CACHE
 from common.logger import logger
 from workflow_edits.utils import get_input, get_model_name, get_output_string
-from runtime_tracing.taint_wrappers import get_taint_origins, taint_wrap, untaint_if_needed
+from runtime_tracing.taint_wrappers import untaint_if_needed
 
 
 # ===========================================================
