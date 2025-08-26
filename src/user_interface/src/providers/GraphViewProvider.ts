@@ -210,6 +210,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
     private _getHtmlForWebview(webview: vscode.Webview) {
         const path = require('path');
+        const os = require('os');
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview.js'));
         const templatePath = path.join(
             this._extensionUri.fsPath,
@@ -235,6 +236,8 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                 }
             };
         `;
+        
+        console.log('🚀 Injecting telemetry config into webview');
         
         html = html.replace('const vscode = acquireVsCodeApi();', 
             `${configBridge}\n        const vscode = acquireVsCodeApi();`);

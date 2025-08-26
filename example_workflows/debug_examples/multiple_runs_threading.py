@@ -1,6 +1,6 @@
 import concurrent.futures
 from openai import OpenAI
-from agent_copilot.context_manager import aco_launch
+from runner.context_manager import aco_launch
 
 
 client = OpenAI()

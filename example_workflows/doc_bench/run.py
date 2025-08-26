@@ -4,6 +4,7 @@ import logging
 import os
 import glob
 from openai import OpenAI
+
 try:
     from secret_key import OPENAI_API_KEY
 except:
@@ -13,7 +14,7 @@ from tenacity import (
     stop_after_attempt,
     wait_random_exponential,
 )
-from agent_copilot.context_manager import aco_launch
+from runner.context_manager import aco_launch
 from your_agents_register import your_agents
 
 from your_agent_workflow import your_agent_workflow
@@ -219,7 +220,8 @@ def main():
             "glm4",
             "qwen2.5",
             "ernie4",
-        ] + your_agents,
+        ]
+        + your_agents,
         help="The name of running system.",
     )
     parser.add_argument(

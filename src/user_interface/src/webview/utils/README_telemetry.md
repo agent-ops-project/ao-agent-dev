@@ -44,7 +44,7 @@ The telemetry system gets its configuration from:
 ### Events Tracked
 
 #### 1. Server Messages (Automatic)
-- **Location**: `src/agent_copilot/develop_server.py`
+- **Location**: `src/server/develop_server.py`
 - **Events**: Selective server messages with enhanced data
 - **Implementation**: Single line call to `log_server_message(msg, session_graphs)` in `process_message()`
 - **Special Handling**:
@@ -56,7 +56,7 @@ The telemetry system gets its configuration from:
 - **Ignored**: `get_graph`, `clear`, `add_node`, `shutdown` (not logged)
 
 #### 2. Shim Control Registration (Automatic)
-- **Location**: `src/agent_copilot/develop_server.py`
+- **Location**: `src/server/develop_server.py`
 - **Event**: When user runs `aco-launch script.py` and shim-control registers
 - **Implementation**: `log_shim_control_registration(handshake, session_id)`
 - **Code Snapshots**: Automatically captured on every script launch
