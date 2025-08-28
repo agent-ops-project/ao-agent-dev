@@ -223,7 +223,7 @@ class TaintStr(str):
             else:
                 # key: int
                 if key >= pos.start and key < pos.stop:
-                    updated_positions.append(Position(key, key))
+                    updated_positions.append(Position(0, 1))
         return TaintStr(result, taint_origin=self._taint_origin, random_pos=updated_positions)
 
     def __mod__(self, other):
@@ -339,6 +339,62 @@ class TaintStr(str):
     def title(self, *args, **kwargs):
         return TaintStr(
             str.title(self, *args, **kwargs), self._taint_origin, self._random_positions
+        )
+
+    def center(self, width, fillchar=" "):
+        marked_self = inject_random_marker_str(self)
+        add_chars = len(marked_self) - len(self)
+        result = str.center(marked_self, width + add_chars, fillchar)
+        result, positions = remove_random_marker(result)
+        return TaintStr(result, self._taint_origin, random_pos=positions)
+
+    def ljust(self, width, fillchar=" "):
+        marked_self = inject_random_marker_str(self)
+        add_chars = len(marked_self) - len(self)
+        result = str.ljust(marked_self, width + add_chars, fillchar)
+        result, positions = remove_random_marker(result)
+        return TaintStr(result, self._taint_origin, random_pos=positions)
+
+    def rjust(self, width, fillchar=" "):
+        marked_self = inject_random_marker_str(self)
+        add_chars = len(marked_self) - len(self)
+        result = str.rjust(marked_self, width + add_chars, fillchar)
+        result, positions = remove_random_marker(result)
+        return TaintStr(result, self._taint_origin, random_pos=positions)
+
+    def zfill(self, width):
+        marked_self = inject_random_marker_str(self)
+        add_chars = len(marked_self) - len(self)
+        result = str.zfill(marked_self, width + add_chars)
+        result, positions = remove_random_marker(result)
+        return TaintStr(result, self._taint_origin, random_pos=positions)
+
+    def partition(self, sep):
+        marked_self = inject_random_marker(self, level="char")
+        before, separator, after = str.partition(marked_self, inject_random_marker(sep))
+
+        # Process each part
+        before, before_positions = remove_random_marker(before, level="char")
+        after, after_positions = remove_random_marker(after, level="char")
+
+        return (
+            TaintStr(before, self._taint_origin, random_pos=before_positions),
+            separator,
+            TaintStr(after, self._taint_origin, random_pos=after_positions),
+        )
+
+    def rpartition(self, sep):
+        marked_self = inject_random_marker(self, level="char")
+        before, separator, after = str.rpartition(marked_self, inject_random_marker(sep))
+
+        # Process each part
+        before, before_positions = remove_random_marker(before, level="char")
+        after, after_positions = remove_random_marker(after, level="char")
+
+        return (
+            TaintStr(before, self._taint_origin, random_pos=before_positions),
+            separator,
+            TaintStr(after, self._taint_origin, random_pos=after_positions),
         )
 
     def startswith(self, *args, **kwargs):

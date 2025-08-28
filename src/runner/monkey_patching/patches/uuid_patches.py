@@ -43,6 +43,47 @@ if __name__ == "__main__":
     print("=== Testing Position tracking in UUID patches ===")
     test_uuid = uuid4()
 
+    hex_short = test_uuid.hex[:8]
+    # Test center, ljust, rjust
+    centered = hex_short.center(20, "-")
+    left_just = hex_short.ljust(20, "*")
+    right_just = hex_short.rjust(20, "=")
+
+    for result in [centered, left_just, right_just]:
+        assert isinstance(result, TaintStr)
+        assert len(result) == 20
+        assert len(result._random_positions) == 1
+
+    # Test zfill method
+    zero_filled = hex_short.zfill(20)
+    assert isinstance(zero_filled, TaintStr)
+    assert len(zero_filled) == 20
+    assert zero_filled.startswith("0")
+    assert len(zero_filled._random_positions) == 1
+
+    # Test partition method
+    uuid_str = str(test_uuid)
+    before, sep, after = uuid_str.partition("-")
+    assert isinstance(before, TaintStr)
+    assert isinstance(sep, TaintStr)
+    assert isinstance(after, TaintStr)
+    assert len(before) == 8  # First part of UUID
+    assert sep == "-"
+    assert len(after) > 0  # Remaining part
+    assert len(before._random_positions) == 1
+    assert len(after._random_positions) == 1
+
+    # Test rpartition method
+    before2, sep2, after2 = uuid_str.rpartition("-")
+    assert isinstance(before2, TaintStr)
+    assert isinstance(sep2, TaintStr)
+    assert isinstance(after2, TaintStr)
+    assert sep2 == "-"
+    assert len(after2) == 12  # Last part of UUID
+    assert len(before2._random_positions) == 1
+    assert len(sep2._random_positions) == 1
+    assert len(after2._random_positions) == 1
+
     # Test 1: Basic hex property with Position
     print("\nTest 1 - hex property:")
     uuid_hex = test_uuid.hex
