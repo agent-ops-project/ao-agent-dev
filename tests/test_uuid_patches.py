@@ -188,6 +188,64 @@ class TestUUIDPatches:
         assert formatted._random_positions[0].start == 6
         assert formatted._random_positions[0].stop == 6 + len(hex_result)
 
+    def test_string_formatting_with_fstring(self):
+        """Test string formatting with f-strings."""
+        test_uuid = uuid4()
+        hex_result = test_uuid.hex
+        str_result = str(test_uuid)
+
+        # Test basic f-string
+        f_string_basic = f"UUID: {hex_result}"
+        # F-strings don't currently preserve taint in most implementations
+        # This test documents the current behavior
+        assert isinstance(f_string_basic, str)
+        assert not isinstance(f_string_basic, TaintStr)
+        assert f_string_basic == f"UUID: {str(hex_result)}"
+
+        # Test f-string with multiple UUID values
+        f_string_multi = f"Hex: {hex_result}, String: {str_result}"
+        assert isinstance(f_string_multi, str)
+        assert not isinstance(f_string_multi, TaintStr)
+
+        # Test f-string with expressions
+        f_string_expr = f"UUID length: {len(hex_result)} chars: {hex_result[:8]}..."
+        assert isinstance(f_string_expr, str)
+        assert not isinstance(f_string_expr, TaintStr)
+
+        # Test f-string with format specifications
+        f_string_format = f"UUID: {hex_result!r}"
+        assert isinstance(f_string_format, str)
+        assert not isinstance(f_string_format, TaintStr)
+
+    def test_string_formatting_with_format_method(self):
+        """Test string formatting with .format() method."""
+        test_uuid = uuid4()
+        hex_result = test_uuid.hex
+        str_result = str(test_uuid)
+
+        # Test basic .format()
+        format_basic = "UUID: {}".format(hex_result)
+        # .format() method doesn't currently preserve taint in most implementations
+        # This test documents the current behavior
+        assert isinstance(format_basic, str)
+        assert not isinstance(format_basic, TaintStr)
+        assert format_basic == f"UUID: {str(hex_result)}"
+
+        # Test .format() with positional arguments
+        format_positional = "Hex: {0}, String: {1}".format(hex_result, str_result)
+        assert isinstance(format_positional, str)
+        assert not isinstance(format_positional, TaintStr)
+
+        # Test .format() with named arguments
+        format_named = "Hex: {hex}, String: {string}".format(hex=hex_result, string=str_result)
+        assert isinstance(format_named, str)
+        assert not isinstance(format_named, TaintStr)
+
+        # Test .format() with format specifications
+        format_spec = "UUID: {!r}".format(hex_result)
+        assert isinstance(format_spec, str)
+        assert not isinstance(format_spec, TaintStr)
+
     def test_multiple_uuid_operations(self):
         """Test operations with multiple UUIDs maintain separate position tracking."""
         uuid1 = uuid4()
@@ -292,6 +350,58 @@ class TestUUIDPatches:
             assert isinstance(result, TaintStr)
             assert len(result) == 20
             assert len(result._random_positions) == 1
+
+    def test_string_ljust_method(self):
+        """Test string ljust method preserves position tracking and alignment."""
+        test_uuid = uuid4()
+        hex_short = test_uuid.hex[:8]
+
+        # Test ljust with default fillchar (space)
+        left_just_default = hex_short.ljust(15)
+        assert isinstance(left_just_default, TaintStr)
+        assert len(left_just_default) == 15
+        assert left_just_default.startswith(str(hex_short))  # Original content at start
+        assert left_just_default.endswith(" ")  # Padded with spaces at end
+        assert len(left_just_default._random_positions) == 1
+        # Position should be at the beginning for the original content
+        assert left_just_default._random_positions[0].start == 0
+        assert left_just_default._random_positions[0].stop == 8
+
+        # Test ljust with custom fillchar
+        left_just_custom = hex_short.ljust(12, "*")
+        assert isinstance(left_just_custom, TaintStr)
+        assert len(left_just_custom) == 12
+        assert left_just_custom.startswith(str(hex_short))
+        assert left_just_custom.endswith("*")  # Padded with asterisks
+        assert len(left_just_custom._random_positions) == 1
+        assert left_just_custom._random_positions[0].start == 0
+        assert left_just_custom._random_positions[0].stop == 8
+
+    def test_string_rjust_method(self):
+        """Test string rjust method preserves position tracking and alignment."""
+        test_uuid = uuid4()
+        hex_short = test_uuid.hex[:8]
+
+        # Test rjust with default fillchar (space)
+        right_just_default = hex_short.rjust(15)
+        assert isinstance(right_just_default, TaintStr)
+        assert len(right_just_default) == 15
+        assert right_just_default.endswith(str(hex_short))  # Original content at end
+        assert right_just_default.startswith(" ")  # Padded with spaces at start
+        assert len(right_just_default._random_positions) == 1
+        # Position should be adjusted for the padding
+        assert right_just_default._random_positions[0].start == 7  # 15 - 8 = 7 spaces added
+        assert right_just_default._random_positions[0].stop == 15
+
+        # Test rjust with custom fillchar
+        right_just_custom = hex_short.rjust(12, "=")
+        assert isinstance(right_just_custom, TaintStr)
+        assert len(right_just_custom) == 12
+        assert right_just_custom.endswith(str(hex_short))
+        assert right_just_custom.startswith("=")  # Padded with equals signs
+        assert len(right_just_custom._random_positions) == 1
+        assert right_just_custom._random_positions[0].start == 4  # 12 - 8 = 4 equals added
+        assert right_just_custom._random_positions[0].stop == 12
 
     def test_string_zfill_method(self):
         """Test string zfill method preserves position tracking."""

@@ -161,6 +161,26 @@ class Position:
 
 # Taint-aware str
 class TaintStr(str):
+    """
+    A taint-aware string class that tracks taint origins and random positions.
+
+    TaintStr extends the built-in str class to provide taint tracking capabilities,
+    allowing security analysis tools to track the flow of potentially sensitive
+    or untrusted data through string operations.
+
+    The class maintains two types of tracking information:
+    1. _taint_origin: A list of taint origins that mark where the data came from
+    2. _random_positions: A list of Position objects tracking ranges of characters
+                         that contain random or sensitive data
+
+    All string operations are overridden to preserve taint information through
+    transformations like concatenation, slicing, case changes, formatting, etc.
+
+    Attributes:
+        _taint_origin (list): List of taint origin identifiers
+        _random_positions (list): List of Position objects marking tainted ranges
+    """
+
     def __new__(cls, value, taint_origin=None, random_pos=None):
         obj = str.__new__(cls, value)
         if taint_origin is None:
@@ -342,6 +362,16 @@ class TaintStr(str):
         )
 
     def center(self, width, fillchar=" "):
+        """
+        Return a centered string of specified width with taint tracking preserved.
+
+        Args:
+            width (int): The total width of the resulting string
+            fillchar (str): Character to use for padding (default: space)
+
+        Returns:
+            TaintStr: Centered string with preserved taint information and adjusted positions
+        """
         marked_self = inject_random_marker_str(self)
         add_chars = len(marked_self) - len(self)
         result = str.center(marked_self, width + add_chars, fillchar)
@@ -349,6 +379,16 @@ class TaintStr(str):
         return TaintStr(result, self._taint_origin, random_pos=positions)
 
     def ljust(self, width, fillchar=" "):
+        """
+        Return a left-justified string of specified width with taint tracking preserved.
+
+        Args:
+            width (int): The total width of the resulting string
+            fillchar (str): Character to use for padding (default: space)
+
+        Returns:
+            TaintStr: Left-justified string with preserved taint information and adjusted positions
+        """
         marked_self = inject_random_marker_str(self)
         add_chars = len(marked_self) - len(self)
         result = str.ljust(marked_self, width + add_chars, fillchar)
@@ -356,6 +396,16 @@ class TaintStr(str):
         return TaintStr(result, self._taint_origin, random_pos=positions)
 
     def rjust(self, width, fillchar=" "):
+        """
+        Return a right-justified string of specified width with taint tracking preserved.
+
+        Args:
+            width (int): The total width of the resulting string
+            fillchar (str): Character to use for padding (default: space)
+
+        Returns:
+            TaintStr: Right-justified string with preserved taint information and adjusted positions
+        """
         marked_self = inject_random_marker_str(self)
         add_chars = len(marked_self) - len(self)
         result = str.rjust(marked_self, width + add_chars, fillchar)
@@ -363,6 +413,18 @@ class TaintStr(str):
         return TaintStr(result, self._taint_origin, random_pos=positions)
 
     def zfill(self, width):
+        """
+        Return a zero-padded numeric string of specified width with taint tracking preserved.
+
+        Pads the string with zeros on the left to fill the specified width.
+        For signed strings, the sign is placed before the zeros.
+
+        Args:
+            width (int): The total width of the resulting string
+
+        Returns:
+            TaintStr: Zero-padded string with preserved taint information and adjusted positions
+        """
         marked_self = inject_random_marker_str(self)
         add_chars = len(marked_self) - len(self)
         result = str.zfill(marked_self, width + add_chars)
@@ -370,6 +432,21 @@ class TaintStr(str):
         return TaintStr(result, self._taint_origin, random_pos=positions)
 
     def partition(self, sep):
+        """
+        Partition the string at the first occurrence of the separator with taint tracking preserved.
+
+        Splits the string into three parts: the part before the separator, the separator
+        itself, and the part after the separator. If the separator is not found, returns
+        the original string, an empty separator, and an empty string.
+
+        Args:
+            sep (str): The separator string to search for
+
+        Returns:
+            tuple: Three-element tuple (before, separator, after) where before and after
+                   are TaintStr objects with preserved taint information, and separator
+                   is a regular string
+        """
         marked_self = inject_random_marker(self, level="char")
         before, separator, after = str.partition(marked_self, inject_random_marker(sep))
 
@@ -384,6 +461,21 @@ class TaintStr(str):
         )
 
     def rpartition(self, sep):
+        """
+        Partition the string at the last occurrence of the separator with taint tracking preserved.
+
+        Splits the string into three parts: the part before the separator, the separator
+        itself, and the part after the separator. If the separator is not found, returns
+        an empty string, an empty separator, and the original string.
+
+        Args:
+            sep (str): The separator string to search for
+
+        Returns:
+            tuple: Three-element tuple (before, separator, after) where before and after
+                   are TaintStr objects with preserved taint information, and separator
+                   is a regular string
+        """
         marked_self = inject_random_marker(self, level="char")
         before, separator, after = str.rpartition(marked_self, inject_random_marker(sep))
 
