@@ -1382,6 +1382,7 @@ def inject_random_marker_str(value: str | TaintStr, level: str = "str") -> str |
             else:
                 raise ValueError(f"Unknown level {level}")
             last_end = pos.stop
+        modified_string.append(value[last_end : len(value)])
         value = TaintStr("").join(modified_string)
     return value
 

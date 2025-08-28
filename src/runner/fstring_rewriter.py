@@ -29,12 +29,15 @@ def set_module_to_user_file(module_to_user_file: dict):
 
 
 def taint_fstring_join(*args):
+    # Inject random markers into args to track position information
+    args = inject_random_marker(args)
     result = "".join(str(a) for a in args)
+    result, positions = remove_random_marker(result)
     all_origins = set()
     for a in args:
         all_origins.update(get_taint_origins(a))
-    if all_origins:
-        return TaintStr(result, list(all_origins))
+    if all_origins or positions:
+        return TaintStr(result, list(all_origins), random_pos=positions)
     return result
 
 
@@ -55,9 +58,9 @@ def taint_format_string(format_string, *args, **kwargs):
 
 def taint_percent_format(format_string, values):
     # first we insert markers into the values that mark start/end of a random string
-    values = inject_random_marker(values)
+    marked_values = inject_random_marker(values)
     format_string = inject_random_marker(format_string)
-    result = format_string % values
+    result = format_string % marked_values
     result, positions = remove_random_marker(result)
     all_origins = set(get_taint_origins(format_string))
     if isinstance(values, (tuple, list)):
