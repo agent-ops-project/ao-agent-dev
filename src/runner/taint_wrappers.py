@@ -1050,7 +1050,7 @@ class TaintFile:
     to the file preserves its taint information for future reads.
     """
 
-    def __init__(self, file_obj, mode="r", taint_origin=None):
+    def __init__(self, file_obj, mode="r", taint_origin=None, session_id=None):
         """
         Initialize a TaintFile wrapper.
 
@@ -1058,10 +1058,13 @@ class TaintFile:
             file_obj: The underlying file object to wrap
             mode: The file mode ('r', 'w', 'a', 'rb', 'wb', etc.)
             taint_origin: The taint origin to apply to data read from this file
+            session_id: The current session ID for tracking taint across sessions
         """
         self._file = file_obj
         self._mode = mode
         self._closed = False
+        self._line_no = 0  # Track current line number
+        self._session_id = session_id or self._get_current_session_id()
 
         # Set taint origin
         if taint_origin is None:
@@ -1076,9 +1079,14 @@ class TaintFile:
             self._taint_origin = list(taint_origin)
         else:
             raise TypeError(f"Unsupported taint_origin type: {type(taint_origin)}")
+    
+    def _get_current_session_id(self):
+        """Get the current session ID from environment or context"""
+        import os
+        return os.environ.get("AGENT_COPILOT_SESSION_ID", None)
 
     @classmethod
-    def open(cls, filename, mode="r", taint_origin=None, **kwargs):
+    def open(cls, filename, mode="r", taint_origin=None, session_id=None, **kwargs):
         """
         Open a file with taint tracking.
 
@@ -1086,6 +1094,7 @@ class TaintFile:
             filename: Path to the file
             mode: File mode
             taint_origin: Taint origin for the file (defaults to filename)
+            session_id: The session ID for cross-session tracking
             **kwargs: Additional arguments to pass to open()
 
         Returns:
@@ -1094,7 +1103,7 @@ class TaintFile:
         file_obj = open(filename, mode, **kwargs)
         if taint_origin is None:
             taint_origin = f"file:{filename}"
-        return cls(file_obj, mode, taint_origin)
+        return cls(file_obj, mode, taint_origin, session_id)
 
     def read(self, size=-1):
         """Read from the file and return tainted data."""
@@ -1110,7 +1119,49 @@ class TaintFile:
         line = self._file.readline(size)
         if isinstance(line, bytes):
             return line
+        
+        # Check for existing taint from previous sessions
+        if hasattr(self._file, "name"):
+            try:
+                from server.db import get_taint_info
+                prev_session_id, taint_nodes = get_taint_info(self._file.name, self._line_no)
+                
+                if prev_session_id and prev_session_id != self._session_id:
+                    # Notify about session switch needed
+                    self._notify_session_switch(prev_session_id, taint_nodes)
+                    # Combine existing taint with file taint
+                    combined_taint = list(set(self._taint_origin + taint_nodes))
+                    self._line_no += 1
+                    return TaintStr(line, combined_taint)
+            except Exception as e:
+                # Log but don't fail the read operation
+                import sys
+                print(f"Warning: Could not retrieve taint info: {e}", file=sys.stderr)
+        
+        self._line_no += 1
         return TaintStr(line, self._taint_origin)
+    
+    def _notify_session_switch(self, target_session_id, taint_nodes):
+        """Notify the server that we need to switch to a different session's graph"""
+        try:
+            import socket
+            import json
+            from common.constants import HOST, PORT
+            
+            # Send a message to the develop server to switch session context
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((HOST, PORT))
+                msg = {
+                    "type": "switch_session_for_taint",
+                    "current_session_id": self._session_id,
+                    "target_session_id": target_session_id,
+                    "taint_nodes": taint_nodes,
+                    "file_path": self._file.name if hasattr(self._file, "name") else "unknown"
+                }
+                s.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+        except Exception as e:
+            import sys
+            print(f"Warning: Could not notify session switch: {e}", file=sys.stderr)
 
     def readlines(self, hint=-1):
         """Read lines from the file and return tainted data."""
@@ -1124,15 +1175,46 @@ class TaintFile:
         Write data to the file.
 
         If the data is tainted, the taint information is preserved
-        (though not persisted to disk - that would require a separate metadata system).
+        and stored in the database for cross-session tracking.
         """
         # Extract raw data if tainted
         raw_data = untaint_if_needed(data)
+        
+        # Store taint information in database if we have a session ID and file name
+        if self._session_id and hasattr(self._file, "name"):
+            taint_nodes = get_taint_origins(data)
+            if taint_nodes:
+                # Store taint for the current line being written
+                try:
+                    from server.db import store_taint_info
+                    store_taint_info(self._session_id, self._file.name, self._line_no, taint_nodes)
+                except Exception as e:
+                    # Log but don't fail the write operation
+                    import sys
+                    print(f"Warning: Could not store taint info: {e}", file=sys.stderr)
+                
+                # Increment line number for each newline in the data
+                newline_count = raw_data.count('\n') if isinstance(raw_data, str) else 0
+                self._line_no += max(1, newline_count)
+        
         return self._file.write(raw_data)
 
     def writelines(self, lines):
         """Write multiple lines to the file."""
-        raw_lines = [untaint_if_needed(line) for line in lines]
+        raw_lines = []
+        for line in lines:
+            # Store taint for each line
+            if self._session_id and hasattr(self._file, "name"):
+                taint_nodes = get_taint_origins(line)
+                if taint_nodes:
+                    try:
+                        from server.db import store_taint_info
+                        store_taint_info(self._session_id, self._file.name, self._line_no, taint_nodes)
+                    except Exception as e:
+                        import sys
+                        print(f"Warning: Could not store taint info: {e}", file=sys.stderr)
+            self._line_no += 1
+            raw_lines.append(untaint_if_needed(line))
         return self._file.writelines(raw_lines)
 
     def __iter__(self):
@@ -1231,7 +1313,7 @@ class TaintFile:
         return f"TaintFile({self._file!r}, taint_origin={self._taint_origin})"
 
 
-def open_with_taint(filename, mode="r", taint_origin=None, **kwargs):
+def open_with_taint(filename, mode="r", taint_origin=None, session_id=None, **kwargs):
     """
     Convenience function to open a file with taint tracking.
 
@@ -1243,9 +1325,10 @@ def open_with_taint(filename, mode="r", taint_origin=None, **kwargs):
         filename: Path to the file
         mode: File mode
         taint_origin: Taint origin for the file
+        session_id: The session ID for cross-session tracking
         **kwargs: Additional arguments to pass to open()
 
     Returns:
         TaintFile object
     """
-    return TaintFile.open(filename, mode, taint_origin, **kwargs)
+    return TaintFile.open(filename, mode, taint_origin, session_id, **kwargs)

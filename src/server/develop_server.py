@@ -418,6 +418,48 @@ class DevelopServer:
             {"type": "graph_update", "session_id": None, "payload": {"nodes": [], "edges": []}}
         )
         logger.info("All database records and in-memory state cleared.")
+    
+    def handle_switch_session_for_taint(self, msg: dict) -> None:
+        """Handle session switch when reading from a TaintFile with existing taint"""
+        current_session_id = msg.get("current_session_id")
+        target_session_id = msg.get("target_session_id")
+        taint_nodes = msg.get("taint_nodes", [])
+        file_path = msg.get("file_path", "unknown")
+        
+        logger.debug(f"Switching session context from {current_session_id} to {target_session_id} for file {file_path}")
+        
+        # Load the target session's graph if not already loaded
+        if target_session_id not in self.session_graphs:
+            self.handle_graph_request(None, target_session_id)
+        
+        # Add edges from the current node to the taint nodes in the target session
+        if current_session_id and current_session_id in self.session_graphs:
+            current_graph = self.session_graphs[current_session_id]
+            
+            # Find the most recent node in the current session (the one reading the file)
+            if current_graph["nodes"]:
+                current_node = current_graph["nodes"][-1]
+                
+                # Modify the node to indicate it's reading from a tainted file
+                current_node["label"] = f"{current_node.get('label', 'Node')} (reading {file_path})"
+                
+                # Add edges to the taint nodes from the previous session
+                for taint_node_id in taint_nodes:
+                    edge_id = f"e{taint_node_id}-{current_node['id']}"
+                    edge = {"id": edge_id, "source": taint_node_id, "target": current_node["id"], "cross_session": True}
+                    current_graph["edges"].append(edge)
+                
+                # Update the graph in memory and database
+                EDIT.update_graph_topology(current_session_id, current_graph)
+                
+                # Broadcast the updated graph
+                self.broadcast_to_all_uis(
+                    {
+                        "type": "graph_update",
+                        "session_id": current_session_id,
+                        "payload": current_graph,
+                    }
+                )
 
     # ============================================================
     # Message rounting logic.
@@ -453,6 +495,8 @@ class DevelopServer:
             self.handle_erase(msg)
         elif msg_type == "clear":
             self.handle_clear()
+        elif msg_type == "switch_session_for_taint":
+            self.handle_switch_session_for_taint(msg)
         else:
             logger.error(f"Unknown message type. Message:\n{msg}")
 
