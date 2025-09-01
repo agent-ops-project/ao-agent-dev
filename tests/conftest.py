@@ -6,14 +6,13 @@ import os
 import re
 import pytest
 import responses
-from forbiddenfruit import curse
 from common.utils import scan_user_py_files_and_modules
 from runner.fstring_rewriter import (
     install_fstring_rewriter,
     set_user_py_files,
     set_module_to_user_file,
 )
-from runner import BUILT_IN_OVERRIDES
+from runner.monkey_patching.apply_monkey_patches import apply_all_monkey_patches
 
 # Set dummy API keys globally
 os.environ.setdefault("OPENAI_API_KEY", "sk-test-dummy-key")
@@ -59,9 +58,8 @@ def pytest_configure(config):
     set_module_to_user_file(module_to_file)
     install_fstring_rewriter()
 
-    for override_tuple in BUILT_IN_OVERRIDES:
-        klass, attribute, value = override_tuple
-        curse(klass, attribute, value)
+    # apply the monkey patches
+    apply_all_monkey_patches()
 
 
 @pytest.fixture
