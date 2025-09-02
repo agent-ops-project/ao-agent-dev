@@ -1694,6 +1694,9 @@ def taint_wrap(obj, taint_origin=None, _seen=None):
         return obj
     if isinstance(obj, str):
         return TaintStr(obj, taint_origin=taint_origin)
+    if isinstance(obj, bool):
+        # Don't wrap booleans, return as-is
+        return obj
     if isinstance(obj, int):
         return TaintInt(obj, taint_origin=taint_origin)
     if isinstance(obj, float):

@@ -1,13 +1,18 @@
 import re
+import json
 from forbiddenfruit import curse, patchable_builtin
 from runner.taint_wrappers import (
     TaintStr,
+    TaintInt,
+    TaintFloat,
     get_taint_origins,
     shift_position_taints,
     get_random_positions,
     inject_random_marker,
     remove_random_marker,
     Position,
+    taint_wrap,
+    untaint_if_needed,
 )
 
 
@@ -629,3 +634,216 @@ def _cursed_re_subn(pattern, repl, string, count=0, flags=0):
                 num_subs,
             )
         return result, num_subs
+
+
+def json_patch():
+    """Patches related to json module for taint propagation."""
+    _store_json_original_methods()
+
+    # Replace module-level functions
+    json.loads = _cursed_json_loads
+    json.dumps = _cursed_json_dumps
+
+
+def _store_json_original_methods():
+    """Store original JSON methods before patching to avoid recursion."""
+    if "json_loads" not in _original_methods:
+        _original_methods.update(
+            {
+                "json_loads": json.loads,
+                "json_dumps": json.dumps,
+            }
+        )
+
+
+def _cursed_json_loads(
+    s,
+    cls=None,
+    object_hook=None,
+    parse_float=None,
+    parse_int=None,
+    parse_constant=None,
+    object_pairs_hook=None,
+    **kw,
+):
+    """Tainted version of json.loads()."""
+    original_func = _original_methods["json_loads"]
+
+    # Get taint origins from input string
+    taint_origins = get_taint_origins(s)
+
+    if not taint_origins:
+        # No taint, use original function
+        return original_func(
+            s,
+            cls=cls,
+            object_hook=object_hook,
+            parse_float=parse_float,
+            parse_int=parse_int,
+            parse_constant=parse_constant,
+            object_pairs_hook=object_pairs_hook,
+            **kw,
+        )
+
+    # Check if input has position tracking
+    random_positions = get_random_positions(s)
+
+    if random_positions:
+        # Inject markers into the JSON string before parsing
+        marked_json = inject_random_marker(s)
+
+        # Parse the marked JSON
+        result = original_func(
+            marked_json,
+            cls=cls,
+            object_hook=object_hook,
+            parse_float=parse_float,
+            parse_int=parse_int,
+            parse_constant=parse_constant,
+            object_pairs_hook=object_pairs_hook,
+            **kw,
+        )
+
+        # Traverse result and remove markers from strings, extracting positions
+        result = _remove_markers_from_parsed_json(result)
+    else:
+        # No position tracking, parse normally
+        result = original_func(
+            s,
+            cls=cls,
+            object_hook=object_hook,
+            parse_float=parse_float,
+            parse_int=parse_int,
+            parse_constant=parse_constant,
+            object_pairs_hook=object_pairs_hook,
+            **kw,
+        )
+
+    # Use taint_wrap to recursively wrap the entire result with taint
+    return taint_wrap(result, taint_origin=taint_origins)
+
+
+def _remove_markers_from_parsed_json(obj):
+    """Traverse parsed JSON result and remove markers from strings, extracting positions."""
+
+    def _process_value(value):
+        if isinstance(value, str):
+            # Check if this string contains markers
+            if ">>" in value and "<<" in value:
+                # Extract positions and clean the string
+                clean_value, extracted_positions = remove_random_marker(value)
+                if extracted_positions:
+                    return TaintStr(clean_value, taint_origin=[], random_pos=extracted_positions)
+            return value
+        elif isinstance(value, dict):
+            return {k: _process_value(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [_process_value(item) for item in value]
+        else:
+            return value
+
+    return _process_value(obj)
+
+
+def _collect_taint_from_object(obj):
+    """Recursively collect all taint origins from nested objects."""
+    # Use existing get_taint_origins which handles nested structures and circular references
+    return get_taint_origins(obj)
+
+
+def _inject_markers_in_object(obj, _seen=None):
+    """Recursively inject random markers into TaintStr values in nested objects."""
+    if _seen is None:
+        _seen = set()
+
+    obj_id = id(obj)
+    if obj_id in _seen:
+        return obj
+    _seen.add(obj_id)
+
+    if isinstance(obj, TaintStr):
+        # Only inject markers if there are random positions to track
+        if get_random_positions(obj):
+            return inject_random_marker(obj)
+        else:
+            # For TaintStr without random positions, add full-string position and inject
+            marked_str = TaintStr(
+                obj.get_raw(), taint_origin=obj._taint_origin, random_pos=[Position(0, len(obj))]
+            )
+            return inject_random_marker(marked_str)
+    elif isinstance(obj, (TaintInt, TaintFloat, int, float, bool)):
+        # Don't inject markers into numeric/boolean types, return as-is
+        return obj
+    elif isinstance(obj, dict):
+        return {k: _inject_markers_in_object(v, _seen) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        result = [_inject_markers_in_object(item, _seen) for item in obj]
+        return tuple(result) if isinstance(obj, tuple) else result
+    elif hasattr(obj, "__dict__") and not isinstance(obj, type):
+        # Handle custom objects with attributes
+        new_obj = obj.__class__.__new__(obj.__class__)
+        for attr, value in obj.__dict__.items():
+            setattr(new_obj, attr, _inject_markers_in_object(value, _seen))
+        return new_obj
+    else:
+        return obj
+
+
+def _cursed_json_dumps(
+    obj,
+    skipkeys=False,
+    ensure_ascii=True,
+    check_circular=True,
+    allow_nan=True,
+    cls=None,
+    indent=None,
+    separators=None,
+    default=None,
+    sort_keys=False,
+    **kw,
+):
+    """Tainted version of json.dumps()."""
+    original_func = _original_methods["json_dumps"]
+
+    # Collect all taint origins from the input object
+    taint_origins = _collect_taint_from_object(obj)
+
+    if not taint_origins:
+        # No taint, use original function
+        return original_func(
+            obj,
+            skipkeys=skipkeys,
+            ensure_ascii=ensure_ascii,
+            check_circular=check_circular,
+            allow_nan=allow_nan,
+            cls=cls,
+            indent=indent,
+            separators=separators,
+            default=default,
+            sort_keys=sort_keys,
+            **kw,
+        )
+
+    # Inject markers into tainted strings before serialization
+    marked_obj = _inject_markers_in_object(obj)
+
+    # Serialize with markers
+    result = original_func(
+        marked_obj,
+        skipkeys=skipkeys,
+        ensure_ascii=ensure_ascii,
+        check_circular=check_circular,
+        allow_nan=allow_nan,
+        cls=cls,
+        indent=indent,
+        separators=separators,
+        default=default,
+        sort_keys=sort_keys,
+        **kw,
+    )
+
+    # Extract positions from the serialized result
+    clean_result, positions = remove_random_marker(result)
+
+    # Return TaintStr with combined taint origins and position tracking
+    return TaintStr(clean_result, taint_origin=taint_origins, random_pos=positions)
