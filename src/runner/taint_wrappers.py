@@ -1715,6 +1715,8 @@ def taint_wrap(obj, taint_origin=None, _seen=None):
         )
     if callable(obj) and not isinstance(obj, type):
         return TaintedCallable(obj, taint_origin=taint_origin)
+    if isinstance(obj, io.IOBase):
+        return TaintFile(obj, taint_origin=taint_origin)
     if hasattr(obj, "__dict__") and not isinstance(obj, type):
         for attr in list(vars(obj)):
             try:
