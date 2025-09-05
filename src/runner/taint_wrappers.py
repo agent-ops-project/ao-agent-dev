@@ -1,7 +1,11 @@
-import collections.abc
 import ast
 import re
 import io
+import inspect
+
+
+CPYTHON_MODS = ["re"]
+obj_id_to_taint_origin = {}
 
 
 # Utility functions
@@ -86,26 +90,26 @@ def untaint_if_needed(val, erase_random: bool = False, _seen=None):
         return tuple(result) if isinstance(val, tuple) else result
     elif isinstance(val, set):
         return {untaint_if_needed(item, erase_random, _seen) for item in val}
-    elif hasattr(val, "__dict__") and not isinstance(val, type):
-        # Handle custom objects with attributes, e.g., (MyObj(a=5, b=1)).
-        try:
-            new_obj = val.__class__.__new__(val.__class__)
-            for attr, value in val.__dict__.items():
-                setattr(new_obj, attr, untaint_if_needed(value, erase_random, _seen))
-            return new_obj
-        except Exception:
-            return val
-    elif hasattr(val, "__slots__"):
-        # Handle objects with __slots__ (some objects have __slots__ but no __dict__).
-        try:
-            new_obj = val.__class__.__new__(val.__class__)
-            for slot in val.__slots__:
-                if hasattr(val, slot):
-                    value = getattr(val, slot)
-                    setattr(new_obj, slot, untaint_if_needed(value, erase_random, _seen))
-            return new_obj
-        except Exception:
-            return val
+    # elif hasattr(val, "__dict__") and not isinstance(val, type):
+    #     # Handle custom objects with attributes, e.g., (MyObj(a=5, b=1)).
+    #     try:
+    #         new_obj = val.__class__.__new__(val.__class__)
+    #         for attr, value in val.__dict__.items():
+    #             setattr(new_obj, attr, untaint_if_needed(value, erase_random, _seen))
+    #         return new_obj
+    #     except Exception:
+    #         return val
+    # elif hasattr(val, "__slots__"):
+    #     # Handle objects with __slots__ (some objects have __slots__ but no __dict__).
+    #     try:
+    #         new_obj = val.__class__.__new__(val.__class__)
+    #         for slot in val.__slots__:
+    #             if hasattr(val, slot):
+    #                 value = getattr(val, slot)
+    #                 setattr(new_obj, slot, untaint_if_needed(value, erase_random, _seen))
+    #         return new_obj
+    #     except Exception:
+    #         return val
 
     # Return primitive types and other objects as-is
     return val
@@ -124,17 +128,22 @@ def is_tainted(obj):
     return hasattr(obj, "_taint_origin") and bool(get_taint_origins(obj))
 
 
-def get_taint_origins(val, _seen=None):
+def get_taint_origins(val, _seen=None, _depth=0, _max_depth=10):
     """
     Return a flat list of all taint origins for the input, including nested objects.
 
     Args:
         val: The value to extract taint origins from
         _seen: Set to track visited objects (prevents circular references)
+        _depth: Current recursion depth
+        _max_depth: Maximum recursion depth (default: 10)
 
     Returns:
         List of taint origins found in the value and its nested structures
     """
+    if _depth > _max_depth:
+        return []
+
     if _seen is None:
         _seen = set()
 
@@ -152,20 +161,27 @@ def get_taint_origins(val, _seen=None):
 
     if isinstance(val, (list, tuple, set)):
         for v in val:
-            origins.update(get_taint_origins(v, _seen))
+            origins.update(get_taint_origins(v, _seen, _depth + 1, _max_depth))
     elif isinstance(val, dict):
         for v in val.values():
-            origins.update(get_taint_origins(v, _seen))
+            origins.update(get_taint_origins(v, _seen, _depth + 1, _max_depth))
     elif hasattr(val, "__dict__") and not isinstance(val, type):
         # Handle custom objects with attributes
-        for attr_val in val.__dict__.values():
-            origins.update(get_taint_origins(attr_val, _seen))
+        for attr_name, attr_val in val.__dict__.items():
+            if attr_name.startswith("_"):
+                continue
+            origins.update(get_taint_origins(attr_val, _seen, _depth + 1, _max_depth))
     elif hasattr(val, "__slots__"):
         # Handle objects with __slots__
         for slot in val.__slots__:
             if hasattr(val, slot):
                 slot_val = getattr(val, slot)
-                origins.update(get_taint_origins(slot_val, _seen))
+                origins.update(get_taint_origins(slot_val, _seen, _depth + 1, _max_depth))
+
+    # this is an object that doesn't have __dict__ or __slots__ so
+    # probably a CPython object w/o __dict__ such as re.Match()
+    if obj_id in obj_id_to_taint_origin:
+        origins.update(set(obj_id_to_taint_origin[obj_id]))
 
     return list(origins)
 
@@ -258,6 +274,8 @@ class TaintStr(str):
         _taint_origin (list): List of taint origin identifiers
         _random_positions (list): List of Position objects marking tainted ranges
     """
+
+    __class__ = str
 
     def __new__(cls, value, taint_origin=None, random_pos=None):
         obj = str.__new__(cls, value)
@@ -632,7 +650,7 @@ class TaintInt(int):
             obj._taint_origin = []
         elif isinstance(taint_origin, (int, str)):
             obj._taint_origin = [taint_origin]
-        elif isinstance(taint_origin, list):
+        elif isinstance(taint_origin, (set, list)):
             obj._taint_origin = list(taint_origin)
         else:
             raise TypeError(f"Unsupported taint_origin type: {type(taint_origin)}")
@@ -662,7 +680,7 @@ class TaintInt(int):
         return TaintInt(result, self._propagate_taint(other))
 
     def __rsub__(self, other):
-        result = int.__sub__(other, self)
+        result = int.__rsub__(self, other)
         if result is NotImplemented:
             return NotImplemented
         return TaintInt(result, self._propagate_taint(other))
@@ -674,7 +692,7 @@ class TaintInt(int):
         return TaintInt(result, self._propagate_taint(other))
 
     def __rmul__(self, other):
-        result = int.__mul__(other, self)
+        result = int.__rmul__(self, other)
         if result is NotImplemented:
             return NotImplemented
         return TaintInt(result, self._propagate_taint(other))
@@ -686,7 +704,7 @@ class TaintInt(int):
         return TaintInt(result, self._propagate_taint(other))
 
     def __rfloordiv__(self, other):
-        result = int.__floordiv__(other, self)
+        result = int.__rfloordiv__(self, other)
         if result is NotImplemented:
             return NotImplemented
         return TaintInt(result, self._propagate_taint(other))
@@ -698,7 +716,7 @@ class TaintInt(int):
         return TaintFloat(result, self._propagate_taint(other))
 
     def __rtruediv__(self, other):
-        result = int.__truediv__(other, self)
+        result = int.__rtruediv__(self, other)
         if result is NotImplemented:
             return NotImplemented
         return TaintFloat(result, self._propagate_taint(other))
@@ -710,7 +728,7 @@ class TaintInt(int):
         return TaintInt(result, self._propagate_taint(other))
 
     def __rmod__(self, other):
-        result = int.__mod__(other, self)
+        result = int.__rmod__(self, other)
         if result is NotImplemented:
             return NotImplemented
         return TaintInt(result, self._propagate_taint(other))
@@ -725,7 +743,7 @@ class TaintInt(int):
 
     def __rpow__(self, other, modulo=None):
         result = (
-            int.__pow__(other, self, modulo) if modulo is not None else int.__pow__(other, self)
+            int.__rpow__(self, other, modulo) if modulo is not None else int.__pow__(other, self)
         )
         if result is NotImplemented:
             return NotImplemented
@@ -762,7 +780,7 @@ class TaintInt(int):
         return TaintInt(result, self._propagate_taint(other))
 
     def __rand__(self, other):
-        result = int.__and__(other, self)
+        result = int.__rand__(self, other)
         if result is NotImplemented:
             return NotImplemented
         return TaintInt(result, self._propagate_taint(other))
@@ -774,7 +792,7 @@ class TaintInt(int):
         return TaintInt(result, self._propagate_taint(other))
 
     def __ror__(self, other):
-        result = int.__or__(other, self)
+        result = int.__ror__(self, other)
         if result is NotImplemented:
             return NotImplemented
         return TaintInt(result, self._propagate_taint(other))
@@ -786,7 +804,7 @@ class TaintInt(int):
         return TaintInt(result, self._propagate_taint(other))
 
     def __rxor__(self, other):
-        result = int.__xor__(other, self)
+        result = int.__rxor__(self, other)
         if result is NotImplemented:
             return NotImplemented
         return TaintInt(result, self._propagate_taint(other))
@@ -798,7 +816,7 @@ class TaintInt(int):
         return TaintInt(result, self._propagate_taint(other))
 
     def __rlshift__(self, other):
-        result = int.__lshift__(other, self)
+        result = int.__rlshift__(self, other)
         if result is NotImplemented:
             return NotImplemented
         return TaintInt(result, self._propagate_taint(other))
@@ -810,7 +828,7 @@ class TaintInt(int):
         return TaintInt(result, self._propagate_taint(other))
 
     def __rrshift__(self, other):
-        result = int.__rshift__(other, self)
+        result = int.__rrshift__(self, other)
         if result is NotImplemented:
             return NotImplemented
         return TaintInt(result, self._propagate_taint(other))
@@ -822,7 +840,7 @@ class TaintInt(int):
         return TaintInt(result, self._propagate_taint(other))
 
     def __rmatmul__(self, other):
-        result = int.__matmul__(other, self)
+        result = int.__rmatmul__(self, other)
         if result is NotImplemented:
             return NotImplemented
         return TaintInt(result, self._propagate_taint(other))
@@ -863,6 +881,9 @@ class TaintInt(int):
     def get_raw(self):
         return int(self)
 
+    def __hash__(self):
+        return super().__hash__()
+
 
 class TaintFloat(float):
     """
@@ -885,7 +906,7 @@ class TaintFloat(float):
             obj._taint_origin = []
         elif isinstance(taint_origin, (int, str)):
             obj._taint_origin = [taint_origin]
-        elif isinstance(taint_origin, list):
+        elif isinstance(taint_origin, (set, list)):
             obj._taint_origin = list(taint_origin)
         else:
             raise TypeError(f"Unsupported taint_origin type: {type(taint_origin)}")
@@ -901,7 +922,7 @@ class TaintFloat(float):
         return TaintFloat(result, self._propagate_taint(other))
 
     def __radd__(self, other):
-        result = float.__add__(other, self)
+        result = float.__radd__(self, other)
         return TaintFloat(result, self._propagate_taint(other))
 
     def __sub__(self, other):
@@ -909,7 +930,7 @@ class TaintFloat(float):
         return TaintFloat(result, self._propagate_taint(other))
 
     def __rsub__(self, other):
-        result = float.__sub__(other, self)
+        result = float.__rsub__(self, other)
         return TaintFloat(result, self._propagate_taint(other))
 
     def __mul__(self, other):
@@ -917,7 +938,7 @@ class TaintFloat(float):
         return TaintFloat(result, self._propagate_taint(other))
 
     def __rmul__(self, other):
-        result = float.__mul__(other, self)
+        result = float.__rmul__(self, other)
         return TaintFloat(result, self._propagate_taint(other))
 
     def __floordiv__(self, other):
@@ -925,7 +946,7 @@ class TaintFloat(float):
         return TaintFloat(result, self._propagate_taint(other))
 
     def __rfloordiv__(self, other):
-        result = float.__floordiv__(other, self)
+        result = float.__rfloordiv__(self, other)
         return TaintFloat(result, self._propagate_taint(other))
 
     def __truediv__(self, other):
@@ -933,7 +954,7 @@ class TaintFloat(float):
         return TaintFloat(result, self._propagate_taint(other))
 
     def __rtruediv__(self, other):
-        result = float.__truediv__(other, self)
+        result = float.__rtruediv__(self, other)
         return TaintFloat(result, self._propagate_taint(other))
 
     def __mod__(self, other):
@@ -941,7 +962,7 @@ class TaintFloat(float):
         return TaintFloat(result, self._propagate_taint(other))
 
     def __rmod__(self, other):
-        result = float.__mod__(other, self)
+        result = float.__rmod__(self, other)
         return TaintFloat(result, self._propagate_taint(other))
 
     def __pow__(self, other, modulo=None):
@@ -1024,7 +1045,7 @@ class TaintList(list):
             self._taint_origin = []
         elif isinstance(taint_origin, (int, str)):
             self._taint_origin = [taint_origin]
-        elif isinstance(taint_origin, list):
+        elif isinstance(taint_origin, (set, list)):
             self._taint_origin = list(taint_origin)
         else:
             raise TypeError(f"Unsupported taint_origin type: {type(taint_origin)}")
@@ -1116,7 +1137,7 @@ class TaintDict(dict):
             self._taint_origin = []
         elif isinstance(taint_origin, (int, str)):
             self._taint_origin = [taint_origin]
-        elif isinstance(taint_origin, list):
+        elif isinstance(taint_origin, (set, list)):
             self._taint_origin = list(taint_origin)
         else:
             raise TypeError(f"Unsupported taint_origin type: {type(taint_origin)}")
@@ -1278,37 +1299,37 @@ class TaintedOpenAIObject:
         self._wrapped.__class__ = value
 
 
-class TaintedCallable:
-    """
-    Wrapper for callable objects (methods, functions) that taints their return values.
-    """
+# class TaintedCallable:
+#     """
+#     Wrapper for callable objects (methods, functions) that taints their return values.
+#     """
 
-    def __init__(self, wrapped, taint_origin=None):
-        self._wrapped = wrapped
-        if taint_origin is None:
-            self._taint_origin = []
-        elif isinstance(taint_origin, (int, str)):
-            self._taint_origin = [taint_origin]
-        elif isinstance(taint_origin, list):
-            self._taint_origin = list(taint_origin)
-        else:
-            raise TypeError(f"Unsupported taint_origin type: {type(taint_origin)}")
+#     def __init__(self, wrapped, taint_origin=None):
+#         self._wrapped = wrapped
+#         if taint_origin is None:
+#             self._taint_origin = []
+#         elif isinstance(taint_origin, (int, str)):
+#             self._taint_origin = [taint_origin]
+#         elif isinstance(taint_origin, (set, list)):
+#             self._taint_origin = list(taint_origin)
+#         else:
+#             raise TypeError(f"Unsupported taint_origin type: {type(taint_origin)}")
 
-    def __call__(self, *args, **kwargs):
-        # Call the original callable
-        result = self._wrapped(*args, **kwargs)
-        # Taint the result
-        return taint_wrap(result, taint_origin=self._taint_origin)
+#     def __call__(self, *args, **kwargs):
+#         # Call the original callable
+#         result = self._wrapped(*args, **kwargs)
+#         # Taint the result
+#         return taint_wrap(result, taint_origin=self._taint_origin)
 
-    def __getattr__(self, name):
-        # Delegate attribute access to the wrapped callable
-        return getattr(self._wrapped, name)
+#     def __getattr__(self, name):
+#         # Delegate attribute access to the wrapped callable
+#         return getattr(self._wrapped, name)
 
-    def __repr__(self):
-        return f"TaintedCallable({repr(self._wrapped)}, taint_origin={self._taint_origin})"
+#     def __repr__(self):
+#         return f"TaintedCallable({repr(self._wrapped)}, taint_origin={self._taint_origin})"
 
-    def get_raw(self):
-        return self._wrapped
+#     def get_raw(self):
+#         return self._wrapped
 
 
 class TaintFile:
@@ -1666,7 +1687,7 @@ def is_openai_sdk_object(obj):
     return mod.startswith("openai.types.")
 
 
-def taint_wrap(obj, taint_origin=None, _seen=None):
+def taint_wrap(obj, taint_origin=None, _seen=None, _depth: int = 0, _max_depth: int = 10):
     """
     Recursively wrap an object and its nested structures with taint information.
 
@@ -1678,11 +1699,15 @@ def taint_wrap(obj, taint_origin=None, _seen=None):
         obj: The object to wrap with taint information
         taint_origin: The taint origin(s) to assign to the wrapped object
         _seen: Set to track visited objects (prevents circular references)
+        _depth: Keep track of depth to avoid to deep recursion
 
     Returns:
         The wrapped object with taint information, or the original object if
         no appropriate tainted wrapper exists
     """
+    if _depth > _max_depth:
+        return obj
+
     if _seen is None:
         _seen = set()
     obj_id = id(obj)
@@ -1703,27 +1728,51 @@ def taint_wrap(obj, taint_origin=None, _seen=None):
         return TaintFloat(obj, taint_origin=taint_origin)
     if is_openai_sdk_object(obj):
         return TaintedOpenAIObject(obj, taint_origin=taint_origin)
-    if isinstance(obj, collections.abc.Mapping):
+    if isinstance(obj, dict):
         return TaintDict(
-            {k: taint_wrap(v, taint_origin=taint_origin, _seen=_seen) for k, v in obj.items()},
+            {
+                k: taint_wrap(
+                    v,
+                    taint_origin=taint_origin,
+                    _seen=_seen,
+                    _depth=_depth + 1,
+                    _max_depth=_max_depth,
+                )
+                for k, v in obj.items()
+            },
             taint_origin=taint_origin,
         )
-    if isinstance(obj, collections.abc.Sequence) and not isinstance(obj, (str, bytes, bytearray)):
+    if isinstance(obj, list) and not isinstance(obj, (str, bytes, bytearray)):
         return TaintList(
-            [taint_wrap(x, taint_origin=taint_origin, _seen=_seen) for x in obj],
+            [
+                taint_wrap(
+                    x,
+                    taint_origin=taint_origin,
+                    _seen=_seen,
+                    _depth=_depth + 1,
+                    _max_depth=_max_depth,
+                )
+                for x in obj
+            ],
             taint_origin=taint_origin,
         )
-    if callable(obj) and not isinstance(obj, type):
-        return TaintedCallable(obj, taint_origin=taint_origin)
     if isinstance(obj, io.IOBase):
         return TaintFile(obj, taint_origin=taint_origin)
     if hasattr(obj, "__dict__") and not isinstance(obj, type):
         for attr in list(vars(obj)):
+            if attr.startswith("_"):
+                continue
             try:
                 setattr(
                     obj,
                     attr,
-                    taint_wrap(getattr(obj, attr), taint_origin=taint_origin, _seen=_seen),
+                    taint_wrap(
+                        getattr(obj, attr),
+                        taint_origin=taint_origin,
+                        _seen=_seen,
+                        _depth=_depth + 1,
+                        _max_depth=_max_depth,
+                    ),
                 )
             except Exception:
                 pass
@@ -1732,10 +1781,35 @@ def taint_wrap(obj, taint_origin=None, _seen=None):
         for slot in obj.__slots__:
             try:
                 val = getattr(obj, slot)
-                setattr(obj, slot, taint_wrap(val, taint_origin=taint_origin, _seen=_seen))
+                setattr(
+                    obj,
+                    slot,
+                    taint_wrap(
+                        val,
+                        taint_origin=taint_origin,
+                        _seen=_seen,
+                        _depth=_depth + 1,
+                        _max_depth=_max_depth,
+                    ),
+                )
             except Exception:
                 pass
         return obj
+
+    is_builtin = obj.__class__.__module__ == "builtins"
+    is_function = inspect.isfunction(obj)
+    if is_builtin or is_function:
+        return obj
+
+    is_cpython_mod = obj.__class__.__module__ in CPYTHON_MODS
+    if is_cpython_mod:
+        # Probably a CPython object w/o __dict__
+        if obj_id in obj_id_to_taint_origin:
+            obj_id_to_taint_origin[obj_id].update(set(taint_origin))
+        else:
+            obj_id_to_taint_origin[obj_id] = set(taint_origin)
+        return obj
+    # what obj is here?
     return obj
 
 
