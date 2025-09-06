@@ -1,29 +1,62 @@
+"""
+Taint tracking import hook system.
+
+This module implements a comprehensive taint tracking system using Python's import
+machinery. It intercepts module loading and dynamically patches functions, methods,
+and callables to propagate taint information through the application.
+
+Key Components:
+- TaintImportHook: Custom import hook that intercepts module loading
+- TaintModuleLoader/TaintBuiltinLoader: Custom loaders that apply patching
+- create_taint_wrapper: Creates taint-aware wrappers for functions and methods
+- patch_module_callables: Recursively patches all callables in a module
+
+The system handles both synchronous and asynchronous functions, avoids circular
+imports, and respects blacklists to prevent patching system-critical modules.
+"""
+
 from types import ModuleType
 import sys
 import inspect
 import functools
 from importlib import reload, import_module
 from importlib.machinery import (
-    FileFinder,
     PathFinder,
     SourceFileLoader,
     BuiltinImporter,
-    SOURCE_SUFFIXES,
 )
 from importlib.util import spec_from_loader
 from forbiddenfruit import curse
-
 from runner.taint_wrappers import get_taint_origins, taint_wrap, untaint_if_needed
 from common.logger import logger
-
 import threading
 from contextlib import contextmanager
+from .patch_constants import (
+    MODULE_WHITELIST,
+    MODULE_BLACKLIST,
+    MODULE_ATTR_BLACKLIST,
+    CLS_ATTR_BLACKLIST,
+)
 
+
+# Thread-local storage for taint propagation control
 _thread_local = threading.local()
+
+# Cache of original functions to avoid re-wrapping
+_original_functions = {}
 
 
 @contextmanager
 def disable_taint_propagation():
+    """
+    Context manager to temporarily disable taint propagation.
+
+    This is used during module patching to prevent circular import issues
+    when the patched import functions are called during the patching process.
+
+    Yields:
+        None: Context where taint propagation is disabled
+    """
     old_value = getattr(_thread_local, "disable_taint", False)
     _thread_local.disable_taint = True
     try:
@@ -33,254 +66,29 @@ def disable_taint_propagation():
 
 
 def _is_taint_disabled():
+    """
+    Check if taint propagation is currently disabled.
+
+    Returns:
+        bool: True if taint propagation is disabled, False otherwise
+    """
     return getattr(_thread_local, "disable_taint", False)
 
 
-# these modules are definitely patched.
-# we make sure of that by reloading them
-# after our loader (hook) is inserted into the
-# sys meta path.
-MODULE_WHITELIST = ["json", "re"]
-
-MODULE_BLACKLIST = [
-    "__future__",
-    "__main__",
-    "_thread",
-    "_tkinter",
-    "_io",
-    "_pyio",
-    "abc",
-    "aifc",
-    "argparse",
-    "array",
-    "ast",
-    "asynchat",
-    "asyncio",
-    "asyncore",
-    "atexit",
-    "audioop",
-    "base64",
-    "bdb",
-    "binascii",
-    "bisect",
-    "builtins",
-    "bz2",
-    "calendar",
-    "cgi",
-    "cgitb",
-    "chunk",
-    "cmath",
-    "cmd",
-    "code",
-    "codecs",
-    "codeop",
-    "collections",
-    "colorsys",
-    "compileall",
-    "concurrent",
-    "configparser",
-    "contextlib",
-    "contextvars",
-    "copy",
-    "copyreg",
-    "cProfile",
-    "crypt",
-    "csv",
-    "ctypes",
-    "curses",
-    "dataclasses",
-    "dill._dill",
-    "datetime",
-    "dbm",
-    "decimal",
-    "difflib",
-    "dis",
-    "distutils",
-    "doctest",
-    "email",
-    "encodings",
-    "ensurepip",
-    "enum",
-    "errno",
-    "faulthandler",
-    "fcntl",
-    "filecmp",
-    "fileinput",
-    "fnmatch",
-    "fractions",
-    "ftplib",
-    "functools",
-    "gc",
-    "getopt",
-    "getpass",
-    "gettext",
-    "glob",
-    "graphlib",
-    "grp",
-    "gzip",
-    "hashlib",
-    "heapq",
-    "hmac",
-    "html",
-    "http",
-    "idlelib",
-    "imaplib",
-    "imghdr",
-    "imp",
-    "importlib",
-    "inspect",
-    "io",
-    "ipaddress",
-    "itertools",
-    "keyword",
-    "lib2to3",
-    "linecache",
-    "locale",
-    "logging",
-    "lzma",
-    "mailbox",
-    "mailcap",
-    "marshal",
-    "math",
-    "mimetypes",
-    "mmap",
-    "modulefinder",
-    "msilib",
-    "msvcrt",
-    "multiprocessing",
-    "netrc",
-    "nis",
-    "nntplib",
-    "numbers",
-    "operator",
-    "optparse",
-    "os",
-    "ossaudiodev",
-    "pathlib",
-    "pdb",
-    "pickle",
-    "pickletools",
-    "pipes",
-    "pkgutil",
-    "platform",
-    "plistlib",
-    "poplib",
-    "posix",
-    "posixpath",
-    "pprint",
-    "profile",
-    "pstats",
-    "pty",
-    "pwd",
-    "py_compile",
-    "pyclbr",
-    "pydoc",
-    "queue",
-    "quopri",
-    "random",
-    "readline",
-    "reprlib",
-    "resource",
-    "rlcompleter",
-    "runpy",
-    "sched",
-    "secrets",
-    "select",
-    "selectors",
-    "shelve",
-    "shlex",
-    "shutil",
-    "signal",
-    "site",
-    "smtplib",
-    "sndhdr",
-    "socket",
-    "socketserver",
-    "sqlite3",
-    "ssl",
-    "stat",
-    "statistics",
-    "string",
-    "stringprep",
-    "struct",
-    "subprocess",
-    "sunau",
-    "symtable",
-    "sys",
-    "sysconfig",
-    "syslog",
-    "tabnanny",
-    "tarfile",
-    "telnetlib",
-    "tempfile",
-    "termios",
-    "test",
-    "textwrap",
-    "threading",
-    "time",
-    "timeit",
-    "tkinter",
-    "token",
-    "tokenize",
-    "tomllib",
-    "trace",
-    "traceback",
-    "tracemalloc",
-    "tty",
-    "turtle",
-    "turtledemo",
-    "types",
-    "typing",
-    "typing_extensions",
-    "unicodedata",
-    "unittest",
-    "urllib",
-    "uu",
-    "venv",
-    "warnings",
-    "wave",
-    "weakref",
-    "webbrowser",
-    "winreg",
-    "winsound",
-    "wsgiref",
-    "xdrlib",
-    "xml",
-    "xmlrpc",
-    "zipapp",
-    "zipfile",
-    "zipimport",
-    "zlib",
-    "zoneinfo",
-    # not builtin
-    "six",
-    "pydantic",
-]
-
-MODULE_ATTR_BLACKLIST = [
-    "json.load",
-    "json.dump",
-    "json.encoder",
-    "json.decoder",
-    "json.detect_encoding",
-]
-
-CLS_ATTR_BLACKLIST = [
-    "JSONEncoder.default",
-    "JSONEncoder.decode",
-    "JSONDecoder.raw_decode",
-    "JSONEncoder.encode",
-    "JSONEncoder.iterencode",
-    "JSONDecodeError.add_note",
-    "JSONDecodeError.with_traceback",
-    "JSONDecoder.decode",
-]
-
-_original_functions = {}
-
-
 def get_all_taint(*args, **kwargs):
-    """TODO"""
+    """
+    Extract all taint origins from function arguments.
+
+    Recursively analyzes the provided arguments and keyword arguments
+    to collect all taint origin information.
+
+    Args:
+        *args: Positional arguments to analyze for taint
+        **kwargs: Keyword arguments to analyze for taint
+
+    Returns:
+        set: Set of all taint origins found in the arguments
+    """
     args_taint_origins = get_taint_origins(args)
     kwargs_taint_origins = get_taint_origins(kwargs)
     taints = set(args_taint_origins) | set(kwargs_taint_origins)
@@ -288,62 +96,129 @@ def get_all_taint(*args, **kwargs):
 
 
 def remove_taint(*args, **kwargs):
-    """TODO"""
+    """
+    Remove taint information from arguments, returning clean versions.
+
+    Args:
+        *args: Positional arguments to untaint
+        **kwargs: Keyword arguments to untaint
+
+    Returns:
+        tuple: (untainted_args, untainted_kwargs)
+    """
     args = untaint_if_needed(args)
     kwargs = untaint_if_needed(kwargs)
     return args, kwargs
 
 
 def apply_taint(output, taint_origin: set):
-    """TODO"""
+    """
+    Apply taint information to an output value.
+
+    Args:
+        output: The value to taint
+        taint_origin (set): Set of taint origins to apply
+
+    Returns:
+        The tainted version of the output
+    """
     return taint_wrap(output, taint_origin=taint_origin)
 
 
 def create_taint_wrapper(original_func):
+    """
+    Create a taint-aware wrapper for a function or method.
+
+    This function creates a wrapper that:
+    - Extracts taint from input arguments
+    - Calls the original function (with proper async handling)
+    - Applies collected taint to the output
+    - Handles both synchronous and asynchronous functions
+
+    Args:
+        original_func: The function to wrap with taint tracking
+
+    Returns:
+        callable: A taint-aware wrapper function that preserves the original's signature
+    """
     if getattr(original_func, "_is_taint_wrapped", False):
         return original_func
 
     key = id(original_func)
-    if hasattr(original_func, "__name__") and not isinstance(original_func.__name__, str):
-        return original_func  # this will break wraps()
 
     if key in _original_functions:
-        # logger.info(f"{key} already in _original_functions. returning...")
         return _original_functions[key]
 
-    @functools.wraps(original_func)
-    def patched_function(*args, **kwargs):
-        if _is_taint_disabled():
-            return original_func(*args, **kwargs)
+    # Check if the original function is async
+    if inspect.iscoroutinefunction(original_func):
 
-        with disable_taint_propagation():
-            # TODO, the orig func could also return taint. if that is the case,
-            # we should ignore the high-level taint because the sub-func is more precise
-            taint = get_all_taint(*args, **kwargs)
-            output = original_func(*args, **kwargs)
-            # it could be that the returned function is also patched. this can lead to unforeseen side-effects
-            # so we recursively unwrap it
-            if hasattr(output, "__name__") and output.__name__ == "patched_function":
-                output = inspect.unwrap(output)
-            tainted_output = apply_taint(output, taint)
-            return tainted_output
+        @functools.wraps(original_func)
+        async def async_patched_function(*args, **kwargs):
+            if _is_taint_disabled():
+                return await original_func(*args, **kwargs)
 
-    patched_function._is_taint_wrapped = True
-    _original_functions[key] = patched_function
+            with disable_taint_propagation():
+                taint = get_all_taint(*args, **kwargs)
+                output = await original_func(*args, **kwargs)
+                # it could be that the returned function is also patched. this can lead to unforeseen side-effects
+                # so we recursively unwrap it
+                if hasattr(output, "__name__") and output.__name__ == "patched_function":
+                    output = inspect.unwrap(output)
+                tainted_output = apply_taint(output, taint)
+                return tainted_output
 
-    return patched_function
+        async_patched_function._is_taint_wrapped = True
+        _original_functions[key] = async_patched_function
+        return async_patched_function
+    else:
+
+        @functools.wraps(original_func)
+        def patched_function(*args, **kwargs):
+            if _is_taint_disabled():
+                return original_func(*args, **kwargs)
+
+            with disable_taint_propagation():
+                # TODO, the orig func could also return taint. if that is the case,
+                # we should ignore the high-level taint because the sub-func is more precise
+                taint = get_all_taint(*args, **kwargs)
+                output = original_func(*args, **kwargs)
+                # it could be that the returned function is also patched. this can lead to unforeseen side-effects
+                # so we recursively unwrap it
+                if hasattr(output, "__name__") and output.__name__ == "patched_function":
+                    output = inspect.unwrap(output)
+                tainted_output = apply_taint(output, taint)
+                return tainted_output
+
+        patched_function._is_taint_wrapped = True
+        _original_functions[key] = patched_function
+        return patched_function
 
 
 def patch_module_callables(module, visited=None):
+    """
+    Recursively patch all callables in a module with taint tracking.
+
+    This function traverses a module and its attributes, applying taint wrappers to:
+    - Functions and methods
+    - Class methods (static, class, and instance methods)
+    - Callable objects (with special handling for __call__ method)
+    - Submodules (recursively)
+
+    It respects blacklists and handles special cases like:
+    - Modules with lazy imports
+    - Partially loaded modules
+    - Built-in functions and methods
+    - Objects that may cause circular imports
+
+    Args:
+        module: The module to patch (ModuleType or other object)
+        visited (set, optional): Set of already visited module IDs to prevent cycles
+    """
     if isinstance(module, ModuleType):
         module_name = module.__name__
         parent_name = module_name.lstrip(".").split(".")[0]
         any_under = any(sub.startswith("_") for sub in module_name.split("."))
-        # is_under = module_name.startswith("_")
-        if (
-            module_name in MODULE_BLACKLIST or parent_name in MODULE_BLACKLIST or any_under
-        ):  # or any_under:
-            # logger.info(f"{module_name} is under or in MODULE_BLACKLIST. Skipped.")
+        if module_name in MODULE_BLACKLIST or parent_name in MODULE_BLACKLIST or any_under:
             return
 
     if visited is None:
@@ -361,14 +236,28 @@ def patch_module_callables(module, visited=None):
             # logger.info(f"{module_name}.{attr_name} in MODULE_ATTR_BLACKLIST. Skipped.")
             continue
 
-        attr = getattr(module, attr_name)
+        # Safely get attribute, avoiding lazy import triggers during patching
+        try:
+            # First try to get it directly from __dict__ to avoid __getattr__
+            if hasattr(module, "__dict__") and attr_name in module.__dict__:
+                attr = module.__dict__[attr_name]
+            else:
+                # If not in __dict__, try normal getattr but be prepared for circular imports
+                attr = getattr(module, attr_name)
+        except (AttributeError, ImportError) as e:
+            # Skip attributes that cause circular imports or don't exist
+            logger.warning(f"Skipping {module_name}.{attr_name} due to: {e}")
+            continue
+        except Exception as e:
+            logger.warning(f"Unexpected error accessing {module_name}.{attr_name}: {e}")
+            continue
 
         if inspect.isfunction(attr):
             # Patch functions
             if hasattr(attr, "__wrapped__"):  # already patched
                 continue
 
-            logger.info(f"Patched {module_name}.{attr_name}")
+            # logger.info(f"Patched {module_name}.{attr_name}")
             setattr(module, attr_name, create_taint_wrapper(attr))
         elif inspect.isclass(attr):
             if any(
@@ -389,12 +278,32 @@ def patch_module_callables(module, visited=None):
         elif callable(attr):
             if attr.__module__ in MODULE_BLACKLIST:
                 continue
-            # Other callables
-            logger.info(f"Patched {module}.{attr_name}")
-            setattr(module, attr_name, create_taint_wrapper(attr))
+
+            if attr.__class__.__name__ == "builtin_function_or_method":
+                setattr(module, attr_name, create_taint_wrapper(attr))
+                continue
+
+            try:
+                setattr(attr, "__call__", create_taint_wrapper(attr.__call__))
+            except AttributeError:
+                pass
 
 
 def patch_class_methods(cls):
+    """
+    Patch all methods of a class with taint tracking.
+
+    Handles different types of methods:
+    - Regular instance methods
+    - Static methods (@staticmethod)
+    - Class methods (@classmethod)
+
+    Uses forbiddenfruit.curse to safely monkey-patch class methods
+    while preserving their descriptor types.
+
+    Args:
+        cls: The class whose methods should be patched
+    """
     if not cls.__class__.__name__ == "type":
         return
 
@@ -433,62 +342,99 @@ def patch_class_methods(cls):
 
 
 class TaintModuleLoader(SourceFileLoader):
+    """
+    Custom module loader that applies taint tracking after module execution.
+
+    Extends SourceFileLoader to automatically patch all callables in a module
+    after it has been loaded and executed.
+    """
+
     def exec_module(self, module):
-        """Execute the module."""
+        """
+        Execute the module and apply taint tracking patches.
+
+        Args:
+            module: The module to execute and patch
+        """
         super().exec_module(module)
         patch_module_callables(module=module)
 
 
 class TaintBuiltinLoader(BuiltinImporter):
+    """
+    Custom builtin module loader that applies taint tracking after module loading.
+
+    Extends BuiltinImporter to automatically patch all callables in builtin
+    modules after they have been loaded.
+    """
+
     def exec_module(self, module):
-        """Execute the module."""
+        """
+        Execute the builtin module and apply taint tracking patches.
+
+        Args:
+            module: The builtin module to execute and patch
+        """
         super().exec_module(module)
         patch_module_callables(module=module)
 
 
 class TaintImportHook:
-    def find_spec(self, fullname: str, path, target=None):
+    """
+    Custom import hook that intercepts module loading for taint tracking.
 
+    This hook is inserted into sys.meta_path to intercept all module imports
+    and ensure they use our custom loaders that apply taint tracking patches.
+
+    Handles both source modules (Python files) and builtin modules (C extensions).
+    """
+
+    def find_spec(self, fullname: str, path, target=None):
+        """
+        Find the module specification and return one with our custom loader.
+
+        This method intercepts module loading and replaces the standard loaders
+        with our taint-aware versions.
+
+        Args:
+            fullname (str): The fully qualified name of the module
+            path: The search path for the module
+            target: The module object (unused)
+
+        Returns:
+            ModuleSpec or None: A module spec with our custom loader, or None
+                               to let other finders handle the module
+        """
         if fullname.startswith("_"):
-            # logger.debug(f"Skipping attaching TaintImportHook to: {fullname}")
             return None
 
         if path is None:
             path = sys.path
 
+        # Try builtin modules first
         builtin_importer = BuiltinImporter()
         spec = builtin_importer.find_spec(fullname=fullname)
         if spec and spec.origin:
             return spec_from_loader(fullname, TaintBuiltinLoader())
 
+        # Try source modules
         finder = PathFinder()
-        # Try to find the module in this directory
         spec = finder.find_spec(fullname, path=path)
-        # return spec
         if spec and spec.origin and isinstance(spec.loader, SourceFileLoader):
             return spec_from_loader(fullname, TaintModuleLoader(fullname, spec.origin))
-
-        # for search_path in path:
-        #     # Create a FileFinder for this directory
-        #     finder = FileFinder(search_path, (SourceFileLoader, SOURCE_SUFFIXES))
-
-        #     # Try to find the module in this directory
-        #     spec = finder.find_spec(fullname)
-        #     # return spec
-        #     if spec and spec.origin and isinstance(spec.loader, SourceFileLoader):
-        #         return spec_from_loader(fullname, TaintModuleLoader(fullname, spec.origin))
-
         return None
 
 
-# How do integrate the f-string re-writer:
-# install the FStringFinder at first position in meta sys
-# let it find only for modules in project root
-# re-write the AST etc.
-# execute the module and then patch the module
-
-
 def install_patch_hook():
+    """
+    Install the taint tracking import hook into the Python import system.
+
+    This function:
+    1. Inserts our TaintImportHook at the beginning of sys.meta_path
+    2. Reloads whitelisted modules to ensure they get properly patched
+
+    Should be called once at application startup to enable taint tracking.
+    """
     if not any(isinstance(mod, TaintImportHook) for mod in sys.meta_path):
         sys.meta_path.insert(0, TaintImportHook())
 

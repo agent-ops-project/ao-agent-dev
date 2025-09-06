@@ -3,8 +3,9 @@ import re
 import io
 import inspect
 
+from .patch_constants import CPYTHON_MODS
 
-CPYTHON_MODS = ["re"]
+
 obj_id_to_taint_origin = {}
 
 
@@ -90,26 +91,26 @@ def untaint_if_needed(val, erase_random: bool = False, _seen=None):
         return tuple(result) if isinstance(val, tuple) else result
     elif isinstance(val, set):
         return {untaint_if_needed(item, erase_random, _seen) for item in val}
-    # elif hasattr(val, "__dict__") and not isinstance(val, type):
-    #     # Handle custom objects with attributes, e.g., (MyObj(a=5, b=1)).
-    #     try:
-    #         new_obj = val.__class__.__new__(val.__class__)
-    #         for attr, value in val.__dict__.items():
-    #             setattr(new_obj, attr, untaint_if_needed(value, erase_random, _seen))
-    #         return new_obj
-    #     except Exception:
-    #         return val
-    # elif hasattr(val, "__slots__"):
-    #     # Handle objects with __slots__ (some objects have __slots__ but no __dict__).
-    #     try:
-    #         new_obj = val.__class__.__new__(val.__class__)
-    #         for slot in val.__slots__:
-    #             if hasattr(val, slot):
-    #                 value = getattr(val, slot)
-    #                 setattr(new_obj, slot, untaint_if_needed(value, erase_random, _seen))
-    #         return new_obj
-    #     except Exception:
-    #         return val
+    elif hasattr(val, "__dict__") and not isinstance(val, type):
+        # Handle custom objects with attributes, e.g., (MyObj(a=5, b=1)).
+        try:
+            new_obj = val.__class__.__new__(val.__class__)
+            for attr, value in val.__dict__.items():
+                setattr(new_obj, attr, untaint_if_needed(value, erase_random, _seen))
+            return new_obj
+        except Exception:
+            return val
+    elif hasattr(val, "__slots__"):
+        # Handle objects with __slots__ (some objects have __slots__ but no __dict__).
+        try:
+            new_obj = val.__class__.__new__(val.__class__)
+            for slot in val.__slots__:
+                if hasattr(val, slot):
+                    value = getattr(val, slot)
+                    setattr(new_obj, slot, untaint_if_needed(value, erase_random, _seen))
+            return new_obj
+        except Exception:
+            return val
 
     # Return primitive types and other objects as-is
     return val
@@ -154,6 +155,8 @@ def get_taint_origins(val, _seen=None, _depth=0, _max_depth=10):
 
     # Check if object has direct taint
     if hasattr(val, "_taint_origin") and val._taint_origin is not None:
+        if not isinstance(val._taint_origin, (list, set)):
+            val._taint_origin = [val._taint_origin]
         return list(val._taint_origin)
 
     # Handle nested data structures
@@ -368,21 +371,6 @@ class TaintStr(str):
 
     def decode(self, *args, **kwargs):
         return self.get_raw().decode(*args, **kwargs)
-
-    # def join(self, iterable):
-    #     joined = self.get_raw().join([
-    #         x.get_raw() if hasattr(x, "get_raw") else x for x in iterable
-    #     ])
-    #     curr_offs = 0
-    #     random_positions = []
-    #     for value in iterable:
-    #         shift_position_taints(value, curr_offs)
-    #         curr_offs += len(value) + len(self)
-    #         random_positions.extend(get_random_positions(value))
-    #     nodes = set(get_taint_origins(self))
-    #     for x in iterable:
-    #         nodes.update(get_taint_origins(x))
-    #     return TaintStr(joined, list(nodes), random_pos=random_positions)
 
     def __str__(self):
         # return str.__str__(self)
@@ -1208,7 +1196,7 @@ class TaintedOpenAIObject:
             self._taint_origin = []
         elif isinstance(taint_origin, (int, str)):
             self._taint_origin = [taint_origin]
-        elif isinstance(taint_origin, list):
+        elif isinstance(taint_origin, (set, list)):
             self._taint_origin = list(taint_origin)
         else:
             raise TypeError(f"Unsupported taint_origin type: {type(taint_origin)}")
@@ -1297,39 +1285,6 @@ class TaintedOpenAIObject:
     def __class__(self, value):
         # Allow class assignment (some libraries do this)
         self._wrapped.__class__ = value
-
-
-# class TaintedCallable:
-#     """
-#     Wrapper for callable objects (methods, functions) that taints their return values.
-#     """
-
-#     def __init__(self, wrapped, taint_origin=None):
-#         self._wrapped = wrapped
-#         if taint_origin is None:
-#             self._taint_origin = []
-#         elif isinstance(taint_origin, (int, str)):
-#             self._taint_origin = [taint_origin]
-#         elif isinstance(taint_origin, (set, list)):
-#             self._taint_origin = list(taint_origin)
-#         else:
-#             raise TypeError(f"Unsupported taint_origin type: {type(taint_origin)}")
-
-#     def __call__(self, *args, **kwargs):
-#         # Call the original callable
-#         result = self._wrapped(*args, **kwargs)
-#         # Taint the result
-#         return taint_wrap(result, taint_origin=self._taint_origin)
-
-#     def __getattr__(self, name):
-#         # Delegate attribute access to the wrapped callable
-#         return getattr(self._wrapped, name)
-
-#     def __repr__(self):
-#         return f"TaintedCallable({repr(self._wrapped)}, taint_origin={self._taint_origin})"
-
-#     def get_raw(self):
-#         return self._wrapped
 
 
 class TaintFile:
