@@ -340,6 +340,14 @@ def patch_class_methods(cls):
                 wrapped_method = create_taint_wrapper(method)
                 curse(cls, method_name, wrapped_method)
 
+        elif callable(method):
+            try:
+                setattr(method, "__call__", create_taint_wrapper(method.__call__))
+            except Exception:
+                # callable, could be CPython
+                wrapped_method = create_taint_wrapper(method)
+                curse(cls, method_name, wrapped_method)
+
 
 class TaintModuleLoader(SourceFileLoader):
     """
