@@ -1,19 +1,16 @@
-import React, { useCallback, useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import ReactFlow, {
   Node,
   Edge,
   useNodesState,
   useEdgesState,
-  Controls,
-  ReactFlowProvider,
-  MarkerType
+  ReactFlowProvider
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { CustomNode } from './CustomNode';
 import { CustomEdge } from './CustomEdge';
 import { GraphNode, GraphEdge, ProcessInfo } from '../types';
-import { calculateNodePositions } from '../utils/nodeLayout';
-import { routeEdges } from '../utils/edgeRouting';
+import { LayoutEngine } from '../utils/layoutEngine';
 import { sendNodeUpdate, sendMessage, sendReset } from '../utils/messaging';
 import { useIsVsCodeDarkTheme } from '../utils/themeUtils';
 import styles from './GraphView.module.css';
@@ -49,6 +46,9 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const [containerWidth, setContainerWidth] = useState(400);
   const [containerHeight, setContainerHeight] = useState(1500);
 
+  // Create layout engine instance using useMemo to prevent recreation
+  const layoutEngine = useMemo(() => new LayoutEngine(), []);
+
   const handleNodeUpdate = useCallback(
     (nodeId: string, field: keyof GraphNode, value: string) => {
       onNodeUpdate(nodeId, field, value);
@@ -59,22 +59,38 @@ export const GraphView: React.FC<GraphViewProps> = ({
   );
 
   const updateLayout = useCallback(() => {
-    const positions = calculateNodePositions(
-      initialNodes,
-      initialEdges,
-      containerWidth
+    // Use the new layout engine instead of separate functions
+    const layout = layoutEngine.layoutGraph(initialNodes, initialEdges, containerWidth);
+    
+    // Calculate if we have left bands that need negative positioning
+    const hasLeftBands = layout.edges.some(edge => 
+      edge.band && edge.band.includes('Left')
     );
-    const maxY =
-      Math.max(0, ...Array.from(positions.values()).map((pos) => pos.y)) + 300;
+    
+    // Find the minimum X position to adjust for left bands
+    let minX = 0;
+    if (hasLeftBands) {
+      layout.edges.forEach(edge => {
+        if (edge.points && edge.points.length > 0) {
+          edge.points.forEach(point => {
+            if (point.x < minX) minX = point.x;
+          });
+        }
+      });
+    }
+    
+    // Adjust positions if we have negative X coordinates
+    const xOffset = minX < 0 ? Math.abs(minX) + 20 : 0;
+
+    const maxY = Math.max(0, ...Array.from(layout.positions.values()).map((pos) => pos.y)) + 300;
     setContainerHeight(maxY);
 
-    const routedEdges = routeEdges(initialEdges, positions);
-
     const flowNodes: Node[] = initialNodes.map((node) => {
+      const position = layout.positions.get(node.id) || { x: 0, y: 0 };
       return {
         id: node.id,
         type: "custom",
-        position: positions.get(node.id) || { x: 0, y: 0 },
+        position: { x: position.x + xOffset, y: position.y },
         data: {
           ...node,
           onUpdate: handleNodeUpdate,
@@ -83,16 +99,24 @@ export const GraphView: React.FC<GraphViewProps> = ({
       };
     });
 
-    const flowEdges: Edge[] = routedEdges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      sourceHandle: edge.sourceHandle,
-      targetHandle: edge.targetHandle,
-      type: "custom",
-      data: { points: edge.points },
-      animated: false,
-    }));
+    const flowEdges: Edge[] = layout.edges.map((edge) => {
+      // Adjust edge points if needed
+      const adjustedPoints = edge.points.map(point => ({
+        x: point.x + xOffset,
+        y: point.y
+      }));
+      
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
+        type: "custom",
+        data: { points: adjustedPoints },
+        animated: false,
+      };
+    });
 
     setNodes(flowNodes);
     setEdges(flowEdges);

@@ -193,7 +193,7 @@ def main():
     """Example usage of the random DAG generator."""
     # Generate and send graph directly to UI
     print("Generating graph (10 nodes, 15 edges)...")
-    random_graph = generate_random_dag(num_nodes=10, num_edges=15)
+    random_graph = generate_random_dag(num_nodes=20, num_edges=15)
 
     # Send graph to UI for display
     print("Sending graph to UI...")
