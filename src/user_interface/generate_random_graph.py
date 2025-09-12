@@ -191,9 +191,8 @@ def send_graph_to_ui(graph: Dict, graph_name: str = "Random Graph"):
 
 def main():
     """Example usage of the random DAG generator."""
-    # Generate and send graph directly to UI
-    print("Generating graph (10 nodes, 15 edges)...")
-    random_graph = generate_random_dag(num_nodes=20, num_edges=15)
+    # Generate randome example graph
+    random_graph = generate_random_dag(num_nodes=50, num_edges=60)
 
     # Send graph to UI for display
     print("Sending graph to UI...")

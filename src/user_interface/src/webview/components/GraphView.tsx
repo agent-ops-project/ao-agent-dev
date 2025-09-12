@@ -14,7 +14,7 @@ import { LayoutEngine } from '../utils/layoutEngine';
 import { sendNodeUpdate, sendMessage, sendReset } from '../utils/messaging';
 import { useIsVsCodeDarkTheme } from '../utils/themeUtils';
 import styles from './GraphView.module.css';
-import { FLOW_CONTAINER_MARGIN_TOP } from '../utils/layout/core/constants';
+import { FLOW_CONTAINER_MARGIN_TOP, NODE_WIDTH } from '../utils/layout/core/constants';
 import erasePng from '../assets/erase.png';
 import tagPng from '../assets/tag.png';
 
@@ -46,6 +46,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [containerWidth, setContainerWidth] = useState(400);
   const [containerHeight, setContainerHeight] = useState(1500);
+  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
+  const [rfKey, setRfKey] = useState(0);
 
   // Create layout engine instance using useMemo to prevent recreation
   const layoutEngine = useMemo(() => new LayoutEngine(), []);
@@ -81,10 +83,10 @@ export const GraphView: React.FC<GraphViewProps> = ({
     // Adjust positions if we have negative X coordinates
     const xOffset = minX < 0 ? Math.abs(minX) + 20 : 0;
 
-    const maxY = Math.max(0, ...Array.from(layout.positions.values()).map((pos) => pos.y)) + 300;
-    setContainerHeight(maxY);
+  const maxY = Math.max(0, ...Array.from(layout.positions.values()).map((pos) => pos.y)) + 300;
+  setContainerHeight(maxY);
 
-    const flowNodes: Node[] = initialNodes.map((node) => {
+  const flowNodes: Node[] = initialNodes.map((node) => {
       const position = layout.positions.get(node.id) || { x: 0, y: 0 };
       return {
         id: node.id,
@@ -119,6 +121,23 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
     setNodes(flowNodes);
     setEdges(flowEdges);
+
+  // Horizontal-only viewport fit (no vertical adjustments)
+  const PADDING_X = 40;
+  const nodeMinX = flowNodes.length ? Math.min(...flowNodes.map(n => n.position.x)) : 0;
+  const nodeMaxX = flowNodes.length ? Math.max(...flowNodes.map(n => n.position.x + NODE_WIDTH)) : 0;
+  const edgeXs = flowEdges.flatMap(e => (e.data as any)?.points?.map((p: any) => p.x) ?? []);
+  const edgesMinX = edgeXs.length ? Math.min(...edgeXs) : nodeMinX;
+  const edgesMaxX = edgeXs.length ? Math.max(...edgeXs) : nodeMaxX;
+  const minXAll = Math.min(nodeMinX, edgesMinX);
+  const maxXAll = Math.max(nodeMaxX, edgesMaxX);
+  const widthSpan = Math.max(1, maxXAll - minXAll);
+  const bboxW = widthSpan + PADDING_X * 2;
+  const availableW = Math.max(1, containerWidth);
+  const zoom = Math.min(1, availableW / bboxW);
+  const x = -minXAll * zoom + (availableW - widthSpan * zoom) / 2;
+  setViewport({ x, y: 0, zoom });
+  setRfKey(k => k + 1);
   }, [
     initialNodes,
     initialEdges,
@@ -127,6 +146,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     setNodes,
     setEdges,
     session_id,
+  layoutEngine
   ]);
 
   useEffect(() => {
@@ -227,6 +247,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
               }}
             >
               <ReactFlow
+                key={rfKey}
                 nodes={nodes}
                 edges={edges}
                 onNodesChange={onNodesChange}
@@ -237,7 +258,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                 proOptions={{ hideAttribution: true }}
                 minZoom={0.4}
                 maxZoom={1}
-                defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+                defaultViewport={viewport}
                 nodesDraggable={false}
                 nodesConnectable={false}
                 elementsSelectable={true}
