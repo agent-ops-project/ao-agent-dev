@@ -140,11 +140,8 @@ export const App: React.FC = () => {
     sendGetGraph(process.session_id);
   };
 
-  // Sort experiments by timestamp (most recent first) - mainly for localStorage consistency
-  const sortedProcesses = [...processes].sort((a, b) => {
-    if (!a.timestamp || !b.timestamp) return 0;
-    return b.timestamp.localeCompare(a.timestamp);
-  });
+  // Use experiments in the order sent by server (already sorted by name ascending)
+  const sortedProcesses = processes;
   
   const runningExperiments = sortedProcesses.filter(p => p.status === 'running');
   const finishedExperiments = sortedProcesses.filter(p => p.status === 'finished');

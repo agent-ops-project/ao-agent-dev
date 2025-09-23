@@ -92,3 +92,27 @@ These are the processes running.
 3. UI (red): The red boxes are the UI of the VS Code extension. The UI gets updated by the `develop server`. TODO: The VS Code extension spawns the `develop server` and tears it down. They also exchange a heart beat for failures and unclean VS Code exits. [Code](src/user_interface/)
 
 ![Processes overview](./media/processes.png)
+
+### Publishing
+
+#### pip package
+
+> [!NOTE]
+> Ask Ferdi if you don't have the keys to our TestPyPI and/or PyPI account.
+
+1. ‼️ Check `pyproject.toml`: Does everything look like what you want to upload (verion number, package name). The package description that will appear on PyPI is in `PKG_README.md`.
+2. Install `pip install build twine` if you haven't already.
+3. Run `python -m build` in root dir. This wil create a `dist/` dir.
+4. Test locally: `pip install dist/agops_bird-0.0.2-py3-none-any.whl` (you need to check the name of the `.whl` file).
+5. Do a test upload, it's worth it. Publish to TestPyPI first: `python -m twine upload --repository testpypi dist/*`. Then try to install from TestPyPi.
+6. When installing from TestPyPI, do the following (just swap out the package name): `pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ agops-bird==0.0.6`
+1. Upload to PyPI: `python -m twine upload dist/*`
+
+
+#### VS Code extension
+
+1. ‼️ Look at `src/user_interface/package.json`. Make sure name, description, version are what you want.
+1. Install `npm install -g @vscode/vsce` if you haven't already.
+2. `cd src/user_interface`
+3. Create VSIX package: `vsce package` . If you get errors like `npm error extraneous`, you need to `rm -rf node_modules package-lock.json`
+4. `vsce publish`. Ask Ferdi for personal access token if you don't have it.

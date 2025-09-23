@@ -1,8 +1,8 @@
 import time
 
-from common.constants import CERTAINTY_YELLOW
-from common.utils import send_to_server
-from runner.context_manager import get_session_id
+from aco.common.constants import CERTAINTY_YELLOW
+from aco.common.utils import send_to_server
+from aco.runner.context_manager import get_session_id
 
 
 def patched_call(input, output, input_ids, node_id, name, timeout, border_color=CERTAINTY_YELLOW):

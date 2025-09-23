@@ -10,11 +10,12 @@ import subprocess
 import shlex
 from datetime import datetime
 from typing import Optional
-from server.edit_manager import EDIT
-from server.cache_manager import CACHE
-from common.logger import logger
-from common.constants import ACO_CONFIG, ACO_LOG_PATH, HOST, PORT
-from server.telemetry.server_logger import log_server_message, log_shim_control_registration
+from aco.server.edit_manager import EDIT
+from aco.server.cache_manager import CACHE
+from aco.server import db
+from aco.common.logger import logger
+from aco.common.constants import ACO_CONFIG, ACO_LOG_PATH, HOST, PORT
+from aco.server.telemetry.server_logger import log_server_message, log_shim_control_registration
 
 
 def send_json(conn: socket.socket, msg: dict) -> None:
@@ -46,6 +47,7 @@ class DevelopServer:
         self.session_graphs = {}  # session_id -> graph_data
         self.ui_connections = set()  # All UI connections (simplified)
         self.sessions = {}  # session_id -> Session (only for shim connections)
+        self.rerun_sessions = set()  # Track sessions being rerun to avoid clearing llm_calls
 
     # ============================================================
     # Utils
@@ -62,7 +64,7 @@ class DevelopServer:
 
     def broadcast_experiment_list_to_uis(self, conn=None) -> None:
         """Only broadcast to one UI (conn) or, if conn is None, to all."""
-        # Get all experiments from database (already sorted by timestamp DESC)
+        # Get all experiments from database (already sorted by name ASC)
         db_experiments = CACHE.get_all_experiments_sorted()
 
         # Create a map of session_id to session for quick lookup
@@ -388,13 +390,12 @@ class DevelopServer:
         elif session and session.status == "finished":
             # Rerun for finished session: launch new shim-control with same session_id
             cwd, command, environment = CACHE.get_exec_command(session_id)
-            if not cwd:
-                logger.error(f"Requested restart for session without logged command.")
-                return
 
             logger.debug(
                 f"Rerunning finished session {session_id} with cwd={cwd} and command={command}"
             )
+            # Mark this session as being rerun to avoid clearing llm_calls
+            self.rerun_sessions.add(child_session_id)
             try:
                 # Insert session_id into environment so shim-control uses the same session_id
                 env = os.environ.copy()
@@ -407,7 +408,10 @@ class DevelopServer:
                 )
 
                 # Rerun the original command. This starts the shim-control, which starts the shim-runner.
+                command += " --second"  # NOTE: Only for demo!
+                print("COMMAND:", command)
                 args = shlex.split(command)
+                print("ARGS", args)
                 EDIT.update_graph_topology(child_session_id, self.session_graphs[child_session_id])
                 subprocess.Popen(args, cwd=cwd, env=env, close_fds=True, start_new_session=True)
 
@@ -421,6 +425,7 @@ class DevelopServer:
                     # Broadcast updated experiment list with rerun session at the front
                     self.broadcast_experiment_list_to_uis()
             except Exception as e:
+                assert False
                 logger.error(f"Failed to rerun finished session: {e}")
 
     def handle_deregister_message(self, msg: dict) -> bool:
@@ -499,6 +504,7 @@ class DevelopServer:
 
     def handle_client(self, conn: socket.socket) -> None:
         """Handle a new client connection in a separate thread."""
+        logger.info("Registering new session.")
         file_obj = conn.makefile(mode="r")
         session: Optional[Session] = None
         role = None
@@ -514,25 +520,39 @@ class DevelopServer:
             # Only assign session_id for shim-control.
             if role == "shim-control":
                 # If rerun, use previous session_id. Else, assign new one.
-                prev_session_id = handshake.get("prev_session_id")
-                if prev_session_id is not None:
-                    session_id = prev_session_id
-                else:
-                    session_id = str(uuid.uuid4())
-                    # Insert new experiment into DB.
-                    cwd = handshake.get("cwd")
-                    command = handshake.get("command")
-                    environment = handshake.get("environment")
-                    timestamp = datetime.now().strftime("%d/%m %H:%M")
-                    name = handshake.get("name")
-                    EDIT.add_experiment(
-                        session_id,
-                        name,
-                        timestamp,
-                        cwd,
-                        command,
-                        environment,
-                    )
+                # NOTE: For the BIRD user study, prev_session_id is always set.
+                session_id = handshake.get("prev_session_id")
+                logger.info("Registering session_id {session_id}")
+                assert session_id is not None
+
+                # Check if this session actually exists in database
+                existing_session = CACHE.get_session_name(session_id)
+                if existing_session:
+                    # Only clear llm_calls if this is not a rerun from the UI
+                    if session_id not in self.rerun_sessions:
+                        # Session exists, clear all LLM call entries for this session_id
+                        db.execute("DELETE FROM llm_calls WHERE session_id=?", (session_id,))
+                        # Also clear the in-memory graph representation
+                        self.session_graphs[session_id] = {"nodes": [], "edges": []}
+                    else:
+                        # Remove from rerun set now that we've handled it
+                        self.rerun_sessions.discard(session_id)
+
+                # Session doesn't exist in DB, create it
+                cwd = handshake.get("cwd")
+                command = handshake.get("command")
+                environment = handshake.get("environment")
+                timestamp = datetime.now().strftime("%d/%m %H:%M")
+                name = handshake.get("name")
+                EDIT.add_experiment(
+                    session_id,
+                    name,
+                    timestamp,
+                    cwd,
+                    command,
+                    environment,
+                )
+
                 # Insert session if not present.
                 with self.lock:
                     if session_id not in self.sessions:

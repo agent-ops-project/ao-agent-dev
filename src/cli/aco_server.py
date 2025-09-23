@@ -4,9 +4,9 @@ import time
 import subprocess
 import os
 from argparse import ArgumentParser
-from common.logger import logger
-from common.constants import ACO_LOG_PATH, HOST, PORT, SOCKET_TIMEOUT, SHUTDOWN_WAIT
-from server.develop_server import DevelopServer, send_json
+from aco.common.logger import logger
+from aco.common.constants import ACO_LOG_PATH, HOST, PORT, SOCKET_TIMEOUT, SHUTDOWN_WAIT
+from aco.server.develop_server import DevelopServer, send_json
 
 
 def launch_daemon_server() -> None:

@@ -18,8 +18,8 @@ information about tainted data within the resulting strings.
 """
 
 import ast
-from common.logger import logger
-from runner.taint_wrappers import TaintStr, get_taint_origins
+from aco.common.logger import logger
+from aco.runner.taint_wrappers import TaintStr, get_taint_origins
 
 
 def taint_fstring_join(*args):
