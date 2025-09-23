@@ -425,7 +425,6 @@ class DevelopServer:
                     # Broadcast updated experiment list with rerun session at the front
                     self.broadcast_experiment_list_to_uis()
             except Exception as e:
-                assert False
                 logger.error(f"Failed to rerun finished session: {e}")
 
     def handle_deregister_message(self, msg: dict) -> bool:
