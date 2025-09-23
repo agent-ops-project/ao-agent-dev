@@ -100,12 +100,12 @@ These are the processes running.
 > [!NOTE]
 > Ask Ferdi if you don't have the keys to our TestPyPI and/or PyPI account.
 
-1. ‼️ Check `pyproject.toml`: Does everything look like what you want to upload (verion number, package name). The package description that will appear on PyPI is in `PKG_README.md`.
+1. ‼️ Check `pyproject.toml`: Does everything look like what you want to upload (version number, package name). The package description that will appear on PyPI is in `PKG_README.md`.
 2. Install `pip install build twine` if you haven't already.
 3. Run `python -m build` in root dir. This wil create a `dist/` dir.
 4. Test locally: `pip install dist/agops_bird-0.0.2-py3-none-any.whl` (you need to check the name of the `.whl` file).
 5. Do a test upload, it's worth it. Publish to TestPyPI first: `python -m twine upload --repository testpypi dist/*`. Then try to install from TestPyPi.
-6. When installing from TestPyPI, do the following (just swap out the package name): `pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ agops-bird==0.0.6`
+6. When installing from TestPyPI, do the following (just swap out the package name at the end of the command): `pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ agops-bird==0.0.6`
 1. Upload to PyPI: `python -m twine upload dist/*`
 
 
