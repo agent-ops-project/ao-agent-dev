@@ -1,15 +1,15 @@
 import json
 
 import dill
-from common.constants import (
+from aco.common.constants import (
     DEFAULT_LOG,
     DEFAULT_NOTE,
     DEFAULT_SUCCESS,
     SUCCESS_COLORS,
     SUCCESS_STRING,
 )
-from server import db
-from runner.monkey_patching.api_parser import set_output
+from aco.server import db
+from aco.runner.monkey_patching.api_parser import set_output
 
 
 class EditManager:
@@ -65,7 +65,7 @@ class EditManager:
 
         env_json = json.dumps(environment)
         db.execute(
-            "INSERT INTO experiments (session_id, parent_session_id, name, graph_topology, timestamp, cwd, command, environment, success, notes, log) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO experiments (session_id, parent_session_id, name, graph_topology, timestamp, cwd, command, environment, success, notes, log) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session_id,
                 parent_session_id,

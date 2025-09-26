@@ -24,7 +24,7 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({ fileName, fileType, 
         for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
         arrayBufferPromise = Promise.resolve(bytes.buffer);
       } else {
-        arrayBufferPromise = Promise.resolve(fileData.buffer);
+        arrayBufferPromise = Promise.resolve(fileData.buffer as ArrayBuffer);
       }
       arrayBufferPromise.then(buffer => {
         mammoth.convertToHtml({ arrayBuffer: buffer })
@@ -40,7 +40,7 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({ fileName, fileType, 
     if (typeof fileData === 'string') {
       pdfUrl = `data:application/pdf;base64,${fileData}`;
     } else {
-      const blob = new Blob([fileData], { type: 'application/pdf' });
+      const blob = new Blob([fileData as BlobPart], { type: 'application/pdf' });
       pdfUrl = URL.createObjectURL(blob);
     }
     return (
