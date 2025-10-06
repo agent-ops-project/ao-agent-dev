@@ -1,6 +1,5 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { useIsVsCodeDarkTheme } from '../utils/themeUtils';
 
 interface NodePopoverProps {
     onAction: (action: string) => void;
@@ -9,6 +8,7 @@ interface NodePopoverProps {
     position?: 'above' | 'below';
     top?: number;
     left?: number;
+    isDarkTheme?: boolean;
 }
 
 export const NodePopover: React.FC<NodePopoverProps> = ({ 
@@ -18,8 +18,8 @@ export const NodePopover: React.FC<NodePopoverProps> = ({
     position = 'above',
     top,
     left,
+    isDarkTheme = false,
 }) => {
-    const isDarkTheme = useIsVsCodeDarkTheme();
     const popoverBg = isDarkTheme ? '#4d4d4d' : '#ffffff';
     const popoverBorder = isDarkTheme ? '#6b6b6b' : '#cccccc';
     const arrowColor = popoverBg;
@@ -28,7 +28,7 @@ export const NodePopover: React.FC<NodePopoverProps> = ({
         { id: 'editInput', label: 'Edit input' },
         { id: 'editOutput', label: 'Edit output' },
         { id: 'changeLabel', label: 'Change label' },
-        { id: 'seeInCode', label: 'See in code' }
+        // { id: 'seeInCode', label: 'See in code' }
     ];
 
     const popoverStyle: React.CSSProperties = {

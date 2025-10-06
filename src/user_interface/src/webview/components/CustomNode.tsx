@@ -5,12 +5,8 @@ import { NODE_WIDTH, NODE_HEIGHT } from '../utils/nodeLayout';
 import { GraphNode } from '../types';
 import { NodePopover } from './NodePopover';
 import { LabelEditor } from './LabelEditor';
-import { sendNavigateToCode } from '../utils/messaging';
 import { NODE_BORDER_WIDTH } from '../utils/layoutConstants';
-import { useIsVsCodeDarkTheme } from '../utils/themeUtils';
-import { trackNodeInputView, trackNodeOutputView } from '../utils/telemetry';
-
-declare const vscode: any;
+import { MessageSender } from '../shared/MessageSender';
 
 // Define handle offset constants for consistency
 const SIDE_HANDLE_OFFSET = 15; // pixels from center
@@ -21,6 +17,8 @@ interface CustomNodeData extends GraphNode {
   attachments: any;
   onUpdate: (nodeId: string, field: string, value: string) => void;
   session_id?: string;
+  messageSender: MessageSender;
+  isDarkTheme?: boolean;
 }
 
 export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
@@ -65,36 +63,42 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
   const handleAction = async (action: string) => {
     switch (action) {
       case "editInput":
-        // Track node input view
-        await trackNodeInputView(
-          id,
-          data.input || '',
-          data.session_id || '',
-          data.label || ''
-        );
+        // Track node input view through MessageSender
+        data.messageSender.send({
+          type: "trackNodeInputView",
+          payload: {
+            id,
+            input: data.input || '',
+            session_id: data.session_id || '',
+            label: data.label || ''
+          }
+        });
         
-        vscode.postMessage({
+        data.messageSender.send({
           type: "showEditDialog",
           payload: {
             nodeId: id,
             field: "input",
             value: data.input,
             label: data.tab_title || "Input",
-            session_id: data.session_id, // include session_id
+            session_id: data.session_id,
             attachments: data.attachments,
           },
         });
         break;
       case "editOutput":
-        // Track node output view
-        await trackNodeOutputView(
-          id,
-          data.output || '',
-          data.session_id || '',
-          data.label || ''
-        );
+        // Track node output view through MessageSender
+        data.messageSender.send({
+          type: "trackNodeOutputView",
+          payload: {
+            id,
+            output: data.output || '',
+            session_id: data.session_id || '',
+            label: data.label || ''
+          }
+        });
         
-        vscode.postMessage({
+        data.messageSender.send({
           type: "showEditDialog",
           payload: {
             nodeId: id,
@@ -109,9 +113,12 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
       case "changeLabel":
         setIsEditingLabel(true);
         break;
-      case "seeInCode":
-        sendNavigateToCode(data.codeLocation);
-        break;
+      // case "seeInCode":
+      //   data.messageSender.send({
+      //     type: "navigateToCode",
+      //     payload: { codeLocation: data.codeLocation }
+      //   });
+      //   break;
     }
   };
 
@@ -120,7 +127,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
     setIsEditingLabel(false);
   };  
 
-  const isDarkTheme = useIsVsCodeDarkTheme();
+  const isDarkTheme = data.isDarkTheme ?? false;
   
   const nodeRef = useRef<HTMLDivElement>(null);
   const [popoverCoords, setPopoverCoords] = useState<{top: number, left: number} | null>(null);
@@ -190,6 +197,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
           position={yPos < NODE_HEIGHT + 20 ? 'below' : 'above'}
           top={popoverCoords.top}
           left={popoverCoords.left}
+          isDarkTheme={isDarkTheme}
         />
       )}
       {isEditingLabel && (

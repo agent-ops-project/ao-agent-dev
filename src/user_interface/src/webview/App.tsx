@@ -4,6 +4,7 @@ import { GraphView } from './components/GraphView';
 import { ExperimentsView } from './components/ExperimentsView';
 import { GraphNode, GraphEdge, GraphData, ProcessInfo } from './types';
 import { sendReady, sendGetGraph, sendMessage } from './utils/messaging';
+import { MessageSender } from './shared/MessageSender';
 import { useIsVsCodeDarkTheme } from './utils/themeUtils';
 import { useLocalStorage } from './hooks/useLocalStorage';
 
@@ -24,6 +25,15 @@ export const App: React.FC = () => {
   const [allGraphs, setAllGraphs] = useLocalStorage<Record<string, GraphData>>("graphs", {});
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
   const isDarkTheme = useIsVsCodeDarkTheme();
+
+  // Create MessageSender for VS Code environment
+  const messageSender: MessageSender = {
+    send: (message: any) => {
+      if (window.vscode) {
+        window.vscode.postMessage(message);
+      }
+    }
+  };
   // Listen for event to open detail panel
   useEffect(() => {
     const handler = () => setShowDetailsPanel(true);
@@ -239,6 +249,8 @@ export const App: React.FC = () => {
             }}
             session_id={selectedExperiment.session_id}
             experiment={selectedExperiment}
+            messageSender={messageSender}
+            isDarkTheme={isDarkTheme}
           />
         ) : activeTab === "experiment-graph" && selectedExperiment && showDetailsPanel ? (
           <WorkflowRunDetailsPanel

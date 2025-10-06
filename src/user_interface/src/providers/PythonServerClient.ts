@@ -1,99 +1,66 @@
-import WebSocket from 'ws';
+import * as net from 'net';
 import * as child_process from 'child_process';
 
 export class PythonServerClient {
     private static instance: PythonServerClient;
-    private client: WebSocket | null = null;
-    private isConnected = false;
+    private client = new net.Socket();
     private messageQueue: string[] = [];
-    private reconnectTimeout: NodeJS.Timeout | null = null;
-    private onMessageCallback: ((msg: any) => void) | null = null;
+    private onMessageCallback?: (msg: any) => void;
 
     private constructor() {
         this.connect();
     }
 
     public static getInstance(): PythonServerClient {
-        if (!PythonServerClient.instance) {
-            PythonServerClient.instance = new PythonServerClient();
-        }
-        return PythonServerClient.instance;
+        return PythonServerClient.instance ??= new PythonServerClient();
     }
 
     private connect() {
-        this.client = new WebSocket('ws://127.0.0.1:4000');
-        
-        this.client.on('open', () => {
-            this.isConnected = true;
-            // Send handshake
-            this.sendRaw(JSON.stringify({
+        this.client.connect(5959, '127.0.0.1', () => {
+            this.client.write(JSON.stringify({
                 type: "hello",
-                role: "ui",
+                role: "ui", 
                 script: "vscode-extension"
-            }));
-            // Flush any queued messages
-            while (this.messageQueue.length > 0) {
-                this.sendRaw(this.messageQueue.shift()!);
-            }
+            }) + "\n");
+            this.messageQueue.forEach(msg => this.client.write(msg));
+            this.messageQueue = [];
         });
 
-        this.client.on('message', (data) => {
-            try {
-                const msg = JSON.parse(data.toString());
-                if (this.onMessageCallback) {
-                    this.onMessageCallback(msg);
-                }
-            } catch (e) {
-                // Ignore parse errors
+        let buffer = '';
+        this.client.on('data', (data) => {
+            buffer += data.toString();
+            let idx;
+            while ((idx = buffer.indexOf('\n')) !== -1) {
+                const line = buffer.slice(0, idx);
+                buffer = buffer.slice(idx + 1);
+                const msg = JSON.parse(line);
+                this.onMessageCallback?.(msg);
             }
         });
 
         this.client.on('close', () => {
-            this.isConnected = false;
-            this.scheduleReconnect();
+            setTimeout(() => this.connect(), 2000);
         });
 
-        this.client.on('error', (err) => {
-            this.isConnected = false;
-            this.scheduleReconnect();
+        this.client.on('error', () => {
+            setTimeout(() => this.connect(), 2000);
         });
-    }
-
-    private scheduleReconnect() {
-        if (this.reconnectTimeout) return;
-        this.reconnectTimeout = setTimeout(() => {
-            this.reconnectTimeout = null;
-            this.connect();
-        }, 2000);
-    }
-
-    private sendRaw(message: string) {
-        if (this.isConnected && this.client && this.client.readyState === WebSocket.OPEN) {
-            this.client.send(message);
-        } else {
-            this.messageQueue.push(message);
-        }
     }
 
     public sendMessage(message: any) {
-        const msgStr = JSON.stringify(message);        
-        this.sendRaw(msgStr);
+        const msgStr = JSON.stringify(message) + "\n";
+        if (this.client.readyState === 'open') {
+            this.client.write(msgStr);
+        } else {
+            this.messageQueue.push(msgStr);
+        }
     }
 
     public startServerIfNeeded() {
-        // Start the Python TCP server
-        const pythonProc = child_process.spawn('python', ['src/server/develop_server.py', 'start'], {
+        child_process.spawn('python', ['src/server/develop_server.py', 'start'], {
             detached: true,
             stdio: 'ignore'
-        });
-        pythonProc.unref();
-
-        // Start the WebSocket bridge server
-        const wsProc = child_process.spawn('node', ['src/webapp/server.js'], {
-            detached: true,
-            stdio: 'ignore'
-        });
-        wsProc.unref();
+        }).unref();
     }
 
     public stopServer() {

@@ -1,10 +1,8 @@
 import { useEffect, useState, useRef} from "react";
-import ReactFlow, { MiniMap, Controls, Background, MarkerType } from "reactflow";
-import type { Node, Edge } from "reactflow";
-import "reactflow/dist/style.css";
 import "./App.css";
 import type { GraphNode, GraphEdge } from "../../../user_interface/src/webview/types";
-import { calculateNodePositions, NODE_WIDTH, NODE_HEIGHT } from "../../../user_interface/src/webview/utils/nodeLayout";
+import { GraphView } from "../../../user_interface/src/webview/components/GraphView";
+import type { MessageSender } from "../../../user_interface/src/webview/shared/MessageSender";
 
 interface Experiment {
   session_id: string;
@@ -27,10 +25,39 @@ interface WSMessage {
 
 function App() {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
-  const [graph, setGraph] = useState<{ nodes: Node[]; edges: Edge[] } | null>(null);
+  const [selectedExperiment, setSelectedExperiment] = useState<Experiment | null>(null);
+  const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [editDialog, setEditDialog] = useState<{
+    nodeId: string;
+    field: string;
+    value: string;
+    label: string;
+    attachments?: any;
+  } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Detect dark theme
+  const isDarkTheme = window.matchMedia?.('(prefers-color-scheme: dark)').matches || false;
+
+  // Create webapp MessageSender
+  const messageSender: MessageSender = {
+    send: (message: any) => {
+      if (message.type === "showEditDialog") {
+        setEditDialog(message.payload);
+      } else if (message.type === "trackNodeInputView" || message.type === "trackNodeOutputView") {
+        // No-op for webapp (could send to analytics if needed)
+        console.log('Telemetry:', message.type, message.payload);
+      } else if (message.type === "navigateToCode") {
+        // No-op for webapp (not available)
+        console.log('Code navigation not available in webapp');
+      } else if (ws) {
+        // Send other messages via WebSocket
+        ws.send(JSON.stringify(message));
+      }
+    }
+  };
 
   useEffect(() => {
     const socket = new WebSocket("ws://localhost:4000");
@@ -43,63 +70,28 @@ function App() {
       if (msg.type === "experiment_list" && msg.experiments) {
         setExperiments(msg.experiments);
       } else if (msg.type === "graph_update" && msg.payload) {
-        setGraph(transformGraph(msg.payload));
+        setGraphData(msg.payload);
       }
     };
 
     return () => socket.close();
   }, []);
 
-  const transformGraph = (data: GraphData) => {
-    const containerWidth = containerRef.current?.offsetWidth || 800;
-
-    const positions = calculateNodePositions(data.nodes, data.edges, containerWidth);
-
-    const nodes: Node[] = data.nodes.map((n) => ({
-      id: n.id,
-      data: {
-        label: (
-          <div className="node-label">
-            <b>{n.label}</b>
-            {/* {n.input ? `\nInput: ${n.input}` : ""}
-            {n.output ? `\nOutput: ${n.output}` : ""} */}
-          </div>
-        ),
-      },
-      position: positions.get(n.id) || { x: 0, y: 0 },
-      style: {
-        border: `2px solid ${n.border_color || "#000"}`,
-        padding: 10,
-        borderRadius: 5,
-        background: "#fff",
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-      },
-    }));
-
-    const edges: Edge[] = data.edges.map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      type: "step",
-      style: { 
-        stroke: "#000",
-      },
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: "#000",
-      }
-    }));
-
-    return { nodes, edges };
+  const handleNodeUpdate = (nodeId: string, field: keyof GraphNode, value: string) => {
+    if (selectedExperiment && ws) {
+      ws.send(JSON.stringify({
+        type: "updateNode",
+        session_id: selectedExperiment.session_id,
+        nodeId,
+        field,
+        value
+      }));
+    }
   };
 
-  const handleExperimentClick = (session_id: string) => {
-    if (ws) ws.send(JSON.stringify({ type: "get_graph", session_id }));
+  const handleExperimentClick = (experiment: Experiment) => {
+    setSelectedExperiment(experiment);
+    if (ws) ws.send(JSON.stringify({ type: "get_graph", session_id: experiment.session_id }));
   };
 
   return (
@@ -112,7 +104,7 @@ function App() {
               <button
                 key={exp.session_id}
                 className="experiment-button"
-                onClick={() => handleExperimentClick(exp.session_id)}
+                onClick={() => handleExperimentClick(exp)}
               >
                 {exp.title}
                 <br />
@@ -128,16 +120,46 @@ function App() {
           {sidebarOpen ? "Hide Experiments" : "Show Experiments"}
         </button>
 
-        <ReactFlow
-          nodes={graph?.nodes || []}
-          edges={graph?.edges || []}
-          fitView
-          className="reactflow-container"
-        >
-          <MiniMap />
-          <Controls />
-          <Background color="#eee" gap={16} />
-        </ReactFlow>
+        {selectedExperiment && graphData ? (
+          <GraphView
+            nodes={graphData.nodes}
+            edges={graphData.edges}
+            onNodeUpdate={handleNodeUpdate}
+            session_id={selectedExperiment.session_id}
+            experiment={selectedExperiment}
+            messageSender={messageSender}
+            isDarkTheme={isDarkTheme}
+          />
+        ) : (
+          <div className="no-graph">
+            {selectedExperiment ? "Loading graph..." : "Select an experiment to view its graph"}
+          </div>
+        )}
+
+        {editDialog && (
+          <div className="edit-dialog-overlay">
+            <div className="edit-dialog">
+              <h3>Edit {editDialog.label}</h3>
+              <textarea
+                value={editDialog.value}
+                onChange={(e) => setEditDialog({ ...editDialog, value: e.target.value })}
+                rows={10}
+                cols={50}
+              />
+              <div className="dialog-buttons">
+                <button
+                  onClick={() => {
+                    handleNodeUpdate(editDialog.nodeId, editDialog.field as keyof GraphNode, editDialog.value);
+                    setEditDialog(null);
+                  }}
+                >
+                  Save
+                </button>
+                <button onClick={() => setEditDialog(null)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

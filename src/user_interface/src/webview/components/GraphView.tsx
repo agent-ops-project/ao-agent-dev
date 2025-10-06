@@ -11,8 +11,8 @@ import { CustomNode } from './CustomNode';
 import { CustomEdge } from './CustomEdge';
 import { GraphNode, GraphEdge, ProcessInfo } from '../types';
 import { LayoutEngine } from '../utils/layoutEngine';
-import { sendNodeUpdate, sendMessage, sendReset } from '../utils/messaging';
-import { useIsVsCodeDarkTheme } from '../utils/themeUtils';
+import { MessageSender } from '../shared/MessageSender';
+// import { useIsVsCodeDarkTheme } from '../utils/themeUtils';
 import styles from './GraphView.module.css';
 import { FLOW_CONTAINER_MARGIN_TOP, NODE_WIDTH } from '../utils/layout/core/constants';
 import erasePng from '../assets/erase.png';
@@ -24,6 +24,8 @@ interface GraphViewProps {
   onNodeUpdate: (nodeId: string, field: keyof GraphNode, value: string) => void;
   experiment?: ProcessInfo;
   session_id?: string;
+  messageSender: MessageSender;
+  isDarkTheme?: boolean;
 }
 
 const nodeTypes = {
@@ -40,6 +42,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
   onNodeUpdate,
   experiment,
   session_id,
+  messageSender,
+  isDarkTheme = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -55,10 +59,16 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const handleNodeUpdate = useCallback(
     (nodeId: string, field: keyof GraphNode, value: string) => {
       onNodeUpdate(nodeId, field, value);
-      sendNodeUpdate(nodeId, field, value, session_id);
-      sendReset();
+      messageSender.send({
+        type: 'updateNode',
+        nodeId,
+        field,
+        value,
+        session_id
+      });
+      messageSender.send({ type: 'reset', id: Math.floor(Math.random() * 100000) });
     },
-    [onNodeUpdate, session_id]
+    [onNodeUpdate, session_id, messageSender]
   );
 
   const updateLayout = useCallback(() => {
@@ -96,6 +106,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
           ...node,
           onUpdate: handleNodeUpdate,
           session_id,
+          messageSender,
+          isDarkTheme,
         },
       };
     });
@@ -180,7 +192,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     };
   }, []);
 
-  const isDarkTheme = useIsVsCodeDarkTheme();
+  // const isDarkTheme = useIsVsCodeDarkTheme();
   
   const mainLayoutStyle: React.CSSProperties = {
     display: "grid",
@@ -198,7 +210,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const titleStyle: React.CSSProperties = {
     fontSize: '18px',
     fontWeight: 'bold',
-    color: isDarkTheme ? '#FFFFFF' : '#000000',
+    // color: isDarkTheme ? '#FFFFFF' : '#000000',
   };
 
   const restartButtonStyle: React.CSSProperties = {
@@ -328,7 +340,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                 alert("No session_id available for erase! This is a bug.");
                 throw new Error("No session_id available for erase!");
               }
-              sendMessage({ type: "erase", session_id });
+              messageSender.send({ type: "erase", session_id });
             }}
           >
             <img
@@ -354,7 +366,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
                 alert("No session_id available for restart! This is a bug.");
                 throw new Error("No session_id available for restart!");
               }
-              sendMessage({ type: "restart", session_id });
+              messageSender.send({ type: "restart", session_id });
             }}
           >
             {React.createElement(
