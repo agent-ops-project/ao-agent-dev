@@ -230,6 +230,7 @@ export const App: React.FC = () => {
             runningProcesses={runningExperiments}
             finishedProcesses={finishedExperiments}
             onCardClick={handleExperimentCardClick}
+            isDarkTheme={isDarkTheme}
           />
         ) : activeTab === "experiment-graph" && selectedExperiment && !showDetailsPanel ? (
           <GraphView

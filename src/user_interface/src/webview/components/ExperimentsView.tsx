@@ -7,10 +7,11 @@ interface ExperimentsViewProps {
   runningProcesses: ProcessInfo[];
   finishedProcesses: ProcessInfo[];
   onCardClick?: (process: ProcessInfo) => void;
+  isDarkTheme?: boolean;
 }
 
-export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ runningProcesses, finishedProcesses, onCardClick }) => {
-  const isDarkTheme = useIsVsCodeDarkTheme();
+export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ runningProcesses, finishedProcesses, onCardClick, isDarkTheme = false }) => {
+  // const isDarkTheme = useIsVsCodeDarkTheme();
   const [hoveredCards, setHoveredCards] = useState<Set<string>>(new Set());
   
   // Debug logging

@@ -1,8 +1,10 @@
 import { useEffect, useState, useRef} from "react";
 import "./App.css";
-import type { GraphNode, GraphEdge } from "../../../user_interface/src/webview/types";
+import type { GraphNode, GraphEdge, ProcessInfo } from "../../../user_interface/src/webview/types";
 import { GraphView } from "../../../user_interface/src/webview/components/GraphView";
+import { ExperimentsView} from "../../../user_interface/src/webview/components/ExperimentsView";
 import type { MessageSender } from "../../../user_interface/src/webview/shared/MessageSender";
+import { EditDialog } from "../../../user_interface/src/webview/components/EditDialog";
 
 interface Experiment {
   session_id: string;
@@ -24,11 +26,11 @@ interface WSMessage {
 }
 
 function App() {
-  const [experiments, setExperiments] = useState<Experiment[]>([]);
-  const [selectedExperiment, setSelectedExperiment] = useState<Experiment | null>(null);
+  const [experiments, setExperiments] = useState<ProcessInfo[]>([]);
+  const [selectedExperiment, setSelectedExperiment] = useState<ProcessInfo | null>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [ws, setWs] = useState<WebSocket | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // const [sidebarOpen, setSidebarOpen] = useState(true);
   const [editDialog, setEditDialog] = useState<{
     nodeId: string;
     field: string;
@@ -39,24 +41,24 @@ function App() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Detect dark theme
-  const isDarkTheme = window.matchMedia?.('(prefers-color-scheme: dark)').matches || false;
+  const isDarkTheme = window.matchMedia?.("(prefers-color-scheme: dark)").matches || false;
 
   // Create webapp MessageSender
   const messageSender: MessageSender = {
     send: (message: any) => {
       if (message.type === "showEditDialog") {
         setEditDialog(message.payload);
-      } else if (message.type === "trackNodeInputView" || message.type === "trackNodeOutputView") {
-        // No-op for webapp (could send to analytics if needed)
-        console.log('Telemetry:', message.type, message.payload);
+      } else if (
+        message.type === "trackNodeInputView" ||
+        message.type === "trackNodeOutputView"
+      ) {
+        console.log("Telemetry:", message.type, message.payload);
       } else if (message.type === "navigateToCode") {
-        // No-op for webapp (not available)
-        console.log('Code navigation not available in webapp');
+        console.log("Code navigation not available in webapp");
       } else if (ws) {
-        // Send other messages via WebSocket
         ws.send(JSON.stringify(message));
       }
-    }
+    },
   };
 
   useEffect(() => {
@@ -79,46 +81,41 @@ function App() {
 
   const handleNodeUpdate = (nodeId: string, field: keyof GraphNode, value: string) => {
     if (selectedExperiment && ws) {
-      ws.send(JSON.stringify({
-        type: "updateNode",
-        session_id: selectedExperiment.session_id,
-        nodeId,
-        field,
-        value
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "updateNode",
+          session_id: selectedExperiment.session_id,
+          nodeId,
+          field,
+          value,
+        })
+      );
     }
   };
 
-  const handleExperimentClick = (experiment: Experiment) => {
+  const handleExperimentClick = (experiment: ProcessInfo) => {
     setSelectedExperiment(experiment);
     if (ws) ws.send(JSON.stringify({ type: "get_graph", session_id: experiment.session_id }));
   };
 
+  const running = experiments.filter((e) => e.status === "running");
+  const finished = experiments.filter((e) => e.status === "finished");
+
   return (
     <div className="app-container">
-      {sidebarOpen && (
-        <div className="sidebar">
-          <h2 className="sidebar-title">Experiments</h2>
-          <div className="experiment-list">
-            {experiments.map((exp) => (
-              <button
-                key={exp.session_id}
-                className="experiment-button"
-                onClick={() => handleExperimentClick(exp)}
-              >
-                {exp.title}
-                <br />
-                <small className="experiment-status">({exp.status})</small>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="sidebar">
+        <ExperimentsView
+          runningProcesses={running}
+          finishedProcesses={finished}
+          onCardClick={handleExperimentClick}
+          isDarkTheme={isDarkTheme}
+        />
+      </div>
 
       <div className="graph-container" ref={containerRef}>
-        <button className="toggle-button" onClick={() => setSidebarOpen(!sidebarOpen)}>
+        {/* <button className="toggle-button" onClick={() => setSidebarOpen(!sidebarOpen)}>
           {sidebarOpen ? "Hide Experiments" : "Show Experiments"}
-        </button>
+        </button> */}
 
         {selectedExperiment && graphData ? (
           <GraphView
@@ -149,7 +146,11 @@ function App() {
               <div className="dialog-buttons">
                 <button
                   onClick={() => {
-                    handleNodeUpdate(editDialog.nodeId, editDialog.field as keyof GraphNode, editDialog.value);
+                    handleNodeUpdate(
+                      editDialog.nodeId,
+                      editDialog.field as keyof GraphNode,
+                      editDialog.value
+                    );
                     setEditDialog(null);
                   }}
                 >
@@ -160,6 +161,21 @@ function App() {
             </div>
           </div>
         )}
+        {/* {editDialog && (
+          <EditDialog
+            title={`Edit ${editDialog.label}`}
+            value={editDialog.value}
+            onSave={(newValue) => {
+              handleNodeUpdate(
+                editDialog.nodeId,
+                editDialog.field as keyof GraphNode,
+                newValue
+              );
+              setEditDialog(null);
+            }}
+            onCancel={() => setEditDialog(null)}
+          />
+        )} */}
       </div>
     </div>
   );
