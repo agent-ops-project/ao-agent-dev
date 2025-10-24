@@ -210,7 +210,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const titleStyle: React.CSSProperties = {
     fontSize: '18px',
     fontWeight: 'bold',
-    // color: isDarkTheme ? '#FFFFFF' : '#000000',
+    color: isDarkTheme ? '#FFFFFF' : '#000000',
   };
 
   const restartButtonStyle: React.CSSProperties = {

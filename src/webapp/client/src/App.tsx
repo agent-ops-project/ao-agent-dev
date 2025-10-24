@@ -81,15 +81,35 @@ function App() {
 
   const handleNodeUpdate = (nodeId: string, field: keyof GraphNode, value: string) => {
     if (selectedExperiment && ws) {
-      ws.send(
-        JSON.stringify({
-          type: "updateNode",
-          session_id: selectedExperiment.session_id,
-          nodeId,
-          field,
-          value,
-        })
-      );
+      if (field == "input") {
+        ws.send(
+          JSON.stringify({
+            type: "edit_input",
+            session_id: selectedExperiment.session_id,
+            node_id: nodeId,
+            value,
+          })
+        )
+      } else if (field == "output") {
+        ws.send(
+          JSON.stringify({
+            type: "edit_output",
+            session_id: selectedExperiment.session_id,
+            node_id: nodeId,
+            value,
+          })
+        )
+      } else {
+        ws.send(
+          JSON.stringify({
+            type: "updateNode",
+            session_id: selectedExperiment.session_id,
+            nodeId,
+            field,
+            value,
+          })
+        );
+      }
     }
   };
 
@@ -98,8 +118,17 @@ function App() {
     if (ws) ws.send(JSON.stringify({ type: "get_graph", session_id: experiment.session_id }));
   };
 
-  const running = experiments.filter((e) => e.status === "running");
-  const finished = experiments.filter((e) => e.status === "finished");
+  // const running = experiments.filter((e) => e.status === "running");
+  // const finished = experiments.filter((e) => e.status === "finished");
+
+  const sortedExperiments = [...experiments].sort((a, b) => {
+    if (!a.timestamp) return 1;
+    if (!b.timestamp) return -1;
+    return b.timestamp.localeCompare(a.timestamp);
+  });
+  
+  const running = sortedExperiments.filter((e) => e.status === "running");
+  const finished = sortedExperiments.filter((e) => e.status === "finished");
 
   return (
     <div className="app-container">
@@ -133,7 +162,7 @@ function App() {
           </div>
         )}
 
-        {editDialog && (
+        {/* {editDialog && (
           <div className="edit-dialog-overlay">
             <div className="edit-dialog">
               <h3>Edit {editDialog.label}</h3>
@@ -160,8 +189,8 @@ function App() {
               </div>
             </div>
           </div>
-        )}
-        {/* {editDialog && (
+        )} */}
+        {editDialog && (
           <EditDialog
             title={`Edit ${editDialog.label}`}
             value={editDialog.value}
@@ -175,7 +204,7 @@ function App() {
             }}
             onCancel={() => setEditDialog(null)}
           />
-        )} */}
+        )}
       </div>
     </div>
   );

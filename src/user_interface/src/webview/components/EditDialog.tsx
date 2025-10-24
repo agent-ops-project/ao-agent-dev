@@ -1,102 +1,156 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 
 interface EditDialogProps {
-    title: string;
-    value: string;
-    onSave: (value: string) => void;
-    onCancel: () => void;
+  title: string;
+  value: string;
+  onSave: (value: string) => void;
+  onCancel: () => void;
+  isDarkTheme?: boolean;
 }
 
-export const EditDialog: React.FC<EditDialogProps> = ({ title, value, onSave, onCancel }) => {
-    const [text, setText] = useState(value);
+export const EditDialog: React.FC<EditDialogProps> = ({
+  title,
+  value,
+  onSave,
+  onCancel,
+  isDarkTheme = false,
+}) => {
+  const [text, setText] = useState(value);
 
-    useEffect(() => {
-        setText(value);
-    }, [value]);
+  useEffect(() => {
+    setText(value);
+  }, [value]);
 
-    return (
+  const colors = isDarkTheme
+    ? {
+        background: "#2c2c2c",
+        overlay: "rgba(0, 0, 0, 0.6)",
+        textareaBg: "#1e1e1e",
+        text: "#fff",
+        border: "#444",
+        cancelBg: "#444",
+        saveBg: "#007acc",
+      }
+    : {
+        background: "#fff",
+        overlay: "rgba(0, 0, 0, 0.3)",
+        textareaBg: "#f8f8f8",
+        text: "#000",
+        border: "#ccc",
+        cancelBg: "#ddd",
+        saveBg: "#007acc",
+      };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: colors.overlay,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onCancel();
+        }
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: colors.background,
+          borderRadius: "10px",
+          padding: "24px",
+          width: "80%",
+          maxWidth: "700px",
+          maxHeight: "80vh",
+          display: "flex",
+          flexDirection: "column",
+          gap: "16px",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div
-            style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 1000,
-            }}
-            onClick={(e: { target: any; currentTarget: any; }) => {
-                if (e.target === e.currentTarget) {
-                    onCancel();
-                }
-            }}
+          style={{
+            fontSize: "18px",
+            fontWeight: 600,
+            color: colors.text,
+            textAlign: "left",
+          }}
         >
-            <div
-                style={{
-                    backgroundColor: '#2c2c2c',
-                    borderRadius: '8px',
-                    padding: '20px',
-                    width: '80%',
-                    maxWidth: '800px',
-                    maxHeight: '80vh',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '16px',
-                }}
-                onClick={(e: { stopPropagation: () => any; }) => e.stopPropagation()}
-            >
-                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff' }}>
-                    {title}
-                </div>
-                <textarea
-                    value={text}
-                    onChange={(e: { target: { value: React.SetStateAction<string>; }; }) => setText(e.target.value)}
-                    style={{
-                        width: '100%',
-                        height: '300px',
-                        padding: '12px',
-                        backgroundColor: '#1e1e1e',
-                        color: '#fff',
-                        border: '1px solid #444',
-                        borderRadius: '4px',
-                        resize: 'vertical',
-                        fontFamily: 'monospace',
-                        fontSize: '14px',
-                        lineHeight: '1.5',
-                    }}
-                />
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                    <button
-                        onClick={onCancel}
-                        style={{
-                            padding: '8px 16px',
-                            backgroundColor: '#444',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                        }}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={() => onSave(text)}
-                        style={{
-                            padding: '8px 16px',
-                            backgroundColor: '#007acc',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                        }}
-                    >
-                        Save
-                    </button>
-                </div>
-            </div>
+          {title}
         </div>
-    );
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            style={{
+              width: "100%",
+              minHeight: "300px",
+              padding: "12px",
+              backgroundColor: colors.textareaBg,
+              color: colors.text,
+              border: `1px solid ${colors.border}`,
+              borderRadius: "6px",
+              resize: "vertical",
+              fontFamily: "monospace",
+              fontSize: "14px",
+              lineHeight: "1.5",
+              outline: "none",
+              boxSizing: "border-box",
+            }}
+          />
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: "10px",
+            marginTop: "8px",
+          }}
+        >
+          <button
+            onClick={onCancel}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: colors.cancelBg,
+              color: colors.text,
+              border: "none",
+              borderRadius: "6px",
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onSave(text)}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: colors.saveBg,
+              color: "#fff",
+              border: "none",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontWeight: 500,
+            }}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
