@@ -10,11 +10,12 @@ import subprocess
 import shlex
 from datetime import datetime
 from typing import Optional
-from server.edit_manager import EDIT
-from server.cache_manager import CACHE
-from common.logger import logger
-from common.constants import ACO_CONFIG, ACO_LOG_PATH, HOST, PORT
-from server.telemetry.server_logger import log_server_message, log_shim_control_registration
+from aco.server.edit_manager import EDIT
+from aco.server.cache_manager import CACHE
+from aco.server import db
+from aco.common.logger import logger
+from aco.common.constants import ACO_CONFIG, ACO_LOG_PATH, HOST, PORT
+from aco.server.telemetry.server_logger import log_server_message, log_shim_control_registration
 
 
 def send_json(conn: socket.socket, msg: dict) -> None:
@@ -46,6 +47,7 @@ class DevelopServer:
         self.session_graphs = {}  # session_id -> graph_data
         self.ui_connections = set()  # All UI connections (simplified)
         self.sessions = {}  # session_id -> Session (only for shim connections)
+        self.rerun_sessions = set()  # Track sessions being rerun to avoid clearing llm_calls
 
     # ============================================================
     # Utils
@@ -62,7 +64,7 @@ class DevelopServer:
 
     def broadcast_experiment_list_to_uis(self, conn=None) -> None:
         """Only broadcast to one UI (conn) or, if conn is None, to all."""
-        # Get all experiments from database (already sorted by timestamp DESC)
+        # Get all experiments from database (already sorted by name ASC)
         db_experiments = CACHE.get_all_experiments_sorted()
 
         # Create a map of session_id to session for quick lookup
@@ -440,13 +442,12 @@ class DevelopServer:
         elif session and session.status == "finished":
             # Rerun for finished session: launch new shim-control with same session_id
             cwd, command, environment = CACHE.get_exec_command(session_id)
-            if not cwd:
-                logger.error(f"Requested restart for session without logged command.")
-                return
 
             logger.debug(
                 f"Rerunning finished session {session_id} with cwd={cwd} and command={command}"
             )
+            # Mark this session as being rerun to avoid clearing llm_calls
+            self.rerun_sessions.add(child_session_id)
             try:
                 # Insert session_id into environment so shim-control uses the same session_id
                 env = os.environ.copy()
@@ -520,7 +521,6 @@ class DevelopServer:
         # Log the message to telemetry
         log_server_message(msg, self.session_graphs)
 
-        # TODO: Process experiment changes for title, success, notes.
         msg_type = msg.get("type")
         if msg_type == "shutdown":
             self.handle_shutdown()
@@ -640,6 +640,24 @@ class DevelopServer:
             except (ConnectionResetError, OSError) as e:
                 logger.info(f"Connection closed: {e}")
         finally:
+            # Clean up connection
+            info = self.conn_info.pop(conn, None)
+            # Only mark session finished for shim-control disconnects
+            if info and role == "shim-control":
+                session = self.sessions.get(info["session_id"])
+                if session:
+                    with session.lock:
+                        session.shim_conn = None
+                    session.status = "finished"
+                    self.broadcast_experiment_list_to_uis()
+            elif info and role == "ui":
+                # Remove from global UI connections list
+                self.ui_connections.discard(conn)
+            try:
+                conn.close()
+            except Exception as e:
+                logger.error(f"Error closing connection: {e}")
+
             # Clean up connection
             info = self.conn_info.pop(conn, None)
             # Only mark session finished for shim-control disconnects

@@ -14,10 +14,10 @@ import tempfile
 import runpy
 import importlib.util
 from typing import Optional, List
-from runner.patching_import_hook import set_module_to_user_file, install_patch_hook
-from common.logger import logger
-from common.utils import scan_user_py_files_and_modules
-from common.constants import (
+from aco.runner.patching_import_hook import set_module_to_user_file, install_patch_hook
+from aco.common.logger import logger
+from aco.common.utils import scan_user_py_files_and_modules
+from aco.common.constants import (
     HOST,
     PORT,
     CONNECTION_TIMEOUT,
@@ -26,8 +26,8 @@ from common.constants import (
     MESSAGE_POLL_INTERVAL,
     SERVER_START_WAIT,
 )
-from runner.launch_scripts import SCRIPT_WRAPPER_TEMPLATE, MODULE_WRAPPER_TEMPLATE
-from cli.aco_server import launch_daemon_server
+from aco.runner.launch_scripts import SCRIPT_WRAPPER_TEMPLATE, MODULE_WRAPPER_TEMPLATE
+from aco.cli.aco_server import launch_daemon_server
 
 
 # Utility functions for path computation
@@ -64,12 +64,14 @@ class DevelopShim:
         is_module_execution: bool,
         project_root: str,
         packages_in_project_root: list[str],
+        sample_id: Optional[str] = None,
     ):
         self.script_path = script_path
         self.script_args = script_args
         self.is_module_execution = is_module_execution
         self.project_root = project_root
         self.packages_in_project_root = packages_in_project_root
+        self.sample_id = sample_id
 
         # State management
         self.restart_event = threading.Event()
@@ -154,7 +156,7 @@ class DevelopShim:
 
     def _handle_server_message(self, msg: dict) -> None:
         """Handle incoming server messages."""
-        logger.info(f"[shim-control] Received message from server: {msg}")
+        logger.info(f"[shim-control] Received message from aco.server: {msg}")
         msg_type = msg.get("type")
         if msg_type == "restart":
             logger.info(f"[shim-control] Received restart message: {msg}")
@@ -291,7 +293,7 @@ class DevelopShim:
         }
         try:
             self.server_conn.sendall((json.dumps(handshake) + "\n").encode("utf-8"))
-            # Read session_id from server
+            # Read session_id from aco.server
             file_obj = self.server_conn.makefile(mode="r")
             session_line = file_obj.readline()
             if session_line:
@@ -435,8 +437,6 @@ class DevelopShim:
             # For file execution, convert to module name and use wrapper
             module_name = self._convert_file_to_module_name(self.script_path)
             wrapper_path = self._create_runpy_wrapper(module_name, self.script_args)
-
-            logger.debug(f"wrapper_path {wrapper_path}")
 
             self.proc = subprocess.Popen([sys.executable, wrapper_path], env=env)
             self.wrapper_path = wrapper_path
