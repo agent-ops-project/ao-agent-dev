@@ -62,6 +62,17 @@ class DevelopServer:
                 logger.error(f"Error broadcasting to UI: {e}")
                 self.ui_connections.discard(ui_conn)
 
+    def broadcast_graph_update(self, session_id: str) -> None:
+        """Broadcast current graph state for a session to all UIs."""
+        if session_id in self.session_graphs:
+            self.broadcast_to_all_uis(
+                {
+                    "type": "graph_update",
+                    "session_id": session_id,
+                    "payload": self.session_graphs[session_id],
+                }
+            )
+
     def broadcast_experiment_list_to_uis(self, conn=None) -> None:
         """Only broadcast to one UI (conn) or, if conn is None, to all."""
         # Get all experiments from database (already sorted by name ASC)
@@ -165,14 +176,13 @@ class DevelopServer:
             return label
         return f"{label} ({len(matches)})"
 
-    def _find_session_with_node(self, node_id: str) -> Optional[str]:
-        """Find which session contains a specific node ID"""
-        source_sessions = set()
+    def _find_sessions_with_node(self, node_id: str) -> set:
+        """Find all sessions containing a specific node ID. Returns empty set if not found."""
+        sessions = set()
         for session_id, graph in self.session_graphs.items():
-            for node in graph["nodes"]:
-                if node["id"] == node_id:
-                    source_sessions.add(session_id)
-        return source_sessions
+            if any(node["id"] == node_id for node in graph.get("nodes", [])):
+                sessions.add(session_id)
+        return sessions
 
     def handle_add_node(self, msg: dict) -> None:
         sid = msg["session_id"]
@@ -185,7 +195,7 @@ class DevelopServer:
 
         for source in incoming_edges:
             # Find which session contains this source node
-            source_sessions = self._find_session_with_node(source)
+            source_sessions = self._find_sessions_with_node(source)
             if source_sessions:
                 for source_session in source_sessions:
                     target_sessions.add(source_session)
@@ -237,13 +247,7 @@ class DevelopServer:
         self.broadcast_to_all_uis(
             {"type": "color_preview_update", "session_id": sid, "color_preview": color_preview}
         )
-        self.broadcast_to_all_uis(
-            {
-                "type": "graph_update",
-                "session_id": sid,
-                "payload": {"nodes": graph["nodes"], "edges": graph["edges"]},
-            }
-        )
+        self.broadcast_graph_update(sid)
         EDIT.update_graph_topology(sid, graph)
 
     def handle_edit_input(self, msg: dict) -> None:
@@ -258,13 +262,7 @@ class DevelopServer:
                 if node["id"] == node_id:
                     node["input"] = new_input
                     break
-            self.broadcast_to_all_uis(
-                {
-                    "type": "graph_update",
-                    "session_id": session_id,
-                    "payload": self.session_graphs[session_id],
-                }
-            )
+            self.broadcast_graph_update(session_id)
         logger.debug("Input overwrite completed")
 
     def handle_edit_output(self, msg: dict) -> None:
@@ -279,13 +277,7 @@ class DevelopServer:
                 if node["id"] == node_id:
                     node["output"] = new_output
                     break
-            self.broadcast_to_all_uis(
-                {
-                    "type": "graph_update",
-                    "session_id": session_id,
-                    "payload": self.session_graphs[session_id],
-                }
-            )
+            self.broadcast_graph_update(session_id)
         logger.debug("Output overwrite completed")
 
     def handle_log(self, msg: dict) -> None:
@@ -299,53 +291,34 @@ class DevelopServer:
     def handle_update_run_name(self, msg: dict) -> None:
         session_id = msg.get("session_id")
         run_name = msg.get("run_name")
-        logger.info(
-            f"[handle_update_run_name] Updating run name for session {session_id}: {run_name}"
-        )
         if session_id and run_name is not None:
-            try:
-                EDIT.update_run_name(session_id, run_name)
-                logger.info(f"[handle_update_run_name] Successfully updated run name")
-                self.broadcast_experiment_list_to_uis()
-            except Exception as e:
-                logger.error(f"[handle_update_run_name] Error updating run name: {e}")
+            EDIT.update_run_name(session_id, run_name)
+            self.broadcast_experiment_list_to_uis()
         else:
             logger.error(
-                f"[handle_update_run_name] Missing required fields: session_id={session_id}, run_name={run_name}"
+                f"handle_update_run_name: Missing required fields: session_id={session_id}, run_name={run_name}"
             )
 
     def handle_update_result(self, msg: dict) -> None:
         session_id = msg.get("session_id")
         result = msg.get("result")
-        logger.info(f"[handle_update_result] Updating result for session {session_id}: {result}")
         if session_id and result is not None:
-            try:
-                EDIT.update_result(session_id, result)
-                logger.info(f"[handle_update_result] Successfully updated result")
-                self.broadcast_experiment_list_to_uis()
-            except Exception as e:
-                logger.error(f"[handle_update_result] Error updating result: {e}")
+            EDIT.update_result(session_id, result)
+            self.broadcast_experiment_list_to_uis()
         else:
             logger.error(
-                f"[handle_update_result] Missing required fields: session_id={session_id}, result={result}"
+                f"handle_update_result: Missing required fields: session_id={session_id}, result={result}"
             )
 
     def handle_update_notes(self, msg: dict) -> None:
         session_id = msg.get("session_id")
         notes = msg.get("notes")
-        logger.info(
-            f"[handle_update_notes] Updating notes for session {session_id} (length: {len(notes) if notes else 0})"
-        )
         if session_id and notes is not None:
-            try:
-                EDIT.update_notes(session_id, notes)
-                logger.info(f"[handle_update_notes] Successfully updated notes")
-                self.broadcast_experiment_list_to_uis()
-            except Exception as e:
-                logger.error(f"[handle_update_notes] Error updating notes: {e}")
+            EDIT.update_notes(session_id, notes)
+            self.broadcast_experiment_list_to_uis()
         else:
             logger.error(
-                f"[handle_update_notes] Missing required fields: session_id={session_id}, notes={notes}"
+                f"handle_update_notes: Missing required fields: session_id={session_id}, notes={notes}"
             )
 
     def handle_get_graph(self, msg: dict, conn: socket.socket) -> None:
@@ -640,24 +613,6 @@ class DevelopServer:
             except (ConnectionResetError, OSError) as e:
                 logger.info(f"Connection closed: {e}")
         finally:
-            # Clean up connection
-            info = self.conn_info.pop(conn, None)
-            # Only mark session finished for shim-control disconnects
-            if info and role == "shim-control":
-                session = self.sessions.get(info["session_id"])
-                if session:
-                    with session.lock:
-                        session.shim_conn = None
-                    session.status = "finished"
-                    self.broadcast_experiment_list_to_uis()
-            elif info and role == "ui":
-                # Remove from global UI connections list
-                self.ui_connections.discard(conn)
-            try:
-                conn.close()
-            except Exception as e:
-                logger.error(f"Error closing connection: {e}")
-
             # Clean up connection
             info = self.conn_info.pop(conn, None)
             # Only mark session finished for shim-control disconnects

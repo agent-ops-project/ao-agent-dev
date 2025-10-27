@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useIsVsCodeDarkTheme } from '../utils/themeUtils';
 import { ProcessCard } from './ProcessCard';
-import { GraphData, ProcessInfo } from '../types';
+import { ProcessInfo } from '../types';
 
 interface ExperimentsViewProps {
   runningProcesses: ProcessInfo[];
@@ -40,6 +40,52 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ runningProcess
     color: isDarkTheme ? '#CCCCCC' : '#666666',
   };
 
+  const handleCardHover = (cardId: string, isEntering: boolean) => {
+    setHoveredCards((prev) => {
+      const newSet = new Set(prev);
+      if (isEntering) {
+        newSet.add(cardId);
+      } else {
+        newSet.delete(cardId);
+      }
+      return newSet;
+    });
+  };
+
+  const renderExperimentSection = (
+    processes: ProcessInfo[],
+    sectionTitle: string,
+    sectionPrefix: string,
+    marginTop?: number
+  ) => {
+    if (processes.length === 0) return null;
+
+    return (
+      <>
+        <div style={{ ...titleStyle, ...(marginTop && { marginTop }) }}>
+          {sectionTitle}
+        </div>
+        {processes.map((process) => {
+          const cardId = `${sectionPrefix}-${process.session_id}`;
+          const isHovered = hoveredCards.has(cardId);
+          const nodeColors = process.color_preview || [];
+          return (
+            <ProcessCard
+              key={process.session_id}
+              process={process}
+              isHovered={isHovered}
+              isDarkTheme={isDarkTheme}
+              nodeColors={nodeColors}
+              onClick={() => onCardClick && onCardClick(process)}
+              onMouseEnter={() => handleCardHover(cardId, true)}
+              onMouseLeave={() => handleCardHover(cardId, false)}
+            />
+          );
+        })}
+      </>
+    );
+  };
+
   if (runningProcesses.length === 0 && finishedProcesses.length === 0) {
     return (
       <div style={containerStyle}>
@@ -56,62 +102,8 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ runningProcess
 
   return (
     <div style={containerStyle}>
-      {runningProcesses.length > 0 && (
-        <>
-          <div style={titleStyle}>Running</div>
-          {runningProcesses.map((process) => {
-            const cardId = `running-${process.session_id}`;
-            const isHovered = hoveredCards.has(cardId);
-            const nodeColors = process.color_preview || [];
-            return (
-              <ProcessCard
-                key={process.session_id}
-                process={process}
-                isHovered={isHovered}
-                isDarkTheme={isDarkTheme}
-                nodeColors={nodeColors}
-                onClick={() => onCardClick && onCardClick(process)}
-                onMouseEnter={() =>
-                  setHoveredCards((prev) => new Set(prev).add(cardId))
-                }
-                onMouseLeave={() => {
-                  const newSet = new Set(hoveredCards);
-                  newSet.delete(cardId);
-                  setHoveredCards(newSet);
-                }}
-              />
-            );
-          })}
-        </>
-      )}
-      {finishedProcesses.length > 0 && (
-        <>
-          <div style={{ ...titleStyle, marginTop: runningProcesses.length > 0 ? 32 : 0 }}>Finished</div>
-          {finishedProcesses.map((process) => {
-            const cardId = `finished-${process.session_id}`;
-            const isHovered = hoveredCards.has(cardId);
-            const nodeColors = process.color_preview || [];
-            return (
-              <ProcessCard
-                key={process.session_id}
-                process={process}
-                isHovered={isHovered}
-                isDarkTheme={isDarkTheme}
-                nodeColors={nodeColors}
-                onClick={() => onCardClick && onCardClick(process)}
-                onMouseEnter={() =>
-                  setHoveredCards((prev) => new Set(prev).add(cardId))
-                }
-                onMouseLeave={() => {
-                  const newSet = new Set(hoveredCards);
-                  newSet.delete(cardId);
-                  setHoveredCards(newSet);
-                }}
-              />
-            );
-          })}
-        </>
-      )}
+      {renderExperimentSection(runningProcesses, 'Running', 'running')}
+      {renderExperimentSection(finishedProcesses, 'Finished', 'finished', runningProcesses.length > 0 ? 32 : 0)}
     </div>
   );
 }; 
