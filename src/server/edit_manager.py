@@ -91,6 +91,27 @@ class EditManager:
         """Update the timestamp of an experiment (used for reruns)"""
         db.execute("UPDATE experiments SET timestamp=? WHERE session_id=?", (timestamp, session_id))
 
+    def update_run_name(self, session_id, run_name):
+        """Update the experiment name/title."""
+        db.execute(
+            "UPDATE experiments SET name=? WHERE session_id=?",
+            (run_name, session_id),
+        )
+
+    def update_result(self, session_id, result):
+        """Update the experiment result/success status."""
+        db.execute(
+            "UPDATE experiments SET success=? WHERE session_id=?",
+            (result, session_id),
+        )
+
+    def update_notes(self, session_id, notes):
+        """Update the experiment notes."""
+        db.execute(
+            "UPDATE experiments SET notes=? WHERE session_id=?",
+            (notes, session_id),
+        )
+
     def _color_graph_nodes(self, graph, color):
         # Update border_color for each node
         for node in graph.get("nodes", []):
