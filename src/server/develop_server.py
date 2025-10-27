@@ -296,6 +296,58 @@ class DevelopServer:
 
         self.broadcast_experiment_list_to_uis()
 
+    def handle_update_run_name(self, msg: dict) -> None:
+        session_id = msg.get("session_id")
+        run_name = msg.get("run_name")
+        logger.info(
+            f"[handle_update_run_name] Updating run name for session {session_id}: {run_name}"
+        )
+        if session_id and run_name is not None:
+            try:
+                EDIT.update_run_name(session_id, run_name)
+                logger.info(f"[handle_update_run_name] Successfully updated run name")
+                self.broadcast_experiment_list_to_uis()
+            except Exception as e:
+                logger.error(f"[handle_update_run_name] Error updating run name: {e}")
+        else:
+            logger.error(
+                f"[handle_update_run_name] Missing required fields: session_id={session_id}, run_name={run_name}"
+            )
+
+    def handle_update_result(self, msg: dict) -> None:
+        session_id = msg.get("session_id")
+        result = msg.get("result")
+        logger.info(f"[handle_update_result] Updating result for session {session_id}: {result}")
+        if session_id and result is not None:
+            try:
+                EDIT.update_result(session_id, result)
+                logger.info(f"[handle_update_result] Successfully updated result")
+                self.broadcast_experiment_list_to_uis()
+            except Exception as e:
+                logger.error(f"[handle_update_result] Error updating result: {e}")
+        else:
+            logger.error(
+                f"[handle_update_result] Missing required fields: session_id={session_id}, result={result}"
+            )
+
+    def handle_update_notes(self, msg: dict) -> None:
+        session_id = msg.get("session_id")
+        notes = msg.get("notes")
+        logger.info(
+            f"[handle_update_notes] Updating notes for session {session_id} (length: {len(notes) if notes else 0})"
+        )
+        if session_id and notes is not None:
+            try:
+                EDIT.update_notes(session_id, notes)
+                logger.info(f"[handle_update_notes] Successfully updated notes")
+                self.broadcast_experiment_list_to_uis()
+            except Exception as e:
+                logger.error(f"[handle_update_notes] Error updating notes: {e}")
+        else:
+            logger.error(
+                f"[handle_update_notes] Missing required fields: session_id={session_id}, notes={notes}"
+            )
+
     def handle_get_graph(self, msg: dict, conn: socket.socket) -> None:
         session_id = msg["session_id"]
 
@@ -469,7 +521,6 @@ class DevelopServer:
         # Log the message to telemetry
         log_server_message(msg, self.session_graphs)
 
-        # TODO: Process experiment changes for title, success, notes.
         msg_type = msg.get("type")
         if msg_type == "shutdown":
             self.handle_shutdown()
@@ -487,6 +538,12 @@ class DevelopServer:
             self.handle_edit_output(msg)
         elif msg_type == "log":
             self.handle_log(msg)
+        elif msg_type == "update_run_name":
+            self.handle_update_run_name(msg)
+        elif msg_type == "update_result":
+            self.handle_update_result(msg)
+        elif msg_type == "update_notes":
+            self.handle_update_notes(msg)
         elif msg_type == "add_subrun":
             self.handle_add_subrun(msg, conn)
         elif msg_type == "get_graph":
