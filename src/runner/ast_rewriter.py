@@ -7,119 +7,110 @@ This module handles pre-rewriting all user modules at startup to:
 
 All rewritten modules are stored in sys.modules so they're loaded
 from memory instead of from disk.
+
+The implementation is structured to support future optimizations like
+caching compiled code to disk, without requiring refactoring.
 """
 
 import ast
 import sys
 from types import ModuleType
-from importlib.util import spec_from_loader
-from importlib.abc import Loader
 from aco.common.logger import logger
 from aco.runner.fstring_rewriter import FStringTransformer
 
 
-class InMemoryModuleLoader(Loader):
+def rewrite_source_to_code(source: str, filename: str):
     """
-    Loader that executes pre-compiled and pre-rewritten code.
+    Transform and compile Python source code with AST rewrites.
 
-    This loader takes a pre-compiled code object and executes it
-    in the module's namespace when the module is imported.
+    This is a pure function that applies AST transformations and compiles
+    the result to a code object. Same input always produces same output,
+    making it suitable for caching.
+
+    Args:
+        source: Python source code as a string
+        filename: Path to the source file (used in error messages and code object)
+
+    Returns:
+        A compiled code object ready for execution
+
+    Raises:
+        SyntaxError: If the source code is invalid
+        Exception: If AST transformation fails
     """
+    # Parse source into AST
+    tree = ast.parse(source, filename=filename)
 
-    def __init__(self, code_object, file_path):
-        """
-        Initialize the loader with a pre-compiled code object.
+    # Apply AST transformations
+    tree = FStringTransformer().visit(tree)
 
-        Args:
-            code_object: The compiled code object to execute
-            file_path: The path to the original source file (for reference)
-        """
-        self.code_object = code_object
-        self.file_path = file_path
+    # Fix missing location information
+    ast.fix_missing_locations(tree)
 
-    def exec_module(self, module):
-        """
-        Execute the pre-compiled code in the module's namespace.
+    # Compile to code object
+    code_object = compile(tree, filename, "exec")
 
-        Args:
-            module: The module object to populate with the code's definitions
-        """
-        exec(self.code_object, module.__dict__)
+    return code_object
 
-    def create_module(self, spec):
-        """
-        Return None to use default module creation semantics.
 
-        This allows Python's import system to create the module object,
-        and we just populate it with code execution.
+def load_module(module_name: str, file_path: str, code_object):
+    """
+    Load a rewritten module into sys.modules.
 
-        Args:
-            spec: The module specification (unused)
+    Creates a module object, executes the pre-compiled code in its namespace,
+    and registers it in sys.modules. After this, the module is available for
+    import by user code.
 
-        Returns:
-            None to use default module creation
-        """
-        return None
+    Args:
+        module_name: The name of the module (e.g., "mypackage.mymodule")
+        file_path: The path to the original source file (for reference)
+        code_object: Pre-compiled code object (from rewrite_source_to_code)
+    """
+    # Create an empty module object
+    module = ModuleType(module_name)
+    module.__file__ = file_path
+
+    # Register in sys.modules first (in case of circular imports)
+    sys.modules[module_name] = module
+
+    # Execute the rewritten code in the module's namespace
+    exec(code_object, module.__dict__)
+
+    logger.debug(f"Loaded module: {module_name}")
 
 
 def rewrite_all_user_modules(module_to_file: dict):
     """
-    Rewrite all user modules at startup and store them in sys.modules.
+    Pre-rewrite and load all user modules at startup.
 
     This function:
-    1. Scans all user modules
-    2. Parses their source code into AST
-    3. Applies AST transformations (f-string rewrites, function call wrapping, etc.)
-    4. Compiles the rewritten AST to bytecode
-    5. Stores the compiled modules in sys.modules
+    1. Reads source code for all user modules
+    2. Applies AST transformations (via rewrite_source_to_code)
+    3. Loads the modules into sys.modules (via load_module)
 
-    When user code imports these modules, Python loads them from sys.modules
-    instead of reading from disk, ensuring all code uses the rewritten version.
+    When user code later does `import mymodule`, Python finds it in sys.modules
+    with the rewritten code already executed, so no import overhead occurs.
 
     Args:
         module_to_file: Dict mapping module names to their source file paths
+                       (e.g., {"mypackage.mymodule": "/path/to/mymodule.py"})
 
     Raises:
-        Exception: If AST rewriting or compilation fails for any module
+        Exception: If reading, rewriting, or loading any module fails
     """
-    rewritten_modules = {}
-
-    # Phase 1: Rewrite and compile all modules
     for module_name, file_path in module_to_file.items():
         try:
             # Read source code from file
             with open(file_path, "r", encoding="utf-8") as f:
                 source = f.read()
 
-            # Parse and rewrite AST
-            tree = ast.parse(source, filename=file_path)
-            tree = FStringTransformer().visit(tree)
-            ast.fix_missing_locations(tree)
+            # Rewrite and compile
+            code_object = rewrite_source_to_code(source, file_path)
 
-            # Compile to code object
-            code_object = compile(tree, file_path, "exec")
-            rewritten_modules[module_name] = (code_object, file_path)
+            # Load into sys.modules
+            load_module(module_name, file_path, code_object)
 
-            logger.debug(f"Rewritten module: {module_name}")
+            logger.debug(f"Rewritten and loaded: {module_name}")
         except Exception as e:
             logger.error(f"Failed to rewrite {module_name} at {file_path}: {e}")
             raise
-
-    # Phase 2: Register all rewritten modules in sys.modules
-    for module_name, (code_object, file_path) in rewritten_modules.items():
-        # Create a loader for this module
-        loader = InMemoryModuleLoader(code_object, file_path)
-
-        # Create a module spec
-        spec = spec_from_loader(module_name, loader)
-
-        # Create the module object
-        module = ModuleType(module_name)
-        module.__spec__ = spec
-        module.__loader__ = loader
-        module.__file__ = file_path
-
-        # Register in sys.modules
-        sys.modules[module_name] = module
-
-        logger.debug(f"Registered in sys.modules: {module_name}")
