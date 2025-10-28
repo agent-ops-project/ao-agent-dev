@@ -21,9 +21,8 @@ packages_in_project_root = {packages_in_project_root}
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from aco.runner.patching_import_hook import install_patch_hook, set_module_to_user_file
-
-# Rewrite AST to support f-strings
+# Rewrite AST for all user modules and register taint functions
+from aco.runner.ast_rewriter import rewrite_all_user_modules
 from aco.common.utils import scan_user_py_files_and_modules
 
 _, _, module_to_file = scan_user_py_files_and_modules(project_root)
@@ -31,8 +30,18 @@ for additional_package in packages_in_project_root:
     _, _, additional_package_module_to_file = scan_user_py_files_and_modules(additional_package)
     module_to_file = {{**module_to_file, **additional_package_module_to_file}}
 
-set_module_to_user_file(module_to_file)
-install_patch_hook()
+# Pre-rewrite all user modules and load them into sys.modules
+rewrite_all_user_modules(module_to_file)
+
+# Register taint functions in builtins
+import builtins
+from aco.runner.fstring_rewriter import (
+    taint_fstring_join, taint_format_string, taint_percent_format, exec_func
+)
+builtins.taint_fstring_join = taint_fstring_join
+builtins.taint_format_string = taint_format_string
+builtins.taint_percent_format = taint_percent_format
+builtins.exec_func = exec_func
 
 # Connect to server and pply monkey patches if enabled via environment variable.
 from aco.runner.context_manager import set_parent_session_id, set_server_connection

@@ -2,8 +2,6 @@ import io
 import inspect
 from typing import Any, Set
 
-from .patch_constants import CPYTHON_MODS
-
 
 obj_id_to_taint_origin = {}
 
@@ -1743,19 +1741,7 @@ def taint_wrap(obj, taint_origin=None, _seen=None, _depth: int = 0, _max_depth: 
     if is_builtin or is_function:
         return obj
 
-    is_cpython_mod = obj.__class__.__module__ in CPYTHON_MODS
-    if is_cpython_mod:
-        try:
-            store_key = (obj_id, hash(obj))
-        except TypeError:
-            store_key = obj_id
-        # Probably a CPython object w/o __dict__
-        if store_key in obj_id_to_taint_origin:
-            obj_id_to_taint_origin[store_key].update(set(taint_origin))
-        else:
-            obj_id_to_taint_origin[store_key] = set(taint_origin)
-        return obj
-    # what obj is here?
+    # Could not wrap this object
     return obj
 
 

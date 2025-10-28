@@ -255,3 +255,47 @@ class FStringTransformer(ast.NodeTransformer):
             )
             return ast.copy_location(new_node, node)
         return self.generic_visit(node)
+
+
+def exec_func(func, args, kwargs):
+    """
+    Execute an arbitrary function with taint propagation.
+
+    This function is called by rewritten user code to propagate taint through
+    arbitrary function calls. It extracts taint from all arguments, calls the
+    original function with untainted arguments, and applies taint to the result.
+
+    Args:
+        func: The function object to call (e.g., re.match, json.dumps)
+        args: Tuple of positional arguments
+        kwargs: Dict of keyword arguments
+
+    Returns:
+        The function result, wrapped with taint if any input was tainted
+
+    Example:
+        # Rewritten from: result = json.dumps({"key": tainted_value})
+        # To: result = exec_func(json.dumps, ({"key": tainted_value},), {})
+    """
+    from aco.runner.taint_wrappers import (
+        get_taint_origins,
+        taint_wrap,
+        untaint_if_needed,
+    )
+
+    # Collect taint from all arguments before unwrapping
+    all_origins = set()
+    all_origins.update(get_taint_origins(args))
+    all_origins.update(get_taint_origins(kwargs))
+
+    # Untaint arguments for the function call
+    untainted_args = untaint_if_needed(args)
+    untainted_kwargs = untaint_if_needed(kwargs)
+
+    # Call the original function with untainted arguments
+    result = func(*untainted_args, **untainted_kwargs)
+
+    # Apply taint to the result if any inputs were tainted
+    if all_origins:
+        return taint_wrap(result, taint_origin=all_origins)
+    return result
