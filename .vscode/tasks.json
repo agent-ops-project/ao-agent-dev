@@ -2,15 +2,41 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "build-extension",
+      "type": "shell",
+      "command": "env",
+      "args": [
+        "-i",
+        "PATH=/Users/ferdi/miniconda3/envs/aco/bin:/usr/bin:/bin",
+        "bash",
+        "-c",
+        "cd ${workspaceFolder}/src/user_interfaces/vscode_extension && npm run compile"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "silent"
+      },
+      "problemMatcher": "$tsc"
+    },
+    {
       "label": "npm: watch",
-      "type": "npm",
-      "script": "watch",
-      "path": "src/user_interface",
+      "type": "shell",
+      "command": "env",
+      "args": [
+        "-i",
+        "PATH=/Users/ferdi/miniconda3/envs/aco/bin:/usr/bin:/bin",
+        "bash",
+        "-c",
+        "cd ${workspaceFolder}/src/user_interfaces/vscode_extension && npm run watch"
+      ],
       "isBackground": true,
       "problemMatcher": {
         "owner": "webpack",
         "source": "webpack",
-        "fileLocation": ["relative", "${workspaceFolder}/src/user_interface"],
+        "fileLocation": ["relative", "${workspaceFolder}/src/user_interfaces/vscode_extension"],
         "pattern": {
           "regexp": ".*",
           "file": 1,
