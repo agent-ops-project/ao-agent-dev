@@ -1,11 +1,11 @@
 import { useEffect, useState, useRef} from "react";
 import "./App.css";
-import type { GraphNode, GraphEdge, ProcessInfo } from "../../../src/webview/types";
-import { GraphView } from "../../../src/webview/components/GraphView";
-import { ExperimentsView} from "../../../src/webview/components/ExperimentsView";
-import type { MessageSender } from "../../../src/webview/shared/MessageSender";
-import { EditDialog } from "../../../src/webview/components/EditDialog";
-import { WorkflowRunDetailsPanel } from "../../../src/webview/components/WorkflowRunDetailsPanel";
+import type { GraphNode, GraphEdge, ProcessInfo } from "vscode-graph-extension/src/webview/types";
+import { GraphView } from "vscode-graph-extension/src/webview/components/GraphView";
+import { ExperimentsView} from "vscode-graph-extension/src/webview/components/ExperimentsView";
+import type { MessageSender } from "vscode-graph-extension/src/webview/shared/MessageSender";
+import { EditDialog } from "vscode-graph-extension/src/webview/components/EditDialog";
+import { WorkflowRunDetailsPanel } from "vscode-graph-extension/src/webview/components/WorkflowRunDetailsPanel";
 
 interface Experiment {
   session_id: string;
