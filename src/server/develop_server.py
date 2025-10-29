@@ -244,9 +244,11 @@ class DevelopServer:
         color_preview = node_colors[-6:]  # Only display last 6 colors
         CACHE.update_color_preview(sid, color_preview)
         # Broadcast color preview update to all UIs
+        logger.debug(f"Broadcast color {time.time()}")
         self.broadcast_to_all_uis(
             {"type": "color_preview_update", "session_id": sid, "color_preview": color_preview}
         )
+        logger.debug(f"Broadcast graph update {time.time()}")
         self.broadcast_graph_update(sid)
         EDIT.update_graph_topology(sid, graph)
 
@@ -603,7 +605,7 @@ class DevelopServer:
 
                     # Print message type.
                     msg_type = msg.get("type", "unknown")
-                    logger.debug(f"Received message type: {msg_type}")
+                    logger.debug(f"Received message type: {msg_type} {time.time()}")
 
                     if "session_id" not in msg:
                         msg["session_id"] = session_id

@@ -77,16 +77,13 @@ def pytest_configure(config):
 
 @pytest.fixture(autouse=True)
 def cleanup_taint_registry():
-    """Clean up global taint registry between tests to prevent state leakage."""
-    from aco.runner.taint_wrappers import obj_id_to_taint_origin
+    """Clean up global taint registry between tests to prevent state leakage.
 
-    # Clean up before test
-    obj_id_to_taint_origin.clear()
-
+    Note: With the TaintObject wrapper approach, taint is stored in individual
+    wrapper instances rather than a global dictionary, so no global cleanup is needed.
+    This fixture is kept for compatibility but does nothing.
+    """
     yield
-
-    # Clean up after test
-    obj_id_to_taint_origin.clear()
 
 
 @pytest.fixture

@@ -16,11 +16,13 @@ This approach:
 
 import ast
 import sys
+import time
 from importlib.abc import MetaPathFinder, Loader
 from importlib.util import spec_from_loader
+from importlib.machinery import ModuleSpec
 from types import ModuleType
 from aco.common.logger import logger
-from aco.runner.fstring_rewriter import FStringTransformer
+from aco.runner.fstring_rewriter import FStringTransformer, ThirdPartyCallTransformer
 
 
 # Global cache for rewritten code objects
@@ -28,7 +30,7 @@ _rewritten_code_cache = {}
 _module_to_file_cache = {}
 
 
-def rewrite_source_to_code(source: str, filename: str):
+def rewrite_source_to_code(source: str, filename: str, module_to_file: dict = None):
     """
     Transform and compile Python source code with AST rewrites.
 
@@ -39,6 +41,8 @@ def rewrite_source_to_code(source: str, filename: str):
     Args:
         source: Python source code as a string
         filename: Path to the source file (used in error messages and code object)
+        module_to_file: Dict mapping user module names to their file paths.
+                       Used to distinguish user code from third-party code.
 
     Returns:
         A compiled code object ready for execution
@@ -47,17 +51,27 @@ def rewrite_source_to_code(source: str, filename: str):
         SyntaxError: If the source code is invalid
         Exception: If AST transformation fails
     """
+    start = time.time()
+
     # Parse source into AST
     tree = ast.parse(source, filename=filename)
 
     # Apply AST transformations
+    # 1. First, rewrite string formatting (f-strings, .format(), % formatting)
     tree = FStringTransformer().visit(tree)
+    # 2. Then, wrap third-party library function calls for taint propagation
+    tree = ThirdPartyCallTransformer(module_to_file=module_to_file, current_file=filename).visit(
+        tree
+    )
 
     # Fix missing location information
     ast.fix_missing_locations(tree)
 
     # Compile to code object
     code_object = compile(tree, filename, "exec")
+
+    elapsed = time.time() - start
+    print(f"[AST_REWRITER] Rewrote {filename} in {elapsed:.4f}s ({time.time()})")
 
     return code_object
 
@@ -87,6 +101,7 @@ class CachedRewriteLoader(Loader):
         Create a module object with proper attributes.
 
         Sets up the module with __file__, __loader__, and __spec__.
+        For packages (__init__.py files), also sets __path__ so Python can find submodules.
         Python's import system will then call exec_module on this module.
 
         Args:
@@ -99,7 +114,27 @@ class CachedRewriteLoader(Loader):
         module.__file__ = self.file_path
         module.__loader__ = self
         module.__spec__ = spec
+
+        # For packages, set __path__ to enable submodule discovery
+        if spec.submodule_search_locations is not None:
+            module.__path__ = list(spec.submodule_search_locations)
+
         return module
+
+    def get_code(self, fullname):
+        """
+        Return the code object for the module (legacy loader protocol).
+
+        This method is called by some import machinery like runpy._get_module_details()
+        that uses the older PEP 302 loader protocol to inspect code before execution.
+
+        Args:
+            fullname: The fully qualified module name
+
+        Returns:
+            The compiled code object
+        """
+        return self.code_object
 
     def exec_module(self, module):
         """
@@ -145,7 +180,20 @@ class CachedRewriteFinder(MetaPathFinder):
         file_path = _module_to_file_cache.get(fullname, "<cached>")
 
         loader = CachedRewriteLoader(code_object, file_path)
-        return spec_from_loader(fullname, loader)
+
+        # Determine if this is a package (__init__.py file)
+        is_package = file_path.endswith("__init__.py")
+
+        # If it's a package, set submodule_search_locations to the package directory
+        if is_package:
+            import os
+
+            package_dir = os.path.dirname(file_path)
+            spec = ModuleSpec(fullname, loader, origin=file_path, is_package=True)
+            spec.submodule_search_locations = [package_dir]
+            return spec
+        else:
+            return ModuleSpec(fullname, loader, origin=file_path)
 
 
 def cache_rewritten_modules(module_to_file: dict):
@@ -170,23 +218,34 @@ def cache_rewritten_modules(module_to_file: dict):
     """
     global _rewritten_code_cache, _module_to_file_cache
 
+    start_total = time.time()
+    print(f"[AST_REWRITER] Starting cache_rewritten_modules for {len(module_to_file)} modules")
+
     for module_name, file_path in module_to_file.items():
         try:
+            start_module = time.time()
+
             # Read source code from file
             with open(file_path, "r", encoding="utf-8") as f:
                 source = f.read()
 
             # Rewrite and compile (but don't execute!)
-            code_object = rewrite_source_to_code(source, file_path)
+            # Pass module_to_file so transformer can distinguish user vs third-party code
+            code_object = rewrite_source_to_code(source, file_path, module_to_file=module_to_file)
 
             # Cache the compiled code
             _rewritten_code_cache[module_name] = code_object
             _module_to_file_cache[module_name] = file_path
 
+            elapsed = time.time() - start_module
             logger.debug(f"Cached rewritten module: {module_name}")
+            print(f"[AST_REWRITER] Cached {module_name} in {elapsed:.4f}s")
         except Exception as e:
             logger.error(f"Failed to rewrite {module_name} at {file_path}: {e}")
             raise
+
+    total_elapsed = time.time() - start_total
+    print(f"[AST_REWRITER] Finished cache_rewritten_modules in {total_elapsed:.4f}s total")
 
 
 def install_rewrite_hook():

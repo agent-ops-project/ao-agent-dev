@@ -1,6 +1,6 @@
 # Running a user script
 
-![Running develop command](/media/develop_spawn.png)
+![Running develop command](/docs/media/develop_spawn.png)
 
 
 ## develop_shim.py
@@ -29,7 +29,7 @@ This can also be used to run many samples concurrently (see examples in `example
 
 The implementation of the aco_launch context manager is in `context_manager.py`. The diagram below depicts its message sequence chart:
 
-![Subruns](/media/subrun.png)
+![Subruns](/docs/media/subrun.png)
 
 
 ## Runtime tracing

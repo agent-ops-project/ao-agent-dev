@@ -1,5 +1,7 @@
 import re
 import sys
+
+from runner.taint_wrappers import TaintObject
 from aco.runner.taint_wrappers import TaintStr, get_taint_origins
 
 
@@ -416,19 +418,19 @@ def test_expand_method():
     """Test Match.expand() method with templates."""
     print("Testing Match.expand()...")
 
-    tainted = TaintStr("Name: John, Age: 25", taint_origin=["template_data"])
-    template = TaintStr("Hello \\1, you are \\2 years old", taint_origin=["template"])
+    first = TaintStr("Name: John, Age: 25", taint_origin=["first"])
+    second = TaintStr("Hello \\1, you are \\2 years old", taint_origin=["second"])
 
     pattern = re.compile(r"Name: (\w+), Age: (\d+)")
-    match = pattern.search(tainted)
+    match = pattern.search(first)
 
-    expanded = match.expand(template)
+    expanded = match.expand(second)
     assert isinstance(expanded, TaintStr), "Expanded result should be TaintStr"
 
     # Should have taint from both original string and template
     taint_origins = set(get_taint_origins(expanded))
-    assert "template_data" in taint_origins, "Should preserve original string taint"
-    assert "template" in taint_origins, "Should preserve template taint"
+    assert "first" in taint_origins, "Should preserve original string taint"
+    assert "second" in taint_origins, "Should preserve template taint"
 
     expected = "Hello John, you are 25 years old"
     assert str(expanded) == expected, f"Expected '{expected}', got '{expanded}'"

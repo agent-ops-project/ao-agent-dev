@@ -3,7 +3,243 @@ import inspect
 from typing import Any, Set
 
 
-obj_id_to_taint_origin = {}
+class TaintObject:
+    """
+    A wrapper for arbitrary objects that tracks taint origins.
+
+    This class wraps objects that don't fit into the basic tainted types
+    (TaintStr, TaintInt, TaintFloat, TaintList, TaintDict, etc.).
+    The wrapped object remains completely unchanged. All operations unwrap
+    taint from arguments, execute on the raw object, and wrap results with
+    combined taint information.
+
+    Attributes:
+        obj: The wrapped object (never modified)
+        _taint_origin (list): List of taint origin identifiers for this wrapper
+    """
+
+    def __init__(self, obj, taint_origin=None):
+        object.__setattr__(self, "obj", obj)
+        if taint_origin is None:
+            object.__setattr__(self, "_taint_origin", [])
+        elif isinstance(taint_origin, (int, str)):
+            object.__setattr__(self, "_taint_origin", [taint_origin])
+        elif isinstance(taint_origin, (list, set)):
+            object.__setattr__(self, "_taint_origin", list(taint_origin))
+        else:
+            raise TypeError(f"Unsupported taint_origin type: {type(taint_origin)}")
+
+    def _unwrap_args(self, *args):
+        """Unwrap tainted arguments and collect taint origins."""
+        origins = set(object.__getattribute__(self, "_taint_origin"))
+        unwrapped = []
+        for arg in args:
+            origins.update(get_taint_origins(arg))
+            unwrapped.append(untaint_if_needed(arg))
+        return unwrapped, list(origins)
+
+    def _unwrap_kwargs(self, kwargs):
+        """Unwrap tainted kwargs and collect taint origins."""
+        origins = set(object.__getattribute__(self, "_taint_origin"))
+        unwrapped = {}
+        for key, val in kwargs.items():
+            origins.update(get_taint_origins(val))
+            unwrapped[key] = untaint_if_needed(val)
+        return unwrapped, list(origins)
+
+    def bound_method(self, method_name, *args, **kwargs):
+        """
+        Call a method on the wrapped object with the given arguments.
+
+        This method retrieves the named method from self.obj and calls it with
+        the provided arguments. It's used by __getattr__ via functools.partial
+        to create bound methods that preserve __self__ = self (TaintObject).
+
+        When exec_func receives a call like obj.method(args), it can extract taint
+        from func.__self__ (which is self, the TaintObject) and combine it with
+        taint from the arguments.
+
+        Args:
+            method_name: The name of the method to call on self.obj
+            *args: Positional arguments to pass to the method
+            **kwargs: Keyword arguments to pass to the method
+
+        Returns:
+            The result of calling the method on self.obj
+        """
+        obj = object.__getattribute__(self, "obj")
+        method = getattr(obj, method_name)
+        return method(*args, **kwargs)
+
+    def __getattr__(self, name):
+        """Delegate attribute access to wrapped object."""
+        if name in ("obj", "_taint_origin"):
+            return object.__getattribute__(self, name)
+        obj = object.__getattribute__(self, "obj")
+        result = getattr(obj, name)
+
+        # If it's callable (a method), return via partial to preserve __self__ = self
+        # This allows exec_func to extract taint from the TaintObject
+        if callable(result):
+            from functools import partial
+
+            return partial(self.bound_method, name)
+
+        # For non-callable attributes, return as-is
+        return result
+
+    def __setattr__(self, name, value):
+        """Unwrap value and set on wrapped object."""
+        if name in ("obj", "_taint_origin"):
+            object.__setattr__(self, name, value)
+        else:
+            obj = object.__getattribute__(self, "obj")
+            unwrapped_value = untaint_if_needed(value)
+            setattr(obj, name, unwrapped_value)
+
+    def __getitem__(self, key):
+        """Get item from wrapped object and wrap result."""
+        obj = object.__getattribute__(self, "obj")
+        taint_origin = object.__getattribute__(self, "_taint_origin")
+        unwrapped_key = untaint_if_needed(key)
+        result = obj[unwrapped_key]
+        if taint_origin:
+            return taint_wrap(result, taint_origin=taint_origin)
+        return result
+
+    def __setitem__(self, key, value):
+        """Unwrap key and value, set on wrapped object."""
+        obj = object.__getattribute__(self, "obj")
+        unwrapped_key = untaint_if_needed(key)
+        unwrapped_value = untaint_if_needed(value)
+        obj[unwrapped_key] = unwrapped_value
+
+    def __delitem__(self, key):
+        """Delete item from wrapped object."""
+        obj = object.__getattribute__(self, "obj")
+        unwrapped_key = untaint_if_needed(key)
+        del obj[unwrapped_key]
+
+    def __call__(self, *args, **kwargs):
+        """Unwrap args/kwargs, call wrapped object, wrap result."""
+        obj = object.__getattribute__(self, "obj")
+        unwrapped_args, combined_origins = self._unwrap_args(*args)
+        unwrapped_kwargs, kwargs_origins = self._unwrap_kwargs(kwargs)
+        combined_origins = list(set(combined_origins) | set(kwargs_origins))
+
+        result = obj(*unwrapped_args, **unwrapped_kwargs)
+
+        if combined_origins:
+            return taint_wrap(result, taint_origin=combined_origins)
+        return result
+
+    def __repr__(self):
+        obj = object.__getattribute__(self, "obj")
+        taint_origin = object.__getattribute__(self, "_taint_origin")
+        return f"TaintObject({repr(obj)}, taint_origin={taint_origin})"
+
+    def __str__(self):
+        obj = object.__getattribute__(self, "obj")
+        return str(obj)
+
+    def __bool__(self):
+        obj = object.__getattribute__(self, "obj")
+        return bool(obj)
+
+    def __len__(self):
+        obj = object.__getattribute__(self, "obj")
+        return len(obj)
+
+    def __iter__(self):
+        obj = object.__getattribute__(self, "obj")
+        return iter(obj)
+
+    def __hash__(self):
+        obj = object.__getattribute__(self, "obj")
+        return hash(obj)
+
+    def __eq__(self, other):
+        obj = object.__getattribute__(self, "obj")
+        if isinstance(other, TaintObject):
+            other = object.__getattribute__(other, "obj")
+        return obj == other
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __lt__(self, other):
+        obj = object.__getattribute__(self, "obj")
+        if isinstance(other, TaintObject):
+            other = object.__getattribute__(other, "obj")
+        return obj < other
+
+    def __le__(self, other):
+        obj = object.__getattribute__(self, "obj")
+        if isinstance(other, TaintObject):
+            other = object.__getattribute__(other, "obj")
+        return obj <= other
+
+    def __gt__(self, other):
+        obj = object.__getattribute__(self, "obj")
+        if isinstance(other, TaintObject):
+            other = object.__getattribute__(other, "obj")
+        return obj > other
+
+    def __ge__(self, other):
+        obj = object.__getattribute__(self, "obj")
+        if isinstance(other, TaintObject):
+            other = object.__getattribute__(other, "obj")
+        return obj >= other
+
+    def __contains__(self, item):
+        obj = object.__getattribute__(self, "obj")
+        unwrapped_item = untaint_if_needed(item)
+        return unwrapped_item in obj
+
+    def get_raw(self):
+        """Return the wrapped object."""
+        obj = object.__getattribute__(self, "obj")
+        if hasattr(obj, "get_raw"):
+            return obj.get_raw()
+        return obj
+
+    def __reduce__(self):
+        """For pickle/copy operations, return the wrapped object."""
+        obj = object.__getattribute__(self, "obj")
+        return (lambda x: x, (obj,))
+
+    def __copy__(self):
+        """For shallow copy, return wrapped object."""
+        obj = object.__getattribute__(self, "obj")
+        return obj
+
+    def __deepcopy__(self, memo):
+        """For deep copy, return wrapped object."""
+        import copy
+
+        obj = object.__getattribute__(self, "obj")
+        return copy.deepcopy(obj, memo)
+
+    def __enter__(self):
+        """Support context manager protocol by delegating to wrapped object."""
+        obj = object.__getattribute__(self, "obj")
+        return obj.__enter__()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Support context manager protocol by delegating to wrapped object."""
+        obj = object.__getattribute__(self, "obj")
+        return obj.__exit__(exc_type, exc_val, exc_tb)
+
+    # Make this object more transparent to type checkers
+    @property
+    def __class__(self):
+        obj = object.__getattribute__(self, "obj")
+        return obj.__class__
+
+    @__class__.setter
+    def __class__(self, value):
+        obj = object.__getattribute__(self, "obj")
+        obj.__class__ = value
 
 
 # Utility functions
@@ -53,6 +289,15 @@ def untaint_if_needed(val, _seen=None):
     if obj_id in _seen:
         return val
     _seen.add(obj_id)
+
+    # Handle TaintObject wrapper - return the wrapped object directly
+    if isinstance(val, TaintObject):
+        wrapped = object.__getattribute__(val, "obj")
+        # Mark wrapped object as seen to prevent it from being re-processed
+        _seen.add(id(wrapped))
+        if hasattr(wrapped, "get_raw"):
+            return wrapped.get_raw()
+        return wrapped
 
     # If object has get_raw method (tainted), use it
     if hasattr(val, "get_raw"):
@@ -113,7 +358,7 @@ def get_taint_origins(val, _seen=None, _depth=0, _max_depth=100):
         val: The value to extract taint origins from
         _seen: Set to track visited objects (prevents circular references)
         _depth: Current recursion depth
-        _max_depth: Maximum recursion depth (default: 10)
+        _max_depth: Maximum recursion depth (default: 100)
 
     Returns:
         List of taint origins found in the value and its nested structures
@@ -160,15 +405,6 @@ def get_taint_origins(val, _seen=None, _depth=0, _max_depth=100):
                 origins = safe_update_set(
                     origins, get_taint_origins(slot_val, _seen, _depth + 1, _max_depth)
                 )
-
-    # this is an object that doesn't have __dict__ or __slots__ so
-    # probably a CPython object w/o __dict__ such as re.Match()
-    try:
-        store_key = (obj_id, hash(val))
-    except TypeError:
-        store_key = obj_id
-    if store_key in obj_id_to_taint_origin:
-        origins = safe_update_set(origins, set(obj_id_to_taint_origin[store_key]))
 
     return list(origins)
 
@@ -1136,121 +1372,74 @@ class TaintDict(dict):
         dict.clear(self)
         self._taint_origin = []
 
-    def get_raw(self):
-        return {k: v.get_raw() if hasattr(v, "get_raw") else v for k, v in self.items()}
+    def get_raw(self, _seen=None):
+        """
+        Get the raw dictionary with all tainted values unwrapped.
+
+        Uses _seen to track visited objects and prevent infinite recursion
+        on circular references.
+        """
+        if _seen is None:
+            _seen = set()
+
+        # Check if we've already visited this dict
+        dict_id = id(self)
+        if dict_id in _seen:
+            # Return a placeholder to avoid infinite recursion
+            # This will let json.dumps raise its own circular reference error
+            return self
+
+        _seen.add(dict_id)
+
+        result = {}
+        for k, v in self.items():
+            if hasattr(v, "get_raw") and callable(v.get_raw):
+                try:
+                    result[k] = v.get_raw(_seen) if isinstance(v, TaintDict) else v.get_raw()
+                except (RecursionError, ValueError):
+                    # If we hit a recursion or circular reference, just return the value as-is
+                    # This lets json.dumps handle the error
+                    result[k] = v
+            else:
+                result[k] = v
+
+        return result
 
 
-class TaintedOpenAIObject:
+class TaintedOpenAIObject(TaintObject):
     """
-    Proxy for OpenAI SDK objects (Response, Assistant, etc.), tainting all attribute/item access.
+    Specialized wrapper for OpenAI SDK objects (Response, Assistant, etc.).
+
+    This is a subclass of TaintObject that specifically handles OpenAI SDK
+    objects by wrapping attribute/item access to taint returned values.
     """
-
-    def __init__(self, wrapped, taint_origin=None):
-        self._wrapped = wrapped
-        if taint_origin is None:
-            self._taint_origin = []
-        elif isinstance(taint_origin, (int, str)):
-            self._taint_origin = [taint_origin]
-        elif isinstance(taint_origin, (set, list)):
-            self._taint_origin = list(taint_origin)
-        else:
-            raise TypeError(f"Unsupported taint_origin type: {type(taint_origin)}")
-
-    def dict(self):
-        value = self._wrapped.dict()
-        if self._taint_origin:
-            wrapped_value = taint_wrap(value, taint_origin=self._taint_origin)
-            return wrapped_value
-        return value
 
     def __getattr__(self, name):
-        value = getattr(self._wrapped, name)
-        if self._taint_origin:
-            wrapped_value = taint_wrap(value, taint_origin=self._taint_origin)
-            return wrapped_value
+        """Delegate attribute access and taint the result."""
+        obj = object.__getattribute__(self, "obj")
+        taint_origin = object.__getattribute__(self, "_taint_origin")
+        value = getattr(obj, name)
+        if taint_origin:
+            return taint_wrap(value, taint_origin=taint_origin)
         return value
 
     def __getitem__(self, key):
-        value = self._wrapped[key]
-        if self._taint_origin:
-            return taint_wrap(value, taint_origin=self._taint_origin)
+        """Delegate item access and taint the result."""
+        obj = object.__getattribute__(self, "obj")
+        taint_origin = object.__getattribute__(self, "_taint_origin")
+        value = obj[key]
+        if taint_origin:
+            return taint_wrap(value, taint_origin=taint_origin)
         return value
 
-    def __repr__(self):
-        return f"TaintedOpenAIObject({repr(self._wrapped)}, taint_origin={self._taint_origin})"
-
-    def __str__(self):
-        return str(self._wrapped)
-
-    def __dir__(self):
-        return dir(self._wrapped)
-
-    def __iter__(self):
-        return iter(self._wrapped)
-
-    def __contains__(self, item):
-        return item in self._wrapped
-
-    def get_raw(self):
-        return self._wrapped
-
-    def __class_getitem__(cls, item):
-        # Delegate class subscription to the wrapped class
-        return cls._wrapped.__class_getitem__(item)
-
-    def __reduce__(self):
-        # For pickle/copy operations, return the wrapped object
-        return (lambda x: x, (self._wrapped,))
-
-    def __copy__(self):
-        # For shallow copy, return wrapped object
-        return self._wrapped
-
-    def __deepcopy__(self, memo):
-        # For deep copy, return wrapped object
-        import copy
-
-        return copy.deepcopy(self._wrapped, memo)
-
-    def __instancecheck__(self, instance):
-        # Delegate isinstance checks to wrapped object
-        return isinstance(instance, self._wrapped.__class__)
-
-    def __subclasscheck__(self, subclass):
-        # Delegate issubclass checks to wrapped object
-        return issubclass(subclass, self._wrapped.__class__)
-
-    def __bool__(self):
-        # Delegate boolean evaluation to wrapped object
-        return bool(self._wrapped)
-
-    def __len__(self):
-        # Delegate len() to wrapped object
-        return len(self._wrapped)
-
-    def __hash__(self):
-        # Delegate hash() to wrapped object
-        return hash(self._wrapped)
-
-    def __eq__(self, other):
-        # Compare with the wrapped object
-        if isinstance(other, TaintedOpenAIObject):
-            return self._wrapped == other._wrapped
-        return self._wrapped == other
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    # Make this object more transparent to type checkers and validation libraries
-    @property
-    def __class__(self):
-        # This makes isinstance() checks work with the wrapped object's class
-        return self._wrapped.__class__
-
-    @__class__.setter
-    def __class__(self, value):
-        # Allow class assignment (some libraries do this)
-        self._wrapped.__class__ = value
+    def dict(self):
+        """Return dict representation with taint applied."""
+        obj = object.__getattribute__(self, "obj")
+        taint_origin = object.__getattribute__(self, "_taint_origin")
+        value = obj.dict()
+        if taint_origin:
+            return taint_wrap(value, taint_origin=taint_origin)
+        return value
 
 
 class TaintFile:
@@ -1658,6 +1847,8 @@ def taint_wrap(obj, taint_origin=None, _seen=None, _depth: int = 0, _max_depth: 
 
         if issubclass(obj.__class__, enum.Enum):
             return obj  # Don't wrap any enum members (including StrEnum)
+
+    # Use specialized wrapper for OpenAI SDK objects
     if is_openai_sdk_object(obj):
         return TaintedOpenAIObject(obj, taint_origin=taint_origin)
     if isinstance(obj, dict):
@@ -1698,51 +1889,19 @@ def taint_wrap(obj, taint_origin=None, _seen=None, _depth: int = 0, _max_depth: 
         return TaintIterable(obj, taint_origin=taint_origin)
     if isinstance(obj, io.IOBase):
         return TaintFile(obj, taint_origin=taint_origin)
-    if hasattr(obj, "__dict__") and not isinstance(obj, type):
-        for attr in list(vars(obj)):
-            if attr.startswith("_"):
-                continue
-            try:
-                setattr(
-                    obj,
-                    attr,
-                    taint_wrap(
-                        getattr(obj, attr),
-                        taint_origin=taint_origin,
-                        _seen=_seen,
-                        _depth=_depth + 1,
-                        _max_depth=_max_depth,
-                    ),
-                )
-            except Exception:
-                pass
-        return obj
-    if hasattr(obj, "__slots__"):
-        for slot in obj.__slots__:
-            try:
-                val = getattr(obj, slot)
-                setattr(
-                    obj,
-                    slot,
-                    taint_wrap(
-                        val,
-                        taint_origin=taint_origin,
-                        _seen=_seen,
-                        _depth=_depth + 1,
-                        _max_depth=_max_depth,
-                    ),
-                )
-            except Exception:
-                pass
-        return obj
 
     is_builtin = obj.__class__.__module__ == "builtins"
     is_function = inspect.isfunction(obj)
     if is_builtin or is_function:
         return obj
 
-    # Could not wrap this object
-    return obj
+    # For all other objects, wrap them in TaintObject as a fallback
+    # This includes:
+    # - Objects with __dict__ (custom classes)
+    # - Objects with __slots__ (some built-in types)
+    # - C extension objects like re.Match that have neither __dict__ nor __slots__
+    # TaintObject will handle all of these transparently
+    return TaintObject(obj, taint_origin=taint_origin)
 
 
 def taint_format(template, *args, **kwargs):

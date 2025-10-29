@@ -1,20 +1,20 @@
 """
-F-string and string formatting rewriter for taint tracking.
+AST rewriting for taint tracking through string formatting and third-party library calls.
 
-This module provides AST transformation capabilities to rewrite Python f-strings,
-.format() calls, and % formatting operations to use taint-aware equivalents.
-The transformations preserve taint information and position tracking through
-string formatting operations.
+This module provides AST transformation capabilities to rewrite:
+1. Python f-strings, .format() calls, and % formatting
+2. Third-party library function calls (re.search, json.dumps, etc.)
 
 Key Components:
-- FStringTransformer: AST node transformer for rewriting string formatting
+- FStringTransformer: AST node transformer for string formatting
+- ThirdPartyCallTransformer: AST node transformer for third-party library calls
 - taint_fstring_join: Taint-aware replacement for f-string concatenation
 - taint_format_string: Taint-aware replacement for .format() calls
 - taint_percent_format: Taint-aware replacement for % formatting
+- exec_func: Generic taint-aware function executor for third-party calls
 
-The rewriter uses marker injection to track which parts of formatted strings
-come from tainted sources, preserving both taint origins and positional
-information about tainted data within the resulting strings.
+The rewriter preserves taint information and tracking through both string and
+function operations, ensuring sensitive data remains tainted throughout execution.
 """
 
 import ast
@@ -185,7 +185,6 @@ class FStringTransformer(ast.NodeTransformer):
         Returns:
             ast.Call: A call to taint_fstring_join with the f-string components as arguments
         """
-        logger.debug(f"Transforming f-string at line {getattr(node, 'lineno', '?')}")
         # Replace f-string with a call to taint_fstring_join
         new_node = ast.Call(
             func=ast.Name(id="taint_fstring_join", ctx=ast.Load()),
@@ -210,9 +209,6 @@ class FStringTransformer(ast.NodeTransformer):
         """
         # Check if this is a .format() call on any expression
         if isinstance(node.func, ast.Attribute) and node.func.attr == "format":
-
-            logger.debug(f"Transforming .format() call at line {getattr(node, 'lineno', '?')}")
-
             # Extract the format expression and arguments
             format_args = node.args
             format_kwargs = node.keywords
@@ -246,7 +242,6 @@ class FStringTransformer(ast.NodeTransformer):
         if isinstance(node.op, ast.Mod) and (
             isinstance(node.left, ast.Constant) and isinstance(node.left.value, str)
         ):
-            logger.debug(f"Transforming % formatting at line {getattr(node, 'lineno', '?')}")
             # Replace with taint_percent_format(format_string, right)
             new_node = ast.Call(
                 func=ast.Name(id="taint_percent_format", ctx=ast.Load()),
@@ -255,6 +250,194 @@ class FStringTransformer(ast.NodeTransformer):
             )
             return ast.copy_location(new_node, node)
         return self.generic_visit(node)
+
+
+class ThirdPartyCallTransformer(ast.NodeTransformer):
+    """
+    AST transformer that wraps third-party library function calls with taint propagation.
+
+    This transformer detects calls to third-party modules (e.g., re.search, json.dumps,
+    requests.get) and wraps them with exec_func to automatically propagate taint through
+    the function call.
+
+    The transformer:
+    1. Identifies calls to module-level functions (e.g., module.function())
+    2. Only wraps calls to functions defined OUTSIDE project_root (third-party code)
+    3. Skips calls to user-defined functions (inside project_root)
+    4. Preserves the original AST structure for everything else
+
+    Usage:
+        transformer = ThirdPartyCallTransformer(module_to_file=user_modules, current_file="/path/to/file.py")
+        tree = ast.parse(source_code)
+        new_tree = transformer.visit(tree)
+    """
+
+    def __init__(self, module_to_file=None, current_file=None):
+        """
+        Initialize the transformer.
+
+        Args:
+            module_to_file: Dict mapping user module names to their file paths.
+                           Used to identify which modules are user-defined.
+            current_file: The path to the current file being transformed.
+        """
+        self.module_to_file = module_to_file or {}
+        self.current_file = current_file
+        # Extract the root directory from current_file if available
+        if current_file:
+            import os
+
+            # Find the common prefix between current_file and all module files
+            # to determine project_root
+            self.project_root = self._extract_project_root(current_file)
+        else:
+            self.project_root = None
+
+    def _extract_project_root(self, current_file):
+        """Extract project root by finding common prefix of module paths."""
+        if not self.module_to_file:
+            return None
+
+        import os
+
+        current_file = os.path.abspath(current_file)
+
+        # Find common prefix of all module files with current file
+        common_parts = None
+        for file_path in self.module_to_file.values():
+            file_path = os.path.abspath(file_path)
+            if common_parts is None:
+                common_parts = file_path.split(os.sep)
+            else:
+                path_parts = file_path.split(os.sep)
+                # Keep only common prefix
+                common_parts = [
+                    p
+                    for i, p in enumerate(common_parts)
+                    if i < len(path_parts) and path_parts[i] == p
+                ]
+
+        if common_parts:
+            return os.sep.join(common_parts) or os.sep
+        return None
+
+    def _is_user_module(self, module_name):
+        """Check if a module name refers to user code (inside project_root)."""
+        if not self.module_to_file:
+            return False
+
+        # Direct lookup: is this module name in our user modules?
+        return module_name in self.module_to_file
+
+    def visit_Call(self, node):
+        """
+        Transform third-party function calls into exec_func wrapped calls.
+
+        Detects patterns like:
+        - re.search(pattern, string)
+        - json.dumps(obj)
+        - requests.get(url)
+
+        And transforms them to:
+        - exec_func(re.search, (pattern, string), {})
+        - exec_func(json.dumps, (obj,), {})
+        - exec_func(requests.get, (url,), {})
+
+        Args:
+            node (ast.Call): The function call AST node to potentially transform
+
+        Returns:
+            ast.Call: Either a transformed exec_func call or the original node
+        """
+        # First, recursively visit child nodes
+        node = self.generic_visit(node)
+
+        # Check if this is a third-party library call (module.function())
+        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+            module_name = node.func.value.id
+            func_name = node.func.attr
+
+            # Skip dunder methods - never wrap these
+            dunder_methods = {
+                "__init__",
+                "__new__",
+                "__del__",
+                "__repr__",
+                "__str__",
+                "__bytes__",
+                "__format__",
+                "__lt__",
+                "__le__",
+                "__eq__",
+                "__ne__",
+                "__gt__",
+                "__ge__",
+                "__hash__",
+                "__bool__",
+                "__getitem__",
+                "__setitem__",
+                "__delitem__",
+                "__len__",
+                "__iter__",
+                "__reversed__",
+                "__contains__",
+                "__enter__",
+                "__exit__",
+                "__call__",
+                "__getattr__",
+                "__setattr__",
+            }
+            if func_name in dunder_methods:
+                return node
+
+            # Only wrap calls to third-party modules, not user-defined modules
+            # If module_name is in our user modules dict, skip it (it's user code)
+            if self._is_user_module(module_name):
+                return node
+
+            # Transform: node(...args, ...kwargs)
+            # Into: exec_func(node.func, (args,), {kwargs})
+
+            # Create the function name node with location info
+            func_node = ast.Name(id="exec_func", ctx=ast.Load())
+            ast.copy_location(func_node, node)
+
+            # Create tuple for positional args with location info
+            args_tuple = ast.Tuple(elts=node.args, ctx=ast.Load())
+            ast.copy_location(args_tuple, node)
+
+            # Create dict for keyword args with location info
+            # For each keyword, create a Constant node for the key name
+            # keys should be AST nodes (Constant nodes for string keys), not raw strings
+            kwargs_dict = ast.Dict(
+                keys=[ast.Constant(value=kw.arg) if kw.arg else None for kw in node.keywords],
+                values=[kw.value for kw in node.keywords],
+            )
+            ast.copy_location(kwargs_dict, node)
+
+            # Also fix missing locations on the key constants
+            for key in kwargs_dict.keys:
+                if key is not None:
+                    ast.copy_location(key, node)
+
+            new_node = ast.Call(
+                func=func_node,
+                args=[
+                    node.func,  # The function to call
+                    args_tuple,  # Positional args
+                    kwargs_dict,  # Keyword args
+                ],
+                keywords=[],
+            )
+            ast.copy_location(new_node, node)
+
+            # Recursively ensure all nested nodes have location information
+            # This is critical because elements in args/kwargs may be newly created nodes
+            ast.fix_missing_locations(new_node)
+
+            return new_node
+
+        return node
 
 
 def exec_func(func, args, kwargs):
@@ -288,6 +471,19 @@ def exec_func(func, args, kwargs):
     all_origins.update(get_taint_origins(args))
     all_origins.update(get_taint_origins(kwargs))
 
+    # If func is a bound method (or partial with a bound method), extract taint from self (__self__)
+    # This handles cases like: match.expand(template) where match has taint
+    # For partial objects, we need to check func.func.__self__
+    bound_self = None
+    if hasattr(func, "__self__"):
+        bound_self = func.__self__
+    elif hasattr(func, "func") and hasattr(func.func, "__self__"):
+        # Handle functools.partial objects
+        bound_self = func.func.__self__
+
+    if bound_self is not None:
+        all_origins.update(get_taint_origins(bound_self))
+
     # Untaint arguments for the function call
     untainted_args = untaint_if_needed(args)
     untainted_kwargs = untaint_if_needed(kwargs)
@@ -295,7 +491,26 @@ def exec_func(func, args, kwargs):
     # Call the original function with untainted arguments
     result = func(*untainted_args, **untainted_kwargs)
 
-    # Apply taint to the result if any inputs were tainted
+    # If func is a bound method on a TaintObject, update its taint with any new taint from inputs
+    # This ensures the object accumulates taint as it's used with tainted data
+    if bound_self is not None and hasattr(bound_self, "_taint_origin"):
+        # Get the current taint from inputs (excluding self's original taint)
+        input_taint = set()
+        input_taint.update(get_taint_origins(args))
+        input_taint.update(get_taint_origins(kwargs))
+        if input_taint:
+            # Update the bound object's taint with new taint from inputs
+            try:
+                current_origins = object.__getattribute__(bound_self, "_taint_origin")
+                new_origins = set(current_origins) | input_taint
+                object.__setattr__(bound_self, "_taint_origin", list(new_origins))
+            except (AttributeError, TypeError):
+                # If we can't update, just continue - the taint will still be in all_origins for the result
+                pass
+
+    # Wrap result with taint if there is any taint
     if all_origins:
         return taint_wrap(result, taint_origin=all_origins)
+
+    # If no taint, return result unwrapped
     return result
