@@ -4,14 +4,7 @@
     {
       "label": "build-extension",
       "type": "shell",
-      "command": "env",
-      "args": [
-        "-i",
-        "PATH=/Users/ferdi/miniconda3/envs/aco/bin:/usr/bin:/bin",
-        "bash",
-        "-c",
-        "cd ${workspaceFolder}/src/user_interfaces/vscode_extension && npm run compile"
-      ],
+      "command": "cd ${workspaceFolder}/src/user_interfaces/vscode_extension && npm run compile",
       "group": {
         "kind": "build",
         "isDefault": true
@@ -24,14 +17,7 @@
     {
       "label": "npm: watch",
       "type": "shell",
-      "command": "env",
-      "args": [
-        "-i",
-        "PATH=/Users/ferdi/miniconda3/envs/aco/bin:/usr/bin:/bin",
-        "bash",
-        "-c",
-        "cd ${workspaceFolder}/src/user_interfaces/vscode_extension && npm run watch"
-      ],
+      "command": "cd ${workspaceFolder}/src/user_interfaces/vscode_extension && npm run watch",
       "isBackground": true,
       "problemMatcher": {
         "owner": "webpack",

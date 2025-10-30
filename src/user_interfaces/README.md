@@ -11,7 +11,7 @@ They currently display the same things. Many of the web view UI components are s
 ## Installation
 
 1. Install Node.js if you haven't already.
-2. In this dir (`user_interfaces/`) run `nom install` to install dependencies.
+2. In this dir (`user_interfaces/`) run `npm install` to install dependencies.
 
 ## Building and launching
 
