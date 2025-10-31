@@ -7,7 +7,7 @@ import re
 import pytest
 import responses
 from aco.common.utils import scan_user_py_files_and_modules
-from aco.runner.ast_rewriter import cache_rewritten_modules, install_rewrite_hook
+from aco.runner.compilation_pipeline import cache_rewritten_modules, install_rewrite_hook
 from aco.runner.monkey_patching.apply_monkey_patches import apply_all_monkey_patches
 
 # Set dummy API keys globally
@@ -49,7 +49,7 @@ def pytest_configure(config):
     # Register taint functions in builtins FIRST
     # This must happen before caching modules, since rewritten code will call these functions
     import builtins
-    from aco.runner.fstring_rewriter import (
+    from aco.runner.ast_transformer import (
         taint_fstring_join,
         taint_format_string,
         taint_percent_format,

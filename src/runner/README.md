@@ -1,7 +1,9 @@
 # Running a user script
 
-![Running develop command](/docs/media/develop_spawn.png)
+TODO: This README is outdated!!
 
+
+![Running develop command](/docs/media/develop_spawn.png)
 
 ## develop_shim.py
 
@@ -51,6 +53,8 @@ The difficult part are things like f-strings (`f"hello {world}"`) and `format`s 
 
 
 ### AST Rewriting for f-strings and `.format()`
+TODO: This is outdated!!
+
 The core logic for rewriting f-strings and .format() calls is in `src/runner/fstring_rewriter.py`:
 `FStringTransformer` (subclass of `ast.NodeTransformer`):
 `visit_JoinedStr`: This method is called for every f-string node in the AST. It replaces the f-string with a call to `taint_fstring_join`, e.g.:

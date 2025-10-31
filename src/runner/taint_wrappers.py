@@ -347,7 +347,12 @@ def is_tainted(obj):
     Returns:
         True if the object has taint origins, False otherwise
     """
-    return hasattr(obj, "_taint_origin") and bool(get_taint_origins(obj))
+    try:
+        # Use object.__getattribute__ to avoid triggering __getattr__ on proxy objects
+        taint_origin = object.__getattribute__(obj, "_taint_origin")
+        return bool(taint_origin) and bool(get_taint_origins(obj))
+    except AttributeError:
+        return False
 
 
 def get_taint_origins(val, _seen=None, _depth=0, _max_depth=100):
@@ -375,10 +380,16 @@ def get_taint_origins(val, _seen=None, _depth=0, _max_depth=100):
     _seen.add(obj_id)
 
     # Check if object has direct taint
-    if hasattr(val, "_taint_origin") and val._taint_origin is not None:
-        if not isinstance(val._taint_origin, (list, set)):
-            val._taint_origin = [val._taint_origin]
-        return list(val._taint_origin)
+    # Use object.__getattribute__ to avoid triggering __getattr__ on proxy objects
+    try:
+        taint_origin = object.__getattribute__(val, "_taint_origin")
+        if taint_origin is not None:
+            if not isinstance(taint_origin, (list, set)):
+                taint_origin = [taint_origin]
+            return list(taint_origin)
+    except AttributeError:
+        # Object doesn't have _taint_origin, continue with other checks
+        pass
 
     # Handle nested data structures
     origins = set()
@@ -400,11 +411,15 @@ def get_taint_origins(val, _seen=None, _depth=0, _max_depth=100):
     elif hasattr(val, "__slots__"):
         # Handle objects with __slots__
         for slot in val.__slots__:
-            if hasattr(val, slot):
-                slot_val = getattr(val, slot)
+            try:
+                # Use object.__getattribute__ to avoid triggering __getattr__ on proxy objects
+                slot_val = object.__getattribute__(val, slot)
                 origins = safe_update_set(
                     origins, get_taint_origins(slot_val, _seen, _depth + 1, _max_depth)
                 )
+            except AttributeError:
+                # Slot doesn't exist on this instance, skip it
+                continue
 
     return list(origins)
 
@@ -1406,42 +1421,6 @@ class TaintDict(dict):
         return result
 
 
-class TaintedOpenAIObject(TaintObject):
-    """
-    Specialized wrapper for OpenAI SDK objects (Response, Assistant, etc.).
-
-    This is a subclass of TaintObject that specifically handles OpenAI SDK
-    objects by wrapping attribute/item access to taint returned values.
-    """
-
-    def __getattr__(self, name):
-        """Delegate attribute access and taint the result."""
-        obj = object.__getattribute__(self, "obj")
-        taint_origin = object.__getattribute__(self, "_taint_origin")
-        value = getattr(obj, name)
-        if taint_origin:
-            return taint_wrap(value, taint_origin=taint_origin)
-        return value
-
-    def __getitem__(self, key):
-        """Delegate item access and taint the result."""
-        obj = object.__getattribute__(self, "obj")
-        taint_origin = object.__getattribute__(self, "_taint_origin")
-        value = obj[key]
-        if taint_origin:
-            return taint_wrap(value, taint_origin=taint_origin)
-        return value
-
-    def dict(self):
-        """Return dict representation with taint applied."""
-        obj = object.__getattribute__(self, "obj")
-        taint_origin = object.__getattribute__(self, "_taint_origin")
-        value = obj.dict()
-        if taint_origin:
-            return taint_wrap(value, taint_origin=taint_origin)
-        return value
-
-
 class TaintFile:
     """
     A file-like object that preserves taint information during file operations.
@@ -1777,26 +1756,6 @@ def open_with_taint(filename, mode="r", taint_origin=None, session_id=None, **kw
     return TaintFile.open(filename, mode, taint_origin, session_id, **kwargs)
 
 
-# Helper to detect OpenAI SDK objects (Response, Assistant, etc.)
-def is_openai_sdk_object(obj):
-    """
-    Check if an object is from the OpenAI SDK types module.
-
-    This is a more specific check than is_openai_response, looking specifically
-    for objects from the openai.types module hierarchy.
-
-    Args:
-        obj: The object to check
-
-    Returns:
-        True if the object is from openai.types.*, False otherwise
-    """
-    cls = obj.__class__
-    mod = cls.__module__
-    # Covers openai.types.responses.response, openai.types.beta.assistant, etc.
-    return mod.startswith("openai.types.")
-
-
 def taint_wrap(obj, taint_origin=None, _seen=None, _depth: int = 0, _max_depth: int = 10):
     """
     Recursively wrap an object and its nested structures with taint information.
@@ -1848,9 +1807,6 @@ def taint_wrap(obj, taint_origin=None, _seen=None, _depth: int = 0, _max_depth: 
         if issubclass(obj.__class__, enum.Enum):
             return obj  # Don't wrap any enum members (including StrEnum)
 
-    # Use specialized wrapper for OpenAI SDK objects
-    if is_openai_sdk_object(obj):
-        return TaintedOpenAIObject(obj, taint_origin=taint_origin)
     if isinstance(obj, dict):
         return TaintDict(
             {
