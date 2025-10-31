@@ -189,7 +189,7 @@ attachment_cache/
 configs/
 
 # VS Code
-**/.vscode
+# **/.vscode
 
 # VS Code extension
 node_modules/
