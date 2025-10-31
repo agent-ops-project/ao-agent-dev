@@ -192,8 +192,8 @@ configs/
 **/.vscode
 
 # VS Code extension
-src/user_interface/node_modules
-src/user_interface/dist
+node_modules/
+dist/
 
 # Our DB
 *.sqlite3
