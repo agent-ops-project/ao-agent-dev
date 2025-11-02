@@ -497,7 +497,89 @@ def _cache_format_vertex_client_models_generate_content(
 
 
 # ===============================================
-# API onject helpers
+# MCP: ClientSession.call_tool
+# ===============================================
+
+
+def _get_input_mcp_client_session_call_tool(input_dict: dict):
+    # Structure of this dict is always:
+    #   name: str,
+    #   arguments: dict[str, Any] | None = None,
+    #   read_timeout_seconds: timedelta | None = None,
+    #   progress_callback: ProgressFnT | None = None,
+    # see <env-path>/lib/python3.13/site-packages/mcp/client/session.py
+    # We are only interested in name (this classifies as tool) and the arguments.
+    # The arguments can contain attachments.
+    arguments = input_dict["arguments"]
+    tools = [input_dict["name"]]
+    attachments = []
+    return str(arguments), attachments, tools
+
+
+def _get_model_mcp_client_session_call_tool(
+    input_dict: Dict[str, Any],
+) -> str:
+    """Extract model name from MCP client session call_tool."""
+    return input_dict.get("name", "unknown")
+
+
+def _get_output_mcp_client_session_call_tool(response_obj: Any) -> str:
+    # response_obj is of type mcp.types.CallToolResult
+    # has a field called .content of type list[ContentBlock]
+    # need to iterate over it, sep. by \n\n
+    # Each ContentBlock can be TextContent | ImageContent | AudioContent | ResourceLink | EmbeddedResource
+    # TextContent has .text field
+    # ImageContent has .data which is base64 str
+    # AudioContent has .data which is base64 str
+    # ResourceLink has uri (has __str__ method), description (str), mimeType [str | None], and size (int)
+    # EmbeddedResource has type (str), resource (TextResourceContents | BlobResourceContents)
+    #   TextResourceContents has .text (str) field
+    #   BlobResourceContents has .blob (str) field
+    from mcp.types import (
+        ContentBlock,
+        CallToolResult,
+        TextContent,
+        ImageContent,
+        AudioContent,
+        ResourceLink,
+        EmbeddedResource,
+    )
+
+    response_obj: CallToolResult
+    final_output = ""
+    content: ContentBlock
+    for idx, content in enumerate(response_obj.content):
+        if idx > 0:
+            final_output += "\n\n"
+
+        if isinstance(content, TextContent):
+            final_output += content.text
+        elif isinstance(content, ImageContent):
+            final_output += f"[Image: base64 data length {len(content.data)}]"
+        elif isinstance(content, AudioContent):
+            final_output += f"[Audio: base64 data length {len(content.data)}]"
+        elif isinstance(content, ResourceLink):
+            final_output += f"[Resource Link: {content.uri}"
+            if content.description:
+                final_output += f" - {content.description}"
+            if content.mimeType:
+                final_output += f" ({content.mimeType})"
+            final_output += f" - {content.size} bytes]"
+        elif isinstance(content, EmbeddedResource):
+            final_output += f"[Embedded Resource: {content.type} - "
+            if hasattr(content.resource, "text"):
+                final_output += content.resource.text
+            elif hasattr(content.resource, "blob"):
+                final_output += f"blob data length {len(content.resource.blob)}"
+            final_output += "]"
+        else:
+            final_output += f"[Unknown content type: {type(content)}]"
+
+    return final_output
+
+
+# ===============================================
+# API object helpers
 # ===============================================
 
 
@@ -521,6 +603,8 @@ def get_input(input_dict: Dict[str, Any], api_type: str) -> Tuple[str, List[str]
         return _get_input_openai_beta_threads_create_and_poll(input_dict)
     elif api_type == "together.resources.chat.completions.ChatCompletions.create":
         return _get_input_together_resources_chat_completions_ChatCompletions_create(input_dict)
+    elif api_type == "MCP.ClientSession.call_tool":
+        return _get_input_mcp_client_session_call_tool(input_dict)
     else:
         raise ValueError(f"Unknown API type {api_type}")
 
@@ -566,6 +650,8 @@ def get_output(response_obj: Any, api_type: str) -> str:
         return _get_output_openai_beta_threads_create_and_poll(response_obj)
     elif api_type == "together.resources.chat.completions.ChatCompletions.create":
         return _get_output_together_resources_chat_completions_ChatCompletions_create(response_obj)
+    elif api_type == "MCP.ClientSession.call_tool":
+        return _get_output_mcp_client_session_call_tool(response_obj)
     else:
         raise ValueError(f"Unknown API type {api_type}")
 
@@ -614,5 +700,7 @@ def get_model_name(input_dict: Dict[str, Any], api_type: str) -> str:
         return _get_model_openai_beta_threads_create(input_dict)
     elif api_type == "together.resources.chat.completions.ChatCompletions.create":
         return _get_model_together_resources_chat_completions_ChatCompletions_create(input_dict)
+    elif api_type == "MCP.ClientSession.call_tool":
+        return _get_model_mcp_client_session_call_tool(input_dict)
     else:
         raise ValueError(f"Unknown API type {api_type}")
