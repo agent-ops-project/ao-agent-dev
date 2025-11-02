@@ -2,6 +2,7 @@ from functools import wraps
 from aco.runner.monkey_patching.patching_utils import get_input_dict, send_graph_node_and_edges
 from aco.server.cache_manager import CACHE
 from aco.common.logger import logger
+from aco.common.utils import set_seed
 from aco.runner.taint_wrappers import get_taint_origins, taint_wrap
 
 
@@ -54,7 +55,11 @@ def patch_mcp_call_tool(session_instance):
         # 4. Get result from cache or call tool.
         input_to_use, result, node_id = CACHE.get_in_out(input_dict, api_type)
         if result is None:
-            result = await original_function(*args, **kwargs)
+            try:
+                result = await original_function(*args, **kwargs)
+            except Exception as e:
+                set_seed(node_id)
+                raise e
             CACHE.cache_output(node_id, result)
 
         # 5. Tell server that this tool call happened.
