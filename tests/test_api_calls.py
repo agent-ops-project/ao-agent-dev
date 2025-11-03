@@ -104,10 +104,12 @@ def run_test(program_file, api_type, create_response_func, create_input_func, ht
     shim_sock = socket.create_connection(("127.0.0.1", 5959))
     shim_file = shim_sock.makefile("rw")
 
+    # Use --project-root to override the project root for this test
+    test_project_root = str(Path(__file__).parent)  # /path/to/tests/
     handshake = {
         "role": "shim-control",
-        "cwd": str(Path(__file__).parent),
-        "command": f"aco-launch user_programs/{program_file}",
+        "cwd": test_project_root,
+        "command": f"aco-launch --project-root {test_project_root} user_programs/{program_file}",
         "environment": {},
         "name": "test_api_calls",
     }
@@ -166,7 +168,7 @@ def run_test(program_file, api_type, create_response_func, create_input_func, ht
     start_time = time.time()
     print("Waiting for graph updates...")
 
-    while time.time() - start_time < 15:  # 7 second timeout
+    while time.time() - start_time < 7:  # 7 second timeout
         try:
             msg = message_queue.get(timeout=1)
             if msg.get("type") == "graph_update" and msg.get("session_id") == session_id:

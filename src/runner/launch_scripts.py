@@ -20,19 +20,9 @@ packages_in_project_root = {packages_in_project_root}
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# Set up AST rewriting for all user modules and register taint functions
-from aco.runner.compilation_pipeline import cache_rewritten_modules, install_rewrite_hook
-from aco.common.utils import scan_user_py_files_and_modules
-
-_, _, module_to_file = scan_user_py_files_and_modules(project_root)
-for additional_package in packages_in_project_root:
-    _, _, additional_package_module_to_file = scan_user_py_files_and_modules(additional_package)
-    module_to_file = {{**module_to_file, **additional_package_module_to_file}}
-
-# Register taint functions in builtins FIRST
-# This must happen before caching modules, since rewritten code will call these functions
+# Register taint functions in builtins so rewritten .pyc files can call them
 import builtins
-from aco.runner.ast_transformer import (
+from aco.server.ast_transformer import (
     taint_fstring_join, taint_format_string, taint_percent_format, exec_func
 )
 
@@ -41,12 +31,28 @@ builtins.taint_format_string = taint_format_string
 builtins.taint_percent_format = taint_percent_format
 builtins.exec_func = exec_func
 
-# Cache all user modules (rewrite + compile, but don't execute)
-cache_rewritten_modules(module_to_file)
+# Add logging to check if .pyc files exist for user programs
+import os
+import glob
+from aco.common.logger import logger
 
-# Install import hook to serve cached rewritten code
-# Module-level code only runs when modules are actually imported
-install_rewrite_hook()
+logger.info("[LaunchScripts] ✓ Taint functions registered in builtins")
+
+# Log any .pyc files we can find for debugging
+pyc_files = []
+for root, dirs, files in os.walk(project_root):
+    pyc_files.extend(glob.glob(os.path.join(root, "**", "*.pyc"), recursive=True))
+
+if pyc_files:
+    logger.info("[LaunchScripts] Found %d .pyc files in project:" % len(pyc_files))
+    for pyc_file in pyc_files[:5]:  # Show first 5
+        logger.info("[LaunchScripts]   %s" % pyc_file)
+    if len(pyc_files) > 5:
+        logger.info("[LaunchScripts]   ... and %d more" % (len(pyc_files) - 5))
+else:
+    logger.warning("[LaunchScripts] No .pyc files found in project root")
+
+logger.info("[LaunchScripts] No longer using in-memory AST caching - relying on pre-compiled .pyc files")
 
 # Connect to server and apply monkey patches if enabled via environment variable.
 from aco.runner.context_manager import set_parent_session_id, set_server_connection

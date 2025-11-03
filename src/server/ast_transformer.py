@@ -34,6 +34,45 @@ import ast
 from aco.runner.taint_wrappers import TaintStr, get_taint_origins, untaint_if_needed, taint_wrap
 
 
+def rewrite_source_to_code(source: str, filename: str, module_to_file: dict = None):
+    """
+    Transform and compile Python source code with AST rewrites.
+
+    This is a pure function that applies AST transformations and compiles
+    the result to a code object. Same input always produces same output,
+    making it suitable for caching.
+
+    Args:
+        source: Python source code as a string
+        filename: Path to the source file (used in error messages and code object)
+        module_to_file: Dict mapping user module names to their file paths.
+                       Used to distinguish user code from third-party code.
+
+    Returns:
+        A compiled code object ready for execution
+
+    Raises:
+        SyntaxError: If the source code is invalid
+        Exception: If AST transformation fails
+    """
+    # Parse source into AST
+    tree = ast.parse(source, filename=filename)
+
+    # Apply AST transformations for taint propagation
+    # Unified transformer handles: f-strings, .format(), % formatting, and third-party calls
+    tree = TaintPropagationTransformer(module_to_file=module_to_file, current_file=filename).visit(
+        tree
+    )
+
+    # Fix missing location information
+    ast.fix_missing_locations(tree)
+
+    # Compile to code object
+    code_object = compile(tree, filename, "exec")
+
+    return code_object
+
+
 def taint_fstring_join(*args):
     """
     Taint-aware replacement for f-string concatenation.

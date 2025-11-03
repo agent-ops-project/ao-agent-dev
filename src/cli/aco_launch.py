@@ -1,5 +1,33 @@
-import os
+# Register taint functions in builtins BEFORE any other imports
+# This ensures any rewritten .pyc files can call these functions
+import builtins
 import sys
+import os
+
+# Add current directory to path to import modules directly
+current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
+# Import directly from file path to avoid triggering aco.__init__.py
+import importlib.util
+
+ast_transformer_path = os.path.join(current_dir, "server", "ast_transformer.py")
+spec = importlib.util.spec_from_file_location("ast_transformer", ast_transformer_path)
+ast_transformer = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ast_transformer)
+
+taint_fstring_join = ast_transformer.taint_fstring_join
+taint_format_string = ast_transformer.taint_format_string
+taint_percent_format = ast_transformer.taint_percent_format
+exec_func = ast_transformer.exec_func
+
+builtins.taint_fstring_join = taint_fstring_join
+builtins.taint_format_string = taint_format_string
+builtins.taint_percent_format = taint_percent_format
+builtins.exec_func = exec_func
+
+# Now safe to import other modules
 import yaml
 from argparse import ArgumentParser, REMAINDER
 from typing import Optional

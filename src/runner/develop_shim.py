@@ -277,6 +277,12 @@ class DevelopShim:
         except Exception as e:
             logger.error(f"Cannot connect to develop server ({e})")
             sys.exit(1)
+        # Scan for all .py files in the user's project root for file watcher
+        _, _, module_to_file = scan_user_py_files_and_modules(self.project_root)
+        logger.info(
+            f"[DevelopShim] Scanned project, found {len(module_to_file)} modules for file watcher"
+        )
+
         # Send handshake to server
         handshake = {
             "type": "hello",
@@ -288,6 +294,7 @@ class DevelopShim:
             "prev_session_id": os.getenv(
                 "AGENT_COPILOT_SESSION_ID"
             ),  # Is set if rerun, otherwise None
+            "module_to_file": module_to_file,  # For file watcher
         }
         try:
             self.server_conn.sendall((json.dumps(handshake) + "\n").encode("utf-8"))

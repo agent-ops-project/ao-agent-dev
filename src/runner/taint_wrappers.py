@@ -85,7 +85,10 @@ class TaintObject:
 
             return partial(self.bound_method, name)
 
-        # For non-callable attributes, return as-is
+        # For non-callable attributes, wrap with taint information
+        taint_origin = object.__getattribute__(self, "_taint_origin")
+        if taint_origin:
+            return taint_wrap(result, taint_origin=taint_origin)
         return result
 
     def __setattr__(self, name, value):
@@ -398,11 +401,13 @@ def get_taint_origins(val, _seen=None, _depth=0, _max_depth=100):
         for v in val:
             origins = safe_update_set(origins, get_taint_origins(v, _seen, _depth + 1, _max_depth))
     elif isinstance(val, dict):
-        for v in val.values():
+        # Create a list of values to avoid dictionary changed size during iteration
+        for v in list(val.values()):
             origins = safe_update_set(origins, get_taint_origins(v, _seen, _depth + 1, _max_depth))
     elif hasattr(val, "__dict__") and not isinstance(val, type):
         # Handle custom objects with attributes
-        for attr_name, attr_val in val.__dict__.items():
+        # Create a list of items to avoid dictionary changed size during iteration
+        for attr_name, attr_val in list(val.__dict__.items()):
             if attr_name.startswith("_"):
                 continue
             origins = safe_update_set(

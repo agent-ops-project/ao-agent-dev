@@ -7,8 +7,56 @@ import re
 import pytest
 import responses
 from aco.common.utils import scan_user_py_files_and_modules
-from aco.runner.compilation_pipeline import cache_rewritten_modules, install_rewrite_hook
+from aco.server.file_watcher import FileWatcher
 from aco.runner.monkey_patching.apply_monkey_patches import apply_all_monkey_patches
+
+# IMPORTANT: Set up AST rewriting BEFORE any test modules are imported
+# This must happen at import time, not in pytest hooks
+
+# Get the project root directory (parent of tests directory)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+
+# Register taint functions in builtins so rewritten .pyc files can call them
+import builtins
+from aco.server.ast_transformer import (
+    taint_fstring_join,
+    taint_format_string,
+    taint_percent_format,
+    exec_func,
+)
+
+builtins.taint_fstring_join = taint_fstring_join
+builtins.taint_format_string = taint_format_string
+builtins.taint_percent_format = taint_percent_format
+builtins.exec_func = exec_func
+
+# Scan for all Python files in the project
+_, _, module_to_file = scan_user_py_files_and_modules(project_root)
+
+# Pre-compile all user modules with AST rewrites to .pyc files
+# This ensures test files have the necessary taint transformations
+watcher = FileWatcher(module_to_file)
+for module_name, file_path in module_to_file.items():
+    watcher._compile_file(file_path, module_name)
+
+# CRITICAL: Clear any already-imported modules from sys.modules so Python
+# will load the newly compiled .pyc files with AST transformations
+# But don't clear conftest itself or pytest infrastructure
+import sys
+
+for module_name in list(sys.modules.keys()):
+    if (
+        module_name in module_to_file
+        and not module_name.endswith("conftest")
+        and not module_name.startswith("pytest")
+        and not module_name.startswith("_pytest")
+    ):
+        print(f"Clearing cached module: {module_name}")
+        del sys.modules[module_name]
+
+# Apply the monkey patches for LLM APIs
+apply_all_monkey_patches()
 
 # Set dummy API keys globally
 os.environ.setdefault("OPENAI_API_KEY", "sk-test-dummy-key")
@@ -41,38 +89,8 @@ def block_external_http():
 
 
 def pytest_configure(config):
-    """Configure pytest to set up AST rewriting and monkey patches."""
-    # Get the project root directory (parent of tests directory)
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(current_dir)
-
-    # Register taint functions in builtins FIRST
-    # This must happen before caching modules, since rewritten code will call these functions
-    import builtins
-    from aco.runner.ast_transformer import (
-        taint_fstring_join,
-        taint_format_string,
-        taint_percent_format,
-        exec_func,
-    )
-
-    builtins.taint_fstring_join = taint_fstring_join
-    builtins.taint_format_string = taint_format_string
-    builtins.taint_percent_format = taint_percent_format
-    builtins.exec_func = exec_func
-
-    # Scan for all Python files in the project
-    _, _, module_to_file = scan_user_py_files_and_modules(project_root)
-
-    # Cache all user modules (rewrite + compile, but don't execute)
-    cache_rewritten_modules(module_to_file)
-
-    # Install import hook to serve cached rewritten code
-    # Module-level code only runs when modules are actually imported
-    install_rewrite_hook()
-
-    # Apply the monkey patches for LLM APIs
-    apply_all_monkey_patches()
+    """Configure pytest - AST rewriting and patches are now set up at import time."""
+    pass  # All setup is now done at import time above
 
 
 @pytest.fixture(autouse=True)
