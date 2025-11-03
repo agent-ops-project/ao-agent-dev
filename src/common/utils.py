@@ -20,19 +20,11 @@ def scan_user_py_files_and_modules(root_dir):
     Scan a directory for all .py files and return:
       - user_py_files: set of absolute file paths
       - file_to_module: mapping from file path to module name (relative to root_dir)
-
-    Excludes internal agent-copilot directories to avoid rewriting our own code.
     """
     user_py_files = set()
     file_to_module = dict()
     module_to_file = dict()
-
-    # Directories to exclude (internal agent-copilot code)
-    exclude_dirs = {"src", ".git", ".venv", "__pycache__", ".pytest_cache", "node_modules"}
-
-    for dirpath, dirnames, filenames in os.walk(root_dir):
-        # Filter out excluded directories
-        dirnames[:] = [d for d in dirnames if d not in exclude_dirs]
+    for dirpath, _, filenames in os.walk(root_dir):
         for filename in filenames:
             if filename.endswith(".py"):
                 abs_path = os.path.abspath(os.path.join(dirpath, filename))

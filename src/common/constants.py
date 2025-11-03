@@ -49,13 +49,12 @@ TELEMETRY_KEY = config.telemetry_key
 TELEMETRY_USERNAME = getattr(config, "telemetry_username", generate_random_username())
 
 # server-related constants
-HOST = "127.0.0.1"
-PORT = 5959
+HOST = os.environ.get("HOST", "127.0.0.1")
+PORT = int(os.environ.get("PYTHON_PORT", 5959))
 CONNECTION_TIMEOUT = 5
 SERVER_START_TIMEOUT = 2
 PROCESS_TERMINATE_TIMEOUT = 5
 MESSAGE_POLL_INTERVAL = 0.1
-FILE_POLL_INTERVAL = 1  # Interval in seconds for polling file changes for AST recompilation
 SERVER_START_WAIT = 1
 SOCKET_TIMEOUT = 1
 SHUTDOWN_WAIT = 2
