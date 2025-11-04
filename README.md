@@ -63,10 +63,14 @@ Please install the dependencies required for developing
 ```bash
 pip install -e ".[dev]"
 pre-commit install
-cd src/user_interface && npm install
+cd src/user_interfaces && npm run build:all
 ```
 
-We use feature branches to develop and we can't push to `main` without reviews. So make sure to checkout a new branch before starting to code/committing :) .
+Some Python linters will (incorrectly) say that the modules inside our code base can't be found. Run the following in the project root to make these linters happy:
+
+```
+ln -s src aco
+```
 
 ### Server commands and log
 To manually start and stop our server. Just do:

@@ -238,3 +238,6 @@ src/static_analysis/CodeQL-Analyst/databases
 
 # VS Code extension builds
 *.vsix
+
+# sim link
+aco

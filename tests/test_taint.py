@@ -30,21 +30,21 @@ class TaintTestLauncher:
         self.tests_dir = Path(__file__).parent
         # Set project root to tests directory for develop command compatibility
         self.project_root = self.tests_dir
-        self.integration_dir = self.tests_dir / "taint" / "integration"
+        self.integration_dir = self.tests_dir / "taint" / "general_functions"
 
         # Cache for batch results
         self._all_results = None
 
     def discover_test_modules(self) -> List[str]:
-        """Discover all test case modules in taint/integration/."""
+        """Discover all test case modules in taint/general_functions/."""
         test_modules = []
 
         if not self.integration_dir.exists():
             return test_modules
 
         for file_path in self.integration_dir.glob("*_test_cases.py"):
-            # Convert path to module name: taint.integration.re_test_cases
-            module_name = "taint.integration." + file_path.stem
+            # Convert path to module name: taint.general_functions.re_test_cases
+            module_name = "taint.general_functions." + file_path.stem
             test_modules.append(module_name)
 
         return sorted(test_modules)
@@ -192,8 +192,55 @@ class TaintTestLauncher:
 launcher = TaintTestLauncher()
 
 
-# Note: Individual test parametrization removed to avoid AST rewriting issues during collection
-# The test_all_taint_cases function provides comprehensive testing of all cases
+def collect_all_test_cases():
+    """Collect metadata about all test cases without running them."""
+    test_cases = []
+    
+    # Discover test modules
+    test_modules = launcher.discover_test_modules()
+    
+    for module_name in test_modules:
+        # For each module, we'll assume certain standard test names
+        # This is a workaround since we can't import the modules at collection time
+        # (they need AST transformation via develop)
+        module_short_name = module_name.split(".")[-1].replace("_test_cases", "")
+        
+        # Add placeholders for common test patterns
+        # These will be validated when actually run
+        test_cases.append((module_name, f"test_basic_{module_short_name}"))
+        test_cases.append((module_name, f"test_complex_{module_short_name}"))
+        test_cases.append((module_name, f"test_edge_cases_{module_short_name}"))
+    
+    return test_cases
+
+
+# Generate individual test functions dynamically
+# This approach creates individual pytest test items that can be selected/filtered
+def create_individual_test(module_name, test_name):
+    """Create a test function for a specific test case."""
+    def test_func():
+        print(f"\\nRunning individual test: {module_name}::{test_name}")
+        
+        # Start server if needed
+        launcher.start_server_if_needed()
+        
+        # Run just this specific test
+        results = launcher.run_test_module_via_develop(module_name)
+        
+        if test_name in results:
+            result = results[test_name]
+            _assert_test_result(f"{module_name}::{test_name}", result)
+        else:
+            # Test doesn't exist in this module, skip
+            pytest.skip(f"Test {test_name} not found in {module_name}")
+    
+    # Set a meaningful name for the test function
+    test_func.__name__ = f"test_{module_name.split('.')[-1]}_{test_name}"
+    return test_func
+
+
+# Note: We provide both batch and individual test options
+# The test_all_taint_cases function provides comprehensive testing with detailed reporting
 
 
 def test_all_taint_cases():
@@ -203,7 +250,7 @@ def test_all_taint_cases():
     print("=" * 60)
 
     results = launcher.run_all_test_modules()
-    _report_batch_results(results)
+    _report_batch_results(results, show_individual=True)
 
 
 def _assert_test_result(test_name, result):
@@ -221,12 +268,53 @@ def _assert_test_result(test_name, result):
         pytest.fail("Test " + str(test_name) + " had unexpected status: " + str(status) + "")
 
 
-def _report_batch_results(results):
+def _report_batch_results(results, show_individual=False):
     """Report results from a batch test execution."""
     # Analyze results
     failed_tests = []
     error_tests = []
     passed_tests = []
+
+    # Print individual test results with green/red indicators
+    if show_individual:
+        print("\\n" + "=" * 60)
+        print("INDIVIDUAL TEST RESULTS:")
+        print("=" * 60)
+        
+        # Group tests by module for better organization
+        tests_by_module = {}
+        for test_name, result in results.items():
+            # Extract module name from test name (format: module::test_name)
+            if "::" in test_name:
+                module_part = test_name.split("::")[0]
+                if "." in module_part:
+                    # Extract just the module name without full path
+                    module_name = module_part.split(".")[-1]
+                else:
+                    module_name = module_part
+            else:
+                module_name = "unknown"
+            
+            if module_name not in tests_by_module:
+                tests_by_module[module_name] = []
+            tests_by_module[module_name].append((test_name, result))
+        
+        # Print results grouped by module
+        for module_name in sorted(tests_by_module.keys()):
+            print(f"\\n{module_name}:")
+            for test_name, result in tests_by_module[module_name]:
+                status = result.get("status", "unknown")
+                # Extract just the test function name for cleaner display
+                display_name = test_name.split("::")[-1] if "::" in test_name else test_name
+                
+                if status == "passed":
+                    print(f"  ✅ {display_name}")
+                elif status == "failed":
+                    print(f"  ❌ {display_name}")
+                elif status == "error":
+                    print(f"  💥 {display_name}")
+                else:
+                    print(f"  ❓ {display_name} (unknown status)")
 
     for test_name, result in results.items():
         status = result.get("status", "unknown")
@@ -234,28 +322,49 @@ def _report_batch_results(results):
         if status == "passed":
             passed_tests.append(test_name)
         elif status == "failed":
-            failed_tests.append((test_name, result.get("message", "No message")))
+            failed_tests.append((test_name, result))
         elif status == "error":
-            error_tests.append((test_name, result.get("message", "No message")))
+            error_tests.append((test_name, result))
 
-    # Report results
+    # Report summary
     print("\\n" + "=" * 60)
     print("TAINT TEST RESULTS SUMMARY:")
     print("  Total tests: " + str(len(results)) + "")
-    print("  Passed: " + str(len(passed_tests)) + "")
-    print("  Failed: " + str(len(failed_tests)) + "")
-    print("  Errors: " + str(len(error_tests)) + "")
+    print("  Passed: " + str(len(passed_tests)) + " ✅")
+    print("  Failed: " + str(len(failed_tests)) + " ❌")
+    print("  Errors: " + str(len(error_tests)) + " 💥")
     print("=" * 60)
 
+    # Show detailed failure information with tracebacks
     if failed_tests:
-        print("\\nFailed tests:")
-        for test_name, message in failed_tests:
-            print("  ✗ " + str(test_name) + ": " + str(message))
+        print("\\n" + "=" * 60)
+        print("FAILED TESTS (with tracebacks):")
+        print("=" * 60)
+        for test_name, result in failed_tests:
+            print(f"\\n❌ {test_name}:")
+            print("-" * 40)
+            # Extract and display the traceback if available
+            if "traceback" in result:
+                print(result["traceback"])
+            else:
+                # Fall back to message which may contain traceback
+                message = result.get("message", "No message")
+                print(message)
 
     if error_tests:
-        print("\\nError tests:")
-        for test_name, message in error_tests:
-            print("  ✗ " + str(test_name) + ": " + str(message))
+        print("\\n" + "=" * 60)
+        print("ERROR TESTS (with tracebacks):")
+        print("=" * 60)
+        for test_name, result in error_tests:
+            print(f"\\n💥 {test_name}:")
+            print("-" * 40)
+            # Extract and display the traceback if available
+            if "traceback" in result:
+                print(result["traceback"])
+            else:
+                # Fall back to message which may contain traceback
+                message = result.get("message", "No message")
+                print(message)
 
     # Fail if any tests failed
     if failed_tests or error_tests:
@@ -264,3 +373,57 @@ def _report_batch_results(results):
         )
 
     print("\\n✅ All " + str(len(passed_tests)) + " tests passed!")
+
+
+# Alternative: Parametrized test approach
+# This creates individual pytest items for each test case
+def get_all_test_ids():
+    """Get test IDs for parametrization."""
+    # Run all tests once and cache results
+    results = launcher.run_all_test_modules()
+    
+    # Extract test IDs
+    test_ids = []
+    for test_id in sorted(results.keys()):
+        # Create a cleaner ID for pytest display
+        if "::" in test_id:
+            parts = test_id.split("::")
+            module_part = parts[0].split(".")[-1] if "." in parts[0] else parts[0]
+            test_part = parts[-1]
+            clean_id = f"{module_part}::{test_part}"
+        else:
+            clean_id = test_id
+        test_ids.append(clean_id)
+    
+    return test_ids
+
+
+@pytest.mark.parametrize("test_id", get_all_test_ids() if launcher.discover_test_modules() else [])
+def test_taint_case_parametrized(test_id):
+    """Run individual taint test case (parametrized version)."""
+    # Get cached results
+    results = launcher.run_all_test_modules()
+    
+    # Find the full test ID that matches our clean ID
+    matching_result = None
+    matching_key = None
+    
+    for full_id, result in results.items():
+        if "::" in full_id:
+            parts = full_id.split("::")
+            module_part = parts[0].split(".")[-1] if "." in parts[0] else parts[0]
+            test_part = parts[-1]
+            clean_full_id = f"{module_part}::{test_part}"
+            if clean_full_id == test_id:
+                matching_result = result
+                matching_key = full_id
+                break
+        elif full_id == test_id:
+            matching_result = result
+            matching_key = full_id
+            break
+    
+    if matching_result:
+        _assert_test_result(matching_key or test_id, matching_result)
+    else:
+        pytest.skip(f"Test {test_id} not found in results")

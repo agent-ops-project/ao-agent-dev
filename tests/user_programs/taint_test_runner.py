@@ -88,13 +88,13 @@ def main():
 
     try:
         # Import the test module
-        # Handle both full module names (taint.integration.re_test_cases)
+        # Handle both full module names (taint.general_functions.re_test_cases)
         # and short names (re_test_cases)
-        if not module_name.startswith("taint.integration."):
+        if not module_name.startswith("taint.general_functions."):
             if module_name.endswith("_test_cases"):
-                module_name = f"taint.integration.{module_name}"
+                module_name = f"taint.general_functions.{module_name}"
             else:
-                module_name = f"taint.integration.{module_name}_test_cases"
+                module_name = f"taint.general_functions.{module_name}_test_cases"
 
         # Add tests directory to path
         tests_dir = Path(__file__).parent.parent
