@@ -16,7 +16,7 @@ Some basics:
  - When you make changes to `develop_server.py`, remember to restart the server to see them take effect.
 
 
-## Editing and caching
+## Editing and caching LLM calls
 
 ### Goal
 
@@ -43,3 +43,18 @@ When we run a workflow, new nodes with new `node_ids` are created (the graph may
 `CacheManager` is responsible for look ups in the DB.
 
 `EditManager` is responible for updating the DB.
+
+## AST rewrites
+
+To track data flow ("taint") between LLM calls, we use "[taint wrapper](/src/runner/taint_wrappers.py)" that simply wrap an object or builtin (e.g., `str` or `SomeClass`) and record the LLM calls that influenced its value.
+
+We need to propagate this taint through general, third-party libraries (e.g., the output of `os.path.join(a, "LLM produced string")` should be tainted, i.e., we need to remember which LLM influenced the file path).
+
+To achieve this, we rewrite the user's code files and make any third-party library call become like this: `llm_path = os.path.join(a, "LLM produced string")` -> `llm_path = exec_func(os.path.join, a, "LLM produced string")`. [exec_func](/src/server/ast_transformer.py) does the following:
+1. Untaint all inputs and remember the (joint) set of all taint origins.
+2. Normally execute the rewritten function (e.g., `os.path.join`) with the untainted, "raw" inputs.
+3. Wrap the output with a taint wrapper that records the (joint) taint origins from the inputs.
+
+To do these rewrites, the server spawns a [File Watcher](/src/server/file_watcher.py) daemon process that continuously polls `.py` files in the user's code base. If a file changed (i.e., the user edited its code), the [File Watcher](/src/server/file_watcher.py) reads the file and uses the [AST Transformer](/src/server/ast_transformer.py) to rewrite the file. After rewriting a file, the [File Watcher](/src/server/file_watcher.py) compiles it and saves the binary as `.pyc` file in the correct `__pycache__` directory. This has the effect that when the user runs their program (i.e., `aco-launch script.py`), Python loads `.pyc` files where the rewrites are already installed. `script.py` can directly run and we don't need to pay the runtime overhead of rewriting `script.py` and all its dependencies on modules within the user's code base.
+
+Also see [here](/src/runner/README.md) on how the whole taint propagation process fits together.

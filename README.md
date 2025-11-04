@@ -1,4 +1,4 @@
-# Agent developer scratchpad
+# Agent Ops
 
 See README's in src dirs for more details.
 
