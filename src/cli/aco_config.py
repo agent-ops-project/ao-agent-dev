@@ -17,6 +17,13 @@ def get_user_input() -> Config:
         error_message="Please enter a valid path to a directory.",
     )
 
+    database_url = _ask_field(
+        "Database URL ('local' or PostgreSQL connection string) [local]: ",
+        str,
+        default="local",
+        error_message="Please enter 'local' or a valid PostgreSQL connection string.",
+    )
+
     collect_telemetry = _ask_field(
         "Enable telemetry collection? [yes/NO]: ",
         _convert_yes_no_to_bool,
@@ -53,6 +60,7 @@ def get_user_input() -> Config:
 
     config = Config(
         project_root=project_root,
+        database_url=database_url,
         collect_telemetry=collect_telemetry,
         telemetry_url=telemetry_url,
         telemetry_key=telemetry_key,

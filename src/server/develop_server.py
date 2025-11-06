@@ -91,6 +91,9 @@ class DevelopServer:
 
             # Get data from DB entries.
             timestamp = row["timestamp"]
+            # Convert timestamp to string if it's a datetime object (PostgreSQL)
+            if hasattr(timestamp, 'strftime'):
+                timestamp = timestamp.strftime("%Y-%m-%d %H:%M:%S")
             title = row["name"]
             success = row["success"]
             notes = row["notes"]
@@ -145,15 +148,18 @@ class DevelopServer:
 
     def load_finished_runs(self):
         # Load only session_id and timestamp for finished runs
-        rows = CACHE.get_finished_runs()
-        for row in rows:
-            session_id = row["session_id"]
-            # Mark as finished (not running)
-            session = self.sessions.get(session_id)
-            if not session:
-                session = Session(session_id)
-                session.status = "finished"
-                self.sessions[session_id] = session
+        try:
+            rows = CACHE.get_finished_runs()
+            for row in rows:
+                session_id = row["session_id"]
+                # Mark as finished (not running)
+                session = self.sessions.get(session_id)
+                if not session:
+                    session = Session(session_id)
+                    session.status = "finished"
+                    self.sessions[session_id] = session
+        except Exception as e:
+            logger.warning(f"Failed to load finished runs from database: {e}")
 
     def handle_graph_request(self, conn, session_id):
         # Query graph_topology for the session and reconstruct the in-memory graph
@@ -337,7 +343,7 @@ class DevelopServer:
             cwd = msg.get("cwd")
             command = msg.get("command")
             environment = msg.get("environment")
-            timestamp = datetime.now().strftime("%d/%m %H:%M")
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             name = msg.get("name")
             parent_session_id = msg.get("parent_session_id")
             EDIT.add_experiment(
@@ -442,7 +448,7 @@ class DevelopServer:
                 if session:
                     session.status = "running"
                     # Update database timestamp so it sorts correctly
-                    new_timestamp = datetime.now().strftime("%d/%m %H:%M")
+                    new_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     EDIT.update_timestamp(child_session_id, new_timestamp)
                     # Broadcast updated experiment list with rerun session at the front
                     self.broadcast_experiment_list_to_uis()
@@ -554,7 +560,7 @@ class DevelopServer:
                     cwd = handshake.get("cwd")
                     command = handshake.get("command")
                     environment = handshake.get("environment")
-                    timestamp = datetime.now().strftime("%d/%m %H:%M")
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     name = handshake.get("name")
                     EDIT.add_experiment(
                         session_id,
