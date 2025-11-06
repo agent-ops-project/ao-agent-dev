@@ -1,6 +1,9 @@
 import io
 import inspect
+import threading
 from typing import Any, Set
+from types import ModuleType
+from enum import Enum
 
 
 class TaintObject:
@@ -315,26 +318,46 @@ def untaint_if_needed(val, _seen=None):
         return tuple(result) if isinstance(val, tuple) else result
     elif isinstance(val, set):
         return {untaint_if_needed(item, _seen) for item in val}
+    elif isinstance(val, Enum):
+        return val
+    elif isinstance(val, ModuleType):
+        return val
+    elif isinstance(
+        val,
+        (
+            threading.Lock,
+            threading._CRLock,
+            threading.Condition,
+            threading.Thread,
+            threading.Semaphore,
+            threading.BoundedSemaphore,
+            threading.Event,
+            threading.Barrier,
+            threading.Timer,
+            threading.local,
+        ),
+    ):
+        return val  # Never modify threading primitives
     elif hasattr(val, "__dict__") and not isinstance(val, type):
-        # Handle custom objects with attributes, e.g., (MyObj(a=5, b=1)).
-        try:
-            new_obj = val.__class__.__new__(val.__class__)
-            for attr, value in val.__dict__.items():
-                setattr(new_obj, attr, untaint_if_needed(value, _seen))
-            return new_obj
-        except Exception:
-            return val
+        untainted = {}  # avoid mods while iterating over same thing
+        for attr, value in val.__dict__.items():
+            untainted[attr] = untaint_if_needed(value, _seen)
+        for attr, value in untainted.items():
+            val.__dict__[attr] = value
+        return val
     elif hasattr(val, "__slots__"):
         # Handle objects with __slots__ (some objects have __slots__ but no __dict__).
-        try:
-            new_obj = val.__class__.__new__(val.__class__)
-            for slot in val.__slots__:
-                if hasattr(val, slot):
-                    value = getattr(val, slot)
-                    setattr(new_obj, slot, untaint_if_needed(value, _seen))
-            return new_obj
-        except Exception:
-            return val
+        untainted = {}  # avoid mods while iterating over same thing
+        for slot in val.__slots__:
+            if hasattr(val, slot):
+                untainted[slot] = untaint_if_needed(getattr(val, slot), _seen)
+        for slot, value in untainted.items():
+            try:
+                setattr(val, slot, value)
+            except Exception as e:
+                print(f"Why are we here? Is {val} immutable?")
+                raise e
+        return val
 
     # Return primitive types and other objects as-is
     return val
@@ -404,6 +427,8 @@ def get_taint_origins(val, _seen=None, _depth=0, _max_depth=100):
         # Create a list of values to avoid dictionary changed size during iteration
         for v in list(val.values()):
             origins = safe_update_set(origins, get_taint_origins(v, _seen, _depth + 1, _max_depth))
+    elif isinstance(val, Enum):
+        return origins
     elif hasattr(val, "__dict__") and not isinstance(val, type):
         # Handle custom objects with attributes
         # Create a list of items to avoid dictionary changed size during iteration

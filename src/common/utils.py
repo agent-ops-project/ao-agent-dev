@@ -21,16 +21,26 @@ def scan_user_py_files_and_modules(root_dir):
       - user_py_files: set of absolute file paths
       - file_to_module: mapping from file path to module name (relative to root_dir)
 
-    Excludes internal agent-copilot directories to avoid rewriting our own code.
+    Excludes agent-copilot directories except for example_workflows.
     """
     user_py_files = set()
     file_to_module = dict()
     module_to_file = dict()
 
-    # Directories to exclude (internal agent-copilot code)
-    exclude_dirs = {"src", ".git", ".venv", "__pycache__", ".pytest_cache", "node_modules"}
+    # Infer agent-copilot directory from this file's location
+    agent_copilot_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    # Standard directories to exclude
+    exclude_dirs = {".git", ".venv", "__pycache__", ".pytest_cache", "node_modules"}
 
     for dirpath, dirnames, filenames in os.walk(root_dir):
+        # Check if we're inside agent-copilot directory
+        if os.path.commonpath([dirpath, agent_copilot_dir]) == agent_copilot_dir:
+            # We're inside agent-copilot, only include example_workflows
+            rel_to_agent = os.path.relpath(dirpath, agent_copilot_dir)
+            if not rel_to_agent.startswith("example_workflows"):
+                continue
+
         # Filter out excluded directories
         dirnames[:] = [d for d in dirnames if d not in exclude_dirs]
         for filename in filenames:
