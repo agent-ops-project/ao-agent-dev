@@ -33,7 +33,6 @@ function operations, ensuring sensitive data remains tainted throughout executio
 import ast
 from inspect import getsourcefile, isbuiltin
 from aco.runner.taint_wrappers import TaintStr, get_taint_origins, untaint_if_needed, taint_wrap
-from aco.common.logger import logger
 
 
 def rewrite_source_to_code(source: str, filename: str, module_to_file: dict = None):
@@ -240,8 +239,6 @@ class TaintPropagationTransformer(ast.NodeTransformer):
                            Used to identify which modules are user-defined.
             current_file: The path to the current file being transformed.
         """
-
-        logger.info(f"[TaintPropagationTransformer] {module_to_file}")
         self.module_to_file = module_to_file or {}
         self.user_py_files = [*module_to_file.values()]
         self.current_file = current_file
@@ -512,16 +509,10 @@ class TaintPropagationTransformer(ast.NodeTransformer):
             if isinstance(node, ast.ImportFrom) and node.module == "__future__":
                 has_future_imports = True
                 last_future_import_pos = i
-                logger.debug(
-                    f"Found __future__ import in file {self.current_file} at position {i}: {node.module}"
-                )
 
         if has_future_imports:
             # Insert after the last __future__ import
             insertion_point = last_future_import_pos + 1
-            logger.info(
-                f"File {self.current_file} has __future__ imports, injecting taint imports after position {insertion_point}"
-            )
         else:
             # Insert at the beginning if no __future__ imports
             insertion_point = 0
