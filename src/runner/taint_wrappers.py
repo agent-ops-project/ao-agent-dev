@@ -1872,7 +1872,18 @@ def taint_wrap(obj, taint_origin=None, _seen=None, _depth: int = 0, _max_depth: 
             taint_origin=taint_origin,
         )
     if isinstance(obj, tuple):
-        return TaintIterable(obj, taint_origin=taint_origin)
+        return tuple(
+            [
+                taint_wrap(
+                    x,
+                    taint_origin=taint_origin,
+                    _seen=_seen,
+                    _depth=_depth + 1,
+                    _max_depth=_max_depth,
+                )
+                for x in obj
+            ]
+        )
     if isinstance(obj, io.IOBase):
         return TaintFile(obj, taint_origin=taint_origin)
 

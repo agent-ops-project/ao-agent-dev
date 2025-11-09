@@ -16,7 +16,6 @@ Key Features:
 import os
 import sys
 import time
-import py_compile
 from typing import Dict
 from aco.common.logger import logger
 from aco.common.constants import FILE_POLL_INTERVAL
