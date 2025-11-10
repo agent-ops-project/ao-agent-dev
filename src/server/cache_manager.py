@@ -1,10 +1,12 @@
 import uuid
 import json
 import dill
+import random
+import hashlib
 from aco.common.logger import logger
 from aco.common.constants import ACO_ATTACHMENT_CACHE
 from aco.server import db
-from aco.common.utils import stream_hash, save_io_stream
+from aco.common.utils import stream_hash, save_io_stream, set_seed
 from aco.runner.taint_wrappers import untaint_if_needed
 from aco.runner.monkey_patching.api_parser import get_input, get_model_name, set_input
 
@@ -102,17 +104,25 @@ class CacheManager:
         )
 
         if row is None:
-            logger.debug(f"Cache miss")
-            # Insert new row with a new node_id.
+            logger.debug(
+                f"\033[95mCache MISS.\nQuery: {(session_id, input_hash)}\nCacheable input: {cacheable_input}\033[0m"
+            )
+            # Insert new row with a new node_id. reset randomness to avoid
+            #   generating exact same UUID when re-running, but MCP generates randomness and we miss cache
+            random.seed()
             node_id = str(uuid.uuid4())
+            logger.debug(f"Cache MISS, UUID: {node_id}")
             if cache:
                 db.execute(
                     "INSERT INTO llm_calls (session_id, input, input_hash, node_id, api_type) VALUES (?, ?, ?, ?, ?)",
                     (session_id, input_pickle, input_hash, node_id, api_type),
                 )
+            set_seed(node_id)
             return input_dict, None, node_id
 
-        logger.debug(f"Cache hit")
+        logger.debug(
+            f"\033[32mCache HIT.\nQuery: {(session_id, input_hash)}\nCacheable input: {cacheable_input}\033[0m"
+        )
         # Use data from previous LLM call.
         node_id = row["node_id"]
         output = None
@@ -123,8 +133,14 @@ class CacheManager:
             overwrite_pickle = row["input_overwrite"]
             overwrite_text = dill.loads(overwrite_pickle)["input"]
             set_input(input_dict, overwrite_text, api_type)
+
         if row["output"] is not None:
             output = dill.loads(row["output"])
+        else:
+            logger.warning(
+                f"Found result in the cache, but output is None. Is this call doing something useful?"
+            )
+        set_seed(node_id)
         return input_dict, output, node_id
 
     def cache_output(self, node_id, output_obj):
@@ -132,6 +148,7 @@ class CacheManager:
 
         session_id = get_session_id()
         output_pickle = dill.dumps(output_obj)
+        set_seed(node_id)
         db.execute(
             "UPDATE llm_calls SET output=? WHERE session_id=? AND node_id=?",
             (output_pickle, session_id, node_id),
