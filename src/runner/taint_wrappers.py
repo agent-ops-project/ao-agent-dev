@@ -557,17 +557,12 @@ class TaintStr(str):
         return self.get_raw().decode(*args, **kwargs)
 
     def __str__(self):
-        # return str.__str__(self)
         return self
 
     # we don't want to change repr since this can alter behavior e.g.
     # in the case of this: '%r' % some_tainted_str
     def __repr__(self):
-        return super().__repr__()
-
-    # this is for debugging
-    def taint_repr(self):
-        return f"TaintStr({super().__repr__()}, taint_origin={self._taint_origin})"
+        return self
 
     def get_raw(self):
         # return str(self)
@@ -1786,7 +1781,9 @@ def open_with_taint(filename, mode="r", taint_origin=None, session_id=None, **kw
     return TaintFile.open(filename, mode, taint_origin, session_id, **kwargs)
 
 
-def taint_wrap(obj, taint_origin=None, _seen=None, _depth: int = 0, _max_depth: int = 10):
+def taint_wrap(
+    obj, taint_origin=None, inplace=False, _seen=None, _depth: int = 0, _max_depth: int = 10
+):
     """
     Recursively wrap an object and its nested structures with taint information.
 
@@ -1797,6 +1794,7 @@ def taint_wrap(obj, taint_origin=None, _seen=None, _depth: int = 0, _max_depth: 
     Args:
         obj: The object to wrap with taint information
         taint_origin: The taint origin(s) to assign to the wrapped object
+        inplace: Should the object be modified inplace (if possible)
         _seen: Set to track visited objects (prevents circular references)
         _depth: Keep track of depth to avoid to deep recursion
 
@@ -1838,7 +1836,7 @@ def taint_wrap(obj, taint_origin=None, _seen=None, _depth: int = 0, _max_depth: 
             return obj  # Don't wrap any enum members (including StrEnum)
 
     if isinstance(obj, dict):
-        return TaintDict(
+        tainted_dict = TaintDict(
             {
                 taint_wrap(
                     k,
@@ -1857,8 +1855,13 @@ def taint_wrap(obj, taint_origin=None, _seen=None, _depth: int = 0, _max_depth: 
             },
             taint_origin=taint_origin,
         )
+        if inplace:
+            obj.update((k, v) for k, v in tainted_dict.items())
+            return obj
+        return tainted_dict
+
     if isinstance(obj, list) and not isinstance(obj, (str, bytes, bytearray)):
-        return TaintList(
+        tainted_list = TaintList(
             [
                 taint_wrap(
                     x,
@@ -1871,6 +1874,10 @@ def taint_wrap(obj, taint_origin=None, _seen=None, _depth: int = 0, _max_depth: 
             ],
             taint_origin=taint_origin,
         )
+        if inplace:
+            obj[:] = tainted_list
+            return obj
+        return tainted_list
     if isinstance(obj, tuple):
         return tuple(
             [

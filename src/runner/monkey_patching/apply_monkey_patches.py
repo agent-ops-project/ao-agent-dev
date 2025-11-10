@@ -48,7 +48,7 @@ def apply_all_monkey_patches():
 
 CUSTOM_PATCH_FUNCTIONS = [
     str_patch,
-    # uuid_patch,
+    uuid_patch,
     apply_file_patches,
     openai_patch,
     async_openai_patch,
