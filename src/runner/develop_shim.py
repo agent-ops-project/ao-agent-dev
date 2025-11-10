@@ -313,51 +313,6 @@ class DevelopShim:
         except Exception:
             pass
 
-    def _convert_and_run_as_module(self, script_path: str, script_args: List[str]) -> Optional[int]:
-        """Convert script execution to module import for AST rewriting."""
-        # TODO: Refactor this.
-        abs_path = os.path.abspath(script_path)
-
-        # Scan for all .py files in the user's project root
-        # This ensures AST rewriting works for the user's code
-        _, _, module_to_file = scan_user_py_files_and_modules(self.project_root)
-        set_module_to_user_file(module_to_file)
-        install_patch_hook()
-
-        # Save original state
-        original_path = sys.path.copy()
-        original_argv = sys.argv.copy()
-
-        try:
-            # Add project root to sys.path for module import
-            sys.path.insert(0, self.project_root)
-
-            # Set up argv for the script
-            sys.argv = [script_path] + script_args
-
-            # Compute module name as absolute path from project root
-            # TODO: Assumes the project is installed with pip install -e, we can use absolute module names
-            rel_path = os.path.relpath(abs_path, self.project_root)
-            if rel_path.startswith(".."):
-                # If the file is outside the project root, use the filename as module name
-                module_name = os.path.splitext(os.path.basename(abs_path))[0]
-            else:
-                # Convert relative path to module name
-                module_name = rel_path[:-3].replace(os.sep, ".")  # strip .py, convert / to .
-
-            # Import and run as module (this triggers AST rewriting)
-            runpy.run_module(module_name, run_name="__main__")
-            return 0
-        except SystemExit as e:
-            return e.code if e.code is not None else 0
-        except Exception as e:
-            logger.error(f"Error running script as module: {e}")
-            return 1
-        finally:
-            # Restore original state
-            sys.path[:] = original_path
-            sys.argv[:] = original_argv
-
     def _convert_file_to_module_name(self, script_path: str) -> str:
         """Convert a file path to a module name that Python can import."""
         # Handle absolute paths

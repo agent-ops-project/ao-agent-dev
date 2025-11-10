@@ -1480,7 +1480,7 @@ class TaintFile:
                 self._taint_origin = ["file:unknown"]
         elif isinstance(taint_origin, (int, str)):
             self._taint_origin = [taint_origin]
-        elif isinstance(taint_origin, list):
+        elif isinstance(taint_origin, (set, list)):
             self._taint_origin = list(taint_origin)
         else:
             raise TypeError(f"Unsupported taint_origin type: {type(taint_origin)}")

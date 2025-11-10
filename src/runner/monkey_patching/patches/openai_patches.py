@@ -1,6 +1,5 @@
 from functools import wraps
 from io import BytesIO
-import time
 from aco.runner.monkey_patching.patching_utils import get_input_dict, send_graph_node_and_edges
 from aco.server.cache_manager import CACHE
 from aco.common.logger import logger

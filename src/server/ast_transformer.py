@@ -31,8 +31,10 @@ function operations, ensuring sensitive data remains tainted throughout executio
 """
 
 import ast
-from inspect import getsourcefile, isbuiltin, iscoroutinefunction
+from dill import PicklingError, dumps
+from inspect import getsourcefile, iscoroutinefunction
 from aco.runner.taint_wrappers import TaintStr, get_taint_origins, untaint_if_needed, taint_wrap
+from aco.server.db import hash_input
 
 
 def rewrite_source_to_code(source: str, filename: str, module_to_file: dict = None):
@@ -630,11 +632,16 @@ def _get_bound_obj_hash(bound_self: object | None):
         The hash of the object if hashable, None otherwise.
     """
     bound_hash = None
-    try:
-        if bound_self:
-            bound_hash = hash(bound_self)
-    except TypeError:
-        pass
+    if bound_self:
+        try:
+            bytes_string = dumps(bound_self)
+        except (PicklingError, TypeError):
+            try:
+                bound_hash = hash_input(bound_self)
+            except Exception:
+                pass
+        else:
+            bound_hash = hash_input(bytes_string)
     return bound_hash
 
 
@@ -691,9 +698,9 @@ def exec_func(func, args, kwargs, user_py_files=None):
             untainted_kwargs = untaint_if_needed(kwargs)
 
             # Call the original function with untainted arguments
-            bound_hash_before_func = _get_bound_obj_hash(bound_self)
-            result = func(*untainted_args, **untainted_kwargs)
-            bound_hash_after_func = _get_bound_obj_hash(bound_self)
+            bound_hash_before_func = _get_bound_obj_hash(bound_self) if all_origins else None
+            result = await func(*untainted_args, **untainted_kwargs)
+            bound_hash_after_func = _get_bound_obj_hash(bound_self) if all_origins else None
 
             no_side_effect = (
                 bound_hash_before_func is not None
@@ -721,7 +728,7 @@ def exec_func(func, args, kwargs, user_py_files=None):
             # Wrap result with taint if there is any taint
             if all_origins:
                 if no_side_effect:
-                    return await taint_wrap(result, taint_origin=all_origins)
+                    return taint_wrap(result, taint_origin=all_origins)
 
                 # need to taint bound object (if any) as well
                 # we need to use inplace because you cannot assign __self__ of
@@ -730,7 +737,7 @@ def exec_func(func, args, kwargs, user_py_files=None):
                     taint_wrap(bound_self, taint_origin=all_origins, inplace=True)
                 elif hasattr(func, "func") and hasattr(func.func, "__self__"):
                     taint_wrap(bound_self, taint_origin=all_origins, inplace=True)
-                return await taint_wrap(result, taint_origin=all_origins)
+                return taint_wrap(result, taint_origin=all_origins)
 
             # If no taint, return result unwrapped
             return result
@@ -766,9 +773,9 @@ def exec_func(func, args, kwargs, user_py_files=None):
     untainted_kwargs = untaint_if_needed(kwargs)
 
     # Call the original function with untainted arguments
-    bound_hash_before_func = _get_bound_obj_hash(bound_self)
+    bound_hash_before_func = _get_bound_obj_hash(bound_self) if all_origins else None
     result = func(*untainted_args, **untainted_kwargs)
-    bound_hash_after_func = _get_bound_obj_hash(bound_self)
+    bound_hash_after_func = _get_bound_obj_hash(bound_self) if all_origins else None
 
     no_side_effect = (
         bound_hash_before_func is not None
