@@ -7,6 +7,7 @@ import sys
 import runpy
 import socket
 import json
+import random
 import traceback
 from aco.common.logger import logger
 
@@ -88,6 +89,34 @@ if os.environ.get("AGENT_COPILOT_ENABLE_TRACING"):
 
     # Apply monkey patches.
     apply_all_monkey_patches()
+
+    # Set random seeds
+    aco_random_seed = os.environ.get("ACO_SEED", None)
+    if not aco_random_seed:
+        raise Exception("ACO random seed not set.")
+    else:
+        try:
+            aco_random_seed = int(aco_random_seed)
+        except:
+            raise Exception("Error converting ACO_SEED to int.")
+
+    logger.debug(f"ACO_SEED was set to {{aco_random_seed}}")
+
+    try:
+        from numpy.random import seed
+
+        seed(aco_random_seed)
+    except:
+        logger.debug("Failed to set the numpy seed")
+
+    try:
+        from torch import manual_seed
+
+        manual_seed(aco_random_seed)
+    except:
+        logger.debug("Failed to set the torch seed")
+
+    random.seed(aco_random_seed)
 """
 
 
