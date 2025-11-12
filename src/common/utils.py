@@ -6,7 +6,7 @@ import importlib
 from pathlib import Path
 import threading
 from typing import Optional, Union
-from aco.common.constants import ACO_INSTALL_DIR
+from aco.common.constants import ACO_INSTALL_DIR, ACO_PROJECT_ROOT
 
 
 def set_seed(node_id: str) -> None:
@@ -54,8 +54,6 @@ def scan_user_py_files_and_modules(root_dir):
 
     Excludes agent-copilot directories except for example_workflows.
     """
-    user_py_files = set()
-    file_to_module = dict()
     module_to_file = dict()
 
     # Standard directories to exclude
@@ -74,13 +72,11 @@ def scan_user_py_files_and_modules(root_dir):
         for filename in filenames:
             if filename.endswith(".py"):
                 abs_path = os.path.abspath(os.path.join(dirpath, filename))
-                user_py_files.add(abs_path)
                 # Compute module name relative to root_dir
                 rel_path = os.path.relpath(abs_path, root_dir)
                 mod_name = rel_path[:-3].replace(os.sep, ".")  # strip .py, convert / to .
                 if mod_name.endswith(".__init__"):
                     mod_name = mod_name[:-9]  # remove .__init__
-                file_to_module[abs_path] = mod_name
                 module_to_file[mod_name] = abs_path
                 # is it possible to shorten the module name and still get a
                 # valid import?
@@ -90,7 +86,7 @@ def scan_user_py_files_and_modules(root_dir):
                     module_to_file[mod_name] = abs_path
                     mod_name = ".".join(mod_name.split(".")[1:])
 
-    return user_py_files, file_to_module, module_to_file
+    return module_to_file
 
 
 # ==============================================================================
@@ -433,3 +429,11 @@ def save_io_stream(stream, filename, dest_dir):
             return new_path
 
         counter += 1
+
+
+# Mapping that maps module to file name
+MODULE2FILE = scan_user_py_files_and_modules(ACO_PROJECT_ROOT)
+packages_in_project_root = find_additional_packages_in_project_root(project_root=ACO_PROJECT_ROOT)
+for additional_package in packages_in_project_root:
+    additional_package_module_to_file = scan_user_py_files_and_modules(additional_package)
+    MODULE2FILE = {**MODULE2FILE, **additional_package_module_to_file}

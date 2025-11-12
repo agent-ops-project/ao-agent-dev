@@ -1,38 +1,9 @@
-# Register taint functions in builtins BEFORE any other imports
-# This ensures any rewritten .pyc files can call these functions
-import builtins
 import sys
 import os
-
-# Add current directory to path to import modules directly
-current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
-
-# Import directly from file path to avoid triggering aco.__init__.py
-import importlib.util
-
-ast_transformer_path = os.path.join(current_dir, "server", "ast_transformer.py")
-spec = importlib.util.spec_from_file_location("ast_transformer", ast_transformer_path)
-ast_transformer = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(ast_transformer)
-
-taint_fstring_join = ast_transformer.taint_fstring_join
-taint_format_string = ast_transformer.taint_format_string
-taint_percent_format = ast_transformer.taint_percent_format
-exec_func = ast_transformer.exec_func
-
-builtins.taint_fstring_join = taint_fstring_join
-builtins.taint_format_string = taint_format_string
-builtins.taint_percent_format = taint_percent_format
-builtins.exec_func = exec_func
-
-# Now safe to import other modules
 import yaml
 from argparse import ArgumentParser, REMAINDER
 from typing import Optional
 from aco.common.constants import ACO_CONFIG, ACO_PROJECT_ROOT
-from aco.common.utils import find_additional_packages_in_project_root
 from aco.runner.develop_shim import DevelopShim
 
 
@@ -120,12 +91,6 @@ def _validate_launch_command(args):
         f"To fix this, pass the correct --project-root to aco-launch. "
         "For example, aco-launch --project-root ~/my-project script.py"
     )
-
-    # find additional packages installed in the project root
-    args.packages_in_project_root = find_additional_packages_in_project_root(
-        project_root=args.project_root
-    )
-
     return args
 
 
@@ -141,7 +106,6 @@ def launch_command(args):
         script_args=args.script_args,
         is_module_execution=args.module,
         project_root=args.project_root,
-        packages_in_project_root=args.packages_in_project_root,
         sample_id=sample_id,
     )
     shim.run()

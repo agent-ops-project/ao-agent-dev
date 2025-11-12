@@ -14,7 +14,6 @@ import tempfile
 import importlib.util
 from typing import Optional, List
 from aco.common.logger import logger
-from aco.common.utils import scan_user_py_files_and_modules
 from aco.common.constants import (
     HOST,
     PORT,
@@ -24,6 +23,7 @@ from aco.common.constants import (
     MESSAGE_POLL_INTERVAL,
     SERVER_START_WAIT,
 )
+from aco.common.utils import MODULE2FILE
 from aco.runner.launch_scripts import SCRIPT_WRAPPER_TEMPLATE, MODULE_WRAPPER_TEMPLATE
 from aco.cli.aco_server import launch_daemon_server
 
@@ -61,14 +61,12 @@ class DevelopShim:
         script_args: List[str],
         is_module_execution: bool,
         project_root: str,
-        packages_in_project_root: list[str],
         sample_id: Optional[str] = None,
     ):
         self.script_path = script_path
         self.script_args = script_args
         self.is_module_execution = is_module_execution
         self.project_root = project_root
-        self.packages_in_project_root = packages_in_project_root
         self.sample_id = sample_id
 
         # State management
@@ -277,11 +275,6 @@ class DevelopShim:
         except Exception as e:
             logger.error(f"Cannot connect to develop server ({e})")
             sys.exit(1)
-        # Scan for all .py files in the user's project root for file watcher
-        _, _, module_to_file = scan_user_py_files_and_modules(self.project_root)
-        logger.info(
-            f"[DevelopShim] Scanned project, found {len(module_to_file)} modules for file watcher"
-        )
 
         # Send handshake to server
         handshake = {
@@ -294,7 +287,7 @@ class DevelopShim:
             "prev_session_id": os.getenv(
                 "AGENT_COPILOT_SESSION_ID"
             ),  # Is set if rerun, otherwise None
-            "module_to_file": module_to_file,  # For file watcher
+            "module_to_file": MODULE2FILE,  # For file watcher
         }
         try:
             self.server_conn.sendall((json.dumps(handshake) + "\n").encode("utf-8"))
@@ -360,8 +353,7 @@ class DevelopShim:
         runtime_tracing_dir = get_runnner_dir()
         wrapper_code = SCRIPT_WRAPPER_TEMPLATE.format(
             runtime_tracing_dir=repr(runtime_tracing_dir),
-            project_root=repr(self.project_root),
-            packages_in_project_root=repr(self.packages_in_project_root),
+            module_to_file=repr(MODULE2FILE),
             module_name=repr(module_name),
             script_args=repr(script_args),
         )
@@ -382,8 +374,7 @@ class DevelopShim:
             runtime_tracing_dir = get_runnner_dir()
             wrapper_code = MODULE_WRAPPER_TEMPLATE.format(
                 runtime_tracing_dir=repr(runtime_tracing_dir),
-                project_root=repr(self.project_root),
-                packages_in_project_root=repr(self.packages_in_project_root),
+                module_to_file=repr(MODULE2FILE),
                 module_name=repr(self.script_path),
                 script_args=repr(self.script_args),
             )
@@ -399,7 +390,6 @@ class DevelopShim:
             wrapper_path = self._create_runpy_wrapper(module_name, self.script_args)
 
             print(wrapper_path)
-            # time.sleep(10)
             self.proc = subprocess.Popen([sys.executable, wrapper_path], env=env)
             self.wrapper_path = wrapper_path
         # Monitor the process and check for restart requests

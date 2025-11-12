@@ -63,27 +63,6 @@ class FileWatcher:
             except OSError as e:
                 logger.error(f"[FileWatcher] Error accessing file {file_path}: {e}")
 
-    def _get_pyc_path(self, py_file_path: str) -> str:
-        """
-        Generate the standard .pyc file path for a given .py file.
-
-        Args:
-            py_file_path: Path to the .py source file
-
-        Returns:
-            Path where the .pyc file should be written
-        """
-        # Python's standard __pycache__ naming convention
-        dir_name = os.path.dirname(py_file_path)
-        base_name = os.path.splitext(os.path.basename(py_file_path))[0]
-        cache_dir = os.path.join(dir_name, "__pycache__")
-
-        # Include Python version in filename (e.g., module.cpython-311.pyc)
-        version_tag = f"cpython-{sys.version_info.major}{sys.version_info.minor}"
-        pyc_name = f"{base_name}.{version_tag}.pyc"
-
-        return os.path.join(cache_dir, pyc_name)
-
     def _needs_recompilation(self, file_path: str) -> bool:
         """
         Check if a file needs recompilation based on modification time or missing .pyc file.
@@ -99,7 +78,7 @@ class FileWatcher:
                 return False
 
             # Check if .pyc file exists
-            pyc_path = self._get_pyc_path(file_path)
+            pyc_path = get_pyc_path(file_path)
             if not os.path.exists(pyc_path):
                 return True
 
@@ -137,7 +116,7 @@ class FileWatcher:
             logger.debug(f"[FileWatcher] AST rewrite successful for {module_name}")
 
             # Get target .pyc path
-            pyc_path = self._get_pyc_path(file_path)
+            pyc_path = get_pyc_path(file_path)
             logger.info(f"[FileWatcher] Target .pyc path: {pyc_path}")
 
             # Ensure __pycache__ directory exists
@@ -267,3 +246,25 @@ def run_file_watcher_process(module_to_file: Dict[str, str]):
     """
     watcher = FileWatcher(module_to_file)
     watcher.run()
+
+
+def get_pyc_path(py_file_path: str) -> str:
+    """
+    Generate the standard .pyc file path for a given .py file.
+
+    Args:
+        py_file_path: Path to the .py source file
+
+    Returns:
+        Path where the .pyc file should be written
+    """
+    # Python's standard __pycache__ naming convention
+    dir_name = os.path.dirname(py_file_path)
+    base_name = os.path.splitext(os.path.basename(py_file_path))[0]
+    cache_dir = os.path.join(dir_name, "__pycache__")
+
+    # Include Python version in filename (e.g., module.cpython-311.pyc)
+    version_tag = f"cpython-{sys.version_info.major}{sys.version_info.minor}"
+    pyc_name = f"{base_name}.{version_tag}.pyc"
+
+    return os.path.join(cache_dir, pyc_name)
