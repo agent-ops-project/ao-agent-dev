@@ -11,7 +11,6 @@ import debugpy
 import signal
 import select
 import tempfile
-import runpy
 import importlib.util
 from typing import Optional, List
 from aco.common.logger import logger
@@ -399,6 +398,8 @@ class DevelopShim:
             module_name = self._convert_file_to_module_name(self.script_path)
             wrapper_path = self._create_runpy_wrapper(module_name, self.script_args)
 
+            print(wrapper_path)
+            # time.sleep(10)
             self.proc = subprocess.Popen([sys.executable, wrapper_path], env=env)
             self.wrapper_path = wrapper_path
         # Monitor the process and check for restart requests

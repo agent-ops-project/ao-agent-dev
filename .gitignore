@@ -228,7 +228,7 @@ src/static_analysis/CodeQL-Analyst/databases
 
 # Claude code
 **/.claude
-**/Claude.md
+**/CLAUDE.local.md
 
 # Bird
 **/ours_bird/llm/data

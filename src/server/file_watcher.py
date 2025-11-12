@@ -41,6 +41,8 @@ class FileWatcher:
         """
         self.module_to_file = module_to_file
         self.file_mtimes = {}  # Track last modification times
+        self.pid = os.getpid()
+        logger.info(f"[FileWatcher] Initialized FileWatcher. process id (pid) {self.pid}")
         self._populate_initial_mtimes()
 
     def _populate_initial_mtimes(self):
@@ -84,7 +86,7 @@ class FileWatcher:
 
     def _needs_recompilation(self, file_path: str) -> bool:
         """
-        Check if a file needs recompilation based on modification time.
+        Check if a file needs recompilation based on modification time or missing .pyc file.
 
         Args:
             file_path: Path to the source file
@@ -95,6 +97,11 @@ class FileWatcher:
         try:
             if not os.path.exists(file_path):
                 return False
+
+            # Check if .pyc file exists
+            pyc_path = self._get_pyc_path(file_path)
+            if not os.path.exists(pyc_path):
+                return True
 
             current_mtime = os.path.getmtime(file_path)
             last_mtime = self.file_mtimes.get(file_path, 0)
@@ -235,7 +242,7 @@ class FileWatcher:
             poll_count = 0
             while True:
                 poll_count += 1
-                logger.debug(f"[FileWatcher] Poll #{poll_count}")
+                logger.debug(f"[FileWatcher] Poll #{poll_count} PID {self.pid}")
                 self.check_and_recompile()
                 time.sleep(FILE_POLL_INTERVAL)
         except KeyboardInterrupt:
