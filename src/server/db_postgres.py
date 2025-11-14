@@ -27,9 +27,9 @@ def get_conn():
             # Double-check pattern to avoid race condition during initialization
             if _shared_conn is None:
                 database_url = DATABASE_URL
-                if not database_url or database_url == "local":
+                if not database_url:
                     raise ValueError(
-                        "DATABASE_URL must be set to a valid PostgreSQL connection string (not 'local')"
+                        "DATABASE_URL is required for Postgres connection (check config.yaml)"
                     )
                 
                 # Parse the connection string

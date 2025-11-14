@@ -18,10 +18,10 @@ def get_user_input() -> Config:
     )
 
     database_url = _ask_field(
-        "Database URL ('local' or PostgreSQL connection string) [local]: ",
+        "Database URL (leave empty for SQLite): ",
         str,
-        default="local",
-        error_message="Please enter 'local' or a valid PostgreSQL connection string.",
+        default=None,
+        error_message="Please enter a valid database URL or leave empty.",
     )
 
     collect_telemetry = _ask_field(
@@ -60,11 +60,11 @@ def get_user_input() -> Config:
 
     config = Config(
         project_root=project_root,
-        database_url=database_url,
         collect_telemetry=collect_telemetry,
         telemetry_url=telemetry_url,
         telemetry_key=telemetry_key,
         telemetry_username=telemetry_username,
+        database_url=database_url,
     )
     return config
 

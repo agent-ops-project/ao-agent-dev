@@ -66,8 +66,8 @@ class EditManager:
         env_json = json.dumps(environment)
         
         # Check if using PostgreSQL
-        from aco.common.constants import DATABASE_URL
-        use_postgres = DATABASE_URL != "local"
+        import os
+        use_postgres = os.environ.get("DATABASE_URL") is not None
         
         if use_postgres:
             # PostgreSQL: Use INSERT ... ON CONFLICT ... DO UPDATE

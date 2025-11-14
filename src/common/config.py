@@ -27,7 +27,7 @@ class Config:
     telemetry_url: str = None
     telemetry_key: str = None
     telemetry_username: str = None
-    database_url: str = "local"
+    database_url: str = None
 
     @classmethod
     def from_yaml_file(cls, yaml_file: str) -> "Config":
