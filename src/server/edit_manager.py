@@ -67,9 +67,9 @@ class EditManager:
         
         # Check if using PostgreSQL
         import os
-        use_postgres = os.environ.get("DATABASE_URL") is not None
+        from aco.server.db import USE_POSTGRES
         
-        if use_postgres:
+        if USE_POSTGRES:
             # PostgreSQL: Use INSERT ... ON CONFLICT ... DO UPDATE
             db.execute(
                 """INSERT INTO experiments (session_id, parent_session_id, name, graph_topology, timestamp, cwd, command, environment, success, notes, log) 
