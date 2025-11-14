@@ -1,4 +1,5 @@
 import argparse
+import os
 from aco.common.config import (
     Config,
     _ask_field,
@@ -20,7 +21,7 @@ def get_user_input() -> Config:
     database_url = _ask_field(
         "Database URL (leave empty for SQLite): ",
         str,
-        default=None,
+        default=os.environ.get("DATABASE_URL"),
         error_message="Please enter a valid database URL or leave empty.",
     )
 

@@ -48,8 +48,7 @@ COLLECT_TELEMETRY = config.collect_telemetry
 TELEMETRY_URL = config.telemetry_url
 TELEMETRY_KEY = config.telemetry_key
 TELEMETRY_USERNAME = getattr(config, "telemetry_username", generate_random_username())
-# Prioritize environment variable DATABASE_URL over config file
-DATABASE_URL = os.environ.get("DATABASE_URL") or config.database_url
+DATABASE_URL = config.database_url
 
 # server-related constants
 HOST = os.environ.get("HOST", "127.0.0.1")
