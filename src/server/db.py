@@ -3,7 +3,7 @@ from aco.common.constants import DATABASE_URL
 
 
 # Check if we should use Postgres instead of SQLite
-USE_POSTGRES = DATABASE_URL is not None
+USE_POSTGRES = bool(DATABASE_URL)
 
 
 def convert_sql_placeholders(sql: str) -> str:
