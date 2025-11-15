@@ -473,7 +473,7 @@ class DevelopServer:
             if session.shim_conn:
                 restart_msg = {"type": "restart", "session_id": session_id}
                 logger.debug(
-                    f"Sending restart to shim-control for session_id: {session_id} with message: {restart_msg}"
+                    f"Session running...Sending restart to shim-control for session_id: {session_id} with message: {restart_msg}"
                 )
                 try:
                     send_json(session.shim_conn, restart_msg)
@@ -759,6 +759,7 @@ class DevelopServer:
             self.stop_file_watcher()
             self.server_sock.close()
             logger.info("Develop server stopped.")
+
 
 if __name__ == "__main__":
     DevelopServer().run_server()

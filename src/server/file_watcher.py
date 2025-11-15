@@ -42,12 +42,12 @@ class FileWatcher:
         self.module_to_file = module_to_file
         self.file_mtimes = {}  # Track last modification times
         self.pid = os.getpid()
-        logger.info(f"[FileWatcher] Initialized FileWatcher. process id (pid) {self.pid}")
+        logger.debug(f"[FileWatcher] Initialized FileWatcher. process id (pid) {self.pid}")
         self._populate_initial_mtimes()
 
     def _populate_initial_mtimes(self):
         """Initialize modification times for all tracked files."""
-        logger.info(f"[FileWatcher] Initializing tracking for {len(self.module_to_file)} modules")
+        logger.debug(f"[FileWatcher] Initializing tracking for {len(self.module_to_file)} modules")
         for module_name, file_path in self.module_to_file.items():
             try:
                 if os.path.exists(file_path):
@@ -85,8 +85,11 @@ class FileWatcher:
 
             # Check if the .pyc file was created by our AST transformer
             from aco.server.ast_transformer import is_pyc_rewritten
+
             if not is_pyc_rewritten(pyc_path):
-                logger.debug(f"[FileWatcher] .pyc file {pyc_path} not rewritten, forcing recompilation")
+                logger.debug(
+                    f"[FileWatcher] .pyc file {pyc_path} not rewritten, forcing recompilation"
+                )
                 return True
 
             current_mtime = os.path.getmtime(file_path)
@@ -108,7 +111,7 @@ class FileWatcher:
         Returns:
             True if compilation succeeded, False otherwise
         """
-        logger.info(f"[FileWatcher] Starting compilation of {module_name}: {file_path}")
+        logger.debug(f"[FileWatcher] Starting compilation of {module_name}: {file_path}")
         try:
             # Read source code
             with open(file_path, "r", encoding="utf-8") as f:
@@ -124,7 +127,7 @@ class FileWatcher:
 
             # Get target .pyc path
             pyc_path = get_pyc_path(file_path)
-            logger.info(f"[FileWatcher] Target .pyc path: {pyc_path}")
+            logger.debug(f"[FileWatcher] Target .pyc path: {pyc_path}")
 
             # Ensure __pycache__ directory exists
             cache_dir = os.path.dirname(pyc_path)
@@ -165,10 +168,10 @@ class FileWatcher:
             # Verify .pyc file was created
             if os.path.exists(pyc_path):
                 pyc_size = os.path.getsize(pyc_path)
-                logger.info(f"[FileWatcher] ✓ Successfully compiled {module_name}")
-                logger.info(f"[FileWatcher]   Source: {file_path}")
-                logger.info(f"[FileWatcher]   Target: {pyc_path} ({pyc_size} bytes)")
-                logger.info(f"[FileWatcher]   Source mtime: {source_mtime}")
+                logger.debug(f"[FileWatcher] ✓ Successfully compiled {module_name}")
+                logger.debug(f"[FileWatcher]   Source: {file_path}")
+                logger.debug(f"[FileWatcher]   Target: {pyc_path} ({pyc_size} bytes)")
+                logger.debug(f"[FileWatcher]   Source mtime: {source_mtime}")
             else:
                 logger.error(f"[FileWatcher] ✗ .pyc file was not created: {pyc_path}")
                 return False
@@ -204,9 +207,9 @@ class FileWatcher:
         This method runs indefinitely, checking for file changes every
         FILE_POLL_INTERVAL seconds and recompiling changed files.
         """
-        logger.info(f"[FileWatcher] Starting file watcher process")
-        logger.info(f"[FileWatcher] Monitoring {len(self.module_to_file)} modules")
-        logger.info(f"[FileWatcher] Polling interval: {FILE_POLL_INTERVAL} seconds")
+        logger.debug(f"[FileWatcher] Starting file watcher process")
+        logger.debug(f"[FileWatcher] Monitoring {len(self.module_to_file)} modules")
+        logger.debug(f"[FileWatcher] Polling interval: {FILE_POLL_INTERVAL} seconds")
 
         # Initial compilation of all files
         logger.info("[FileWatcher] Performing initial compilation of all modules...")
