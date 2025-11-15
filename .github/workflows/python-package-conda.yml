@@ -102,6 +102,9 @@ jobs:
         source $HOME/miniconda/bin/activate aco
         
         # Install MiroFlow packages
+        cd example_workflows/miroflow_deep_research
+        git submodule update --init
+        cd ../../
         pip install -e example_workflows/miroflow_deep_research/MiroFlow/libs/miroflow-contrib
         pip install -e example_workflows/miroflow_deep_research/MiroFlow/libs/miroflow-tool
         pip install -e example_workflows/miroflow_deep_research/MiroFlow/libs/miroflow
