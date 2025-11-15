@@ -225,10 +225,7 @@ class FileWatcher:
         # Start polling loop
         try:
             logger.info("[FileWatcher] Starting polling loop...")
-            poll_count = 0
             while True:
-                poll_count += 1
-                logger.debug(f"[FileWatcher] Poll #{poll_count} PID {self.pid}")
                 self.check_and_recompile()
                 time.sleep(FILE_POLL_INTERVAL)
         except KeyboardInterrupt:

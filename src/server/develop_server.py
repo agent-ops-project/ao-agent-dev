@@ -159,9 +159,19 @@ class DevelopServer:
 
             # Get data from DB entries.
             timestamp = row["timestamp"]
-            # Convert timestamp to string if it's a datetime object (PostgreSQL)
+            # Format timestamp for display (MM/DD HH:MM)
             if hasattr(timestamp, 'strftime'):
+                # For datetime objects from PostgreSQL
                 timestamp = timestamp.strftime("%m/%d %H:%M")
+            elif isinstance(timestamp, str):
+                # For ISO format strings, parse and format
+                from datetime import datetime
+                try:
+                    dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                    timestamp = dt.strftime("%m/%d %H:%M")
+                except:
+                    # If parsing fails, use as is
+                    pass
             title = row["name"]
             success = row["success"]
             notes = row["notes"]
@@ -413,7 +423,7 @@ class DevelopServer:
             cwd = msg.get("cwd")
             command = msg.get("command")
             environment = msg.get("environment")
-            timestamp = datetime.now().strftime("%m/%d %H:%M")
+            timestamp = datetime.now()
             name = msg.get("name")
             parent_session_id = msg.get("parent_session_id")
             EDIT.add_experiment(
@@ -518,7 +528,7 @@ class DevelopServer:
                 if session:
                     session.status = "running"
                     # Update database timestamp so it sorts correctly
-                    new_timestamp = datetime.now().strftime("%m/%d %H:%M")
+                    new_timestamp = datetime.now()
                     EDIT.update_timestamp(child_session_id, new_timestamp)
                     # Broadcast updated experiment list with rerun session at the front
                     self.broadcast_experiment_list_to_uis()
@@ -632,7 +642,7 @@ class DevelopServer:
                     cwd = handshake.get("cwd")
                     command = handshake.get("command")
                     environment = handshake.get("environment")
-                    timestamp = datetime.now().strftime("%m/%d %H:%M")
+                    timestamp = datetime.now()
                     name = handshake.get("name")
                     EDIT.add_experiment(
                         session_id,
