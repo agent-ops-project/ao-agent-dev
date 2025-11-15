@@ -161,7 +161,7 @@ class DevelopServer:
             timestamp = row["timestamp"]
             # Convert timestamp to string if it's a datetime object (PostgreSQL)
             if hasattr(timestamp, 'strftime'):
-                timestamp = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                timestamp = timestamp.strftime("%m/%d %H:%M")
             title = row["name"]
             success = row["success"]
             notes = row["notes"]
@@ -413,7 +413,7 @@ class DevelopServer:
             cwd = msg.get("cwd")
             command = msg.get("command")
             environment = msg.get("environment")
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            timestamp = datetime.now().strftime("%m/%d %H:%M")
             name = msg.get("name")
             parent_session_id = msg.get("parent_session_id")
             EDIT.add_experiment(
@@ -518,7 +518,7 @@ class DevelopServer:
                 if session:
                     session.status = "running"
                     # Update database timestamp so it sorts correctly
-                    new_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    new_timestamp = datetime.now().strftime("%m/%d %H:%M")
                     EDIT.update_timestamp(child_session_id, new_timestamp)
                     # Broadcast updated experiment list with rerun session at the front
                     self.broadcast_experiment_list_to_uis()
@@ -632,7 +632,7 @@ class DevelopServer:
                     cwd = handshake.get("cwd")
                     command = handshake.get("command")
                     environment = handshake.get("environment")
-                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    timestamp = datetime.now().strftime("%m/%d %H:%M")
                     name = handshake.get("name")
                     EDIT.add_experiment(
                         session_id,
