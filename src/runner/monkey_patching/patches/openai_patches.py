@@ -60,7 +60,7 @@ def patch_openai_responses_create(responses):
 
         # 4. Get result from cache or call LLM.
         cache_output = CACHE.get_in_out(input_dict, api_type)
-        if cache_output.result is None:
+        if cache_output.output is None:
             result = original_function(**cache_output.input_dict)  # Call LLM.
             CACHE.cache_output(cache_result=cache_output, output_obj=result, api_type=api_type)
 
@@ -68,13 +68,13 @@ def patch_openai_responses_create(responses):
         send_graph_node_and_edges(
             node_id=cache_output.node_id,
             input_dict=cache_output.input_dict,
-            output_obj=result,
+            output_obj=cache_output.output,
             source_node_ids=taint_origins,
             api_type=api_type,
         )
 
         # 6. Taint the output object and return it.
-        return taint_wrap(result, [cache_output.node_id])
+        return taint_wrap(cache_output.output, [cache_output.node_id])
 
     # Install patch.
     responses.create = patched_function.__get__(responses, Responses)
