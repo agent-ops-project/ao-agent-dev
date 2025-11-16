@@ -133,10 +133,10 @@ def run_test(program_file, api_type, create_response_func, create_input_func, ht
     print(f"Caching {len(inputs)} responses...")
     for i, (input_text, output_text) in enumerate(zip(inputs, outputs)):
         print(f"  Caching response {i+1}: '{input_text}' -> '{output_text}'")
-        _, _, node_id = CACHE.get_in_out(create_input_func(input_text), api_type)
+        cache_output = CACHE.get_in_out(create_input_func(input_text), api_type)
         response = create_response_func(output_text)
-        CACHE.cache_output(node_id, response)
-        print(f"  Cached with node_id: {node_id}")
+        CACHE.cache_output(cache_result=cache_output, output_obj=response, api_type=api_type)
+        print(f"  Cached with node_id: {cache_output.node_id}")
 
     # 5. Send restart to trigger execution
     restart_msg = {"type": "restart", "session_id": session_id}

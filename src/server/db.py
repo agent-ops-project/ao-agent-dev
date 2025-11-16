@@ -144,6 +144,17 @@ def execute(sql, params=()):
         return c.lastrowid
 
 
+def execute_many(query_param_tuples: tuple):
+    """Execute multiple SQL queries that must be committed together"""
+    with _db_lock:
+        conn = get_conn()
+        c = conn.cursor()
+        for sql, params in query_param_tuples:
+            c.execute(sql, params)
+        conn.commit()
+        return c.lastrowid
+
+
 def hash_input(input_bytes):
     if isinstance(input_bytes, bytes):
         return hashlib.sha256(input_bytes).hexdigest()
