@@ -216,10 +216,12 @@ function App() {
         <div className="details-panel">
           <WorkflowRunDetailsPanel
             runName={selectedExperiment.title || selectedExperiment.session_id}
-            result=""
+            result={selectedExperiment.status}
             notes=""
             log=""
-            onBack={() => setShowDetailsPanel(true)}
+            onBack={() => setShowDetailsPanel(false)}
+            sessionId={selectedExperiment.session_id}
+            messageSender={messageSender}
           />
         </div>
       )}

@@ -262,6 +262,7 @@ export const App: React.FC = () => {
             onOpenInTab={() => {}}
             onBack={() => setShowDetailsPanel(false)}
             sessionId={selectedExperiment.session_id}
+            messageSender={messageSender}
           />
         ) : null}
       </div>

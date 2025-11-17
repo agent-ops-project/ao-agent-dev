@@ -4,7 +4,6 @@ import { useIsVsCodeDarkTheme } from "../../utils/themeUtils";
 
 interface Props extends WorkflowRunDetailsPanelProps {
   onBack?: () => void;
-  sessionId?: string;
 }
 
 const resultOptions = ["Select a result", "Satisfactory", "Failed"];
@@ -16,6 +15,7 @@ export const WorkflowRunDetailsPanel: React.FC<Props> = ({
   log = "",
   onOpenInTab,
   onBack,
+  messageSender,
   sessionId = "",
 }) => {
   const [localRunName, setLocalRunName] = useState(runName);
@@ -26,45 +26,45 @@ export const WorkflowRunDetailsPanel: React.FC<Props> = ({
   const handleRunNameChange = (value: string) => {
     console.log('[WorkflowRunDetailsPanel] Run name changed:', value, 'sessionId:', sessionId);
     setLocalRunName(value);
-    if (window.vscode && sessionId) {
-      console.log('[WorkflowRunDetailsPanel] Sending update_run_name message to VSCode');
-      window.vscode.postMessage({
+    if (messageSender && sessionId) {
+      console.log('[WorkflowRunDetailsPanel] Sending update_run_name message');
+      messageSender.send({
         type: "update_run_name",
         session_id: sessionId,
         run_name: value,
       });
     } else {
-      console.warn('[WorkflowRunDetailsPanel] Cannot send message - window.vscode:', !!window.vscode, 'sessionId:', sessionId);
+      console.warn('[WorkflowRunDetailsPanel] Cannot send message - messageSender:', !!messageSender, 'sessionId:', sessionId);
     }
   };
 
   const handleResultChange = (value: string) => {
     console.log('[WorkflowRunDetailsPanel] Result changed:', value, 'sessionId:', sessionId);
     setLocalResult(value);
-    if (window.vscode && sessionId) {
-      console.log('[WorkflowRunDetailsPanel] Sending update_result message to VSCode');
-      window.vscode.postMessage({
+    if (messageSender && sessionId) {
+      console.log('[WorkflowRunDetailsPanel] Sending update_result message');
+      messageSender.send({
         type: "update_result",
         session_id: sessionId,
         result: value,
       });
     } else {
-      console.warn('[WorkflowRunDetailsPanel] Cannot send message - window.vscode:', !!window.vscode, 'sessionId:', sessionId);
+      console.warn('[WorkflowRunDetailsPanel] Cannot send message - messageSender:', !!messageSender, 'sessionId:', sessionId);
     }
   };
 
   const handleNotesChange = (value: string) => {
     console.log('[WorkflowRunDetailsPanel] Notes changed (length:', value.length, ') sessionId:', sessionId);
     setLocalNotes(value);
-    if (window.vscode && sessionId) {
-      console.log('[WorkflowRunDetailsPanel] Sending update_notes message to VSCode');
-      window.vscode.postMessage({
+    if (messageSender && sessionId) {
+      console.log('[WorkflowRunDetailsPanel] Sending update_notes message');
+      messageSender.send({
         type: "update_notes",
         session_id: sessionId,
         notes: value,
       });
     } else {
-      console.warn('[WorkflowRunDetailsPanel] Cannot send message - window.vscode:', !!window.vscode, 'sessionId:', sessionId);
+      console.warn('[WorkflowRunDetailsPanel] Cannot send message - messageSender:', !!messageSender, 'sessionId:', sessionId);
     }
   };
  
@@ -206,8 +206,8 @@ export const WorkflowRunDetailsPanel: React.FC<Props> = ({
       {/* Button open in tab */}
       <button
         onClick={() => {
-          if (window.vscode) {
-            window.vscode.postMessage({
+          if (messageSender) {
+            messageSender.send({
               type: "open_log_tab_side_by_side",
               payload: {
                 runName: localRunName,
@@ -215,6 +215,8 @@ export const WorkflowRunDetailsPanel: React.FC<Props> = ({
                 log,
               },
             });
+          } else if (onOpenInTab) {
+            onOpenInTab();
           }
         }}
         style={buttonStyle}

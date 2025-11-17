@@ -79,6 +79,12 @@ export interface WorkflowRunDetailsPanelProps {
   notes?: string;
   log?: string;
   onOpenInTab?: () => void;
+  messageSender?: MessageSender;
+  sessionId?: string;
+}
+
+export interface MessageSender {
+  send(message: any): void;
 }
 
 //LayoutEngine
