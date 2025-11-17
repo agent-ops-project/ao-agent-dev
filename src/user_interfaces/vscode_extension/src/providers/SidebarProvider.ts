@@ -1,14 +1,14 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { EditDialogProvider } from './EditDialogProvider';
+import { GraphTabProvider } from './GraphTabProvider';
 import { NotesLogTabProvider } from './NotesLogTabProvider';
 import { PythonServerClient } from './PythonServerClient';
 import { configManager } from './ConfigManager';
 
-export class GraphViewProvider implements vscode.WebviewViewProvider {
+export class SidebarProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'graphExtension.graphView';
     private _view?: vscode.WebviewView;
-    private _editDialogProvider?: EditDialogProvider;
+    private _graphTabProvider?: GraphTabProvider;
     private _notesLogTabProvider?: NotesLogTabProvider;
     private _pendingMessages: any[] = [];
     private _pythonClient: PythonServerClient | null = null;
@@ -25,6 +25,10 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
         this._notesLogTabProvider = provider;
     }
 
+    public setGraphTabProvider(provider: GraphTabProvider): void {
+        this._graphTabProvider = provider;
+    }
+
     // Robustly show or reveal the webview
     public showWebview(context: vscode.ExtensionContext) {
         if (!this._view || (this._view as any)._disposed) {
@@ -36,9 +40,6 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    public setEditDialogProvider(provider: EditDialogProvider): void {
-        this._editDialogProvider = provider;
-    }
 
     public handleEditDialogSave(value: string, context: { nodeId: string; field: string; session_id?: string; attachments?: any }): void {
         if (this._view) {
@@ -55,6 +56,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
             console.warn('Tried to send message to disposed or missing webview');
         }
     }
+
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
@@ -78,7 +80,10 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [this._extensionUri]
+            localResourceRoots: [
+                this._extensionUri,
+                vscode.Uri.joinPath(this._extensionUri, '..', 'node_modules')
+            ]
         };
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
@@ -89,7 +94,6 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
         // Handle messages from the webview
         webviewView.webview.onDidReceiveMessage(data => {
-            console.log('[GraphViewProvider] Received message from webview:', data.type, data);
             if (data.type === 'restart') {
                 if (!data.session_id) {
                     console.error('Restart message missing session_id! Not forwarding to Python server.');
@@ -107,7 +111,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                         console.error('NotesLogTabProvider instance not set!');
                     }
                     break;
-                case 'updateNode':
+                case 'update_node':
                     if (this._pythonClient) {
                         this._pythonClient.sendMessage(data);
                     }
@@ -147,7 +151,6 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                                     }
                                 });
                             }
-                            
                             if (this._view) {
                                 this._view.webview.postMessage(msg);
                             } else {
@@ -168,48 +171,16 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                         });
                     }
                     break;
-                case 'showEditDialog':
-                    if (this._editDialogProvider) {
-                        // Show the edit dialog with the provided data
-                        this._editDialogProvider.show(
-                            `${data.payload.label} ${data.payload.field === 'input' ? 'Input' : 'Output'}`,
-                            data.payload.value,
-                            {
-                                nodeId: data.payload.nodeId,
-                                field: data.payload.field,
-                                session_id: data.payload.session_id,
-                                attachments: data.payload.attachments
-                            }
-                        );
-                    }
-                    break;
                 case 'erase':
                     if (this._pythonClient) {
                         this._pythonClient.sendMessage(data);
                     }
                     break;
-                case 'update_run_name':
-                    console.log('[GraphViewProvider] Forwarding update_run_name to Python server:', data);
-                    if (this._pythonClient) {
-                        this._pythonClient.sendMessage(data);
+                case 'openGraphTab':
+                    if (this._graphTabProvider && data.payload.experiment) {
+                        this._graphTabProvider.createOrShowGraphTab(data.payload.experiment);
                     } else {
-                        console.warn('[GraphViewProvider] No Python client available for update_run_name');
-                    }
-                    break;
-                case 'update_result':
-                    console.log('[GraphViewProvider] Forwarding update_result to Python server:', data);
-                    if (this._pythonClient) {
-                        this._pythonClient.sendMessage(data);
-                    } else {
-                        console.warn('[GraphViewProvider] No Python client available for update_result');
-                    }
-                    break;
-                case 'update_notes':
-                    console.log('[GraphViewProvider] Forwarding update_notes to Python server:', data);
-                    if (this._pythonClient) {
-                        this._pythonClient.sendMessage(data);
-                    } else {
-                        console.warn('[GraphViewProvider] No Python client available for update_notes');
+                        console.warn('[GraphViewProvider] No GraphTabProvider available or missing experiment data');
                     }
                     break;
             }
@@ -228,8 +199,8 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
     private _getHtmlForWebview(webview: vscode.Webview) {
         const path = require('path');
-        const os = require('os');
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview.js'));
+        const codiconsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, '..', 'node_modules', '@vscode/codicons', 'dist', 'codicon.css'));
         const templatePath = path.join(
             this._extensionUri.fsPath,
             'src',
@@ -260,6 +231,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
         html = html.replace('const vscode = acquireVsCodeApi();', 
             `${configBridge}\n        const vscode = acquireVsCodeApi();`);
         html = html.replace(/{{scriptUri}}/g, scriptUri.toString());
+        html = html.replace(/{{codiconsUri}}/g, codiconsUri.toString());
         return html;
     }
 

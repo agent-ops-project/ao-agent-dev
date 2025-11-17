@@ -15,8 +15,7 @@ import { MessageSender } from '../../types/MessageSender';
 // import { useIsVsCodeDarkTheme } from '../utils/themeUtils';
 import styles from './GraphView.module.css';
 import { FLOW_CONTAINER_MARGIN_TOP, NODE_WIDTH } from '../../utils/layoutConstants';
-import erasePng from '../../assets/erase.png';
-import tagPng from '../../assets/tag.png';
+// Icons are now handled via codicons
 
 interface GraphViewProps {
   nodes: GraphNode[];
@@ -60,8 +59,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
     (nodeId: string, field: keyof GraphNode, value: string) => {
       onNodeUpdate(nodeId, field, value);
       messageSender.send({
-        type: 'updateNode',
-        nodeId,
+        type: 'update_node',
+        node_id: nodeId,
         field,
         value,
         session_id
@@ -158,12 +157,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
     setNodes,
     setEdges,
     session_id,
-  layoutEngine
+    layoutEngine
   ]);
 
   useEffect(() => {
     updateLayout();
   }, [updateLayout]);
+
 
   useEffect(() => {
     const handleResize = () => {
@@ -202,22 +202,18 @@ export const GraphView: React.FC<GraphViewProps> = ({
     height: "100%",
   };
 
-  const titleContainerStyle: React.CSSProperties = {
-    marginBottom: '0px',
-    padding: '15px 15px 0 20px',
-  };
-
   const titleStyle: React.CSSProperties = {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    color: isDarkTheme ? '#FFFFFF' : '#000000',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: 'var(--vscode-foreground)',
+    fontFamily: "var(--vscode-font-family, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif)",
   };
 
   const restartButtonStyle: React.CSSProperties = {
     width: '32px',
     height: '32px',
     borderRadius: '50%',
-    background: '#27c93f',
+    background: 'transparent',
     border: 'none',
     display: 'flex',
     alignItems: 'center',
@@ -233,17 +229,14 @@ export const GraphView: React.FC<GraphViewProps> = ({
     <div
       ref={containerRef}
       className={styles.container}
-      style={{ width: "100%", height: "100%" }}
+      style={{ 
+        width: "100%", 
+        height: "100%",
+        fontFamily: "var(--vscode-font-family, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif)"
+      }}
     >
       <div style={mainLayoutStyle}>
         <div>
-          <div style={titleContainerStyle}>
-            <div style={titleStyle}>
-              {experiment
-                ? experiment.title || "Workflow run"
-                : "Graph"}
-            </div>
-          </div>
           <ReactFlowProvider>
             <div
               className={styles.flowContainer}
@@ -303,25 +296,16 @@ export const GraphView: React.FC<GraphViewProps> = ({
             }}
             title="Show details panel"
             onClick={() => {
-              if (typeof window !== "undefined" && window.dispatchEvent) {
-                window.dispatchEvent(new CustomEvent("open-details-panel"));
-              }
+              window.dispatchEvent(new CustomEvent('show-run-details-modal', {
+                detail: { experiment }
+              }));
             }}
           >
-            <img
-              src={tagPng}
-              alt="Show details panel"
-              style={{
-                width: "100%",
-                height: "100%",
-                display: "block",
-                borderRadius: "50%",
-                objectFit: "cover",
-                background: "transparent",
-                pointerEvents: "none",
-              }}
-              draggable={false}
-            />
+            <i className="codicon codicon-tag" style={{
+              fontSize: "20px",
+              color: "#c4a05aff",
+              pointerEvents: "none",
+            }}></i>
           </button>
           <button
             style={{
@@ -338,20 +322,11 @@ export const GraphView: React.FC<GraphViewProps> = ({
               messageSender.send({ type: "erase", session_id });
             }}
           >
-            <img
-              src={erasePng}
-              alt="Erase"
-              style={{
-                width: "100%",
-                height: "100%",
-                display: "block",
-                borderRadius: "50%",
-                objectFit: "cover",
-                background: "transparent",
-                pointerEvents: "none",
-              }}
-              draggable={false}
-            />
+            <i className="codicon codicon-eraser" style={{
+              fontSize: "20px",
+              color: "#c36e5dff",
+              pointerEvents: "none",
+            }}></i>
           </button>
           <button
             style={{ ...restartButtonStyle, marginBottom: "8px" }}
@@ -364,33 +339,11 @@ export const GraphView: React.FC<GraphViewProps> = ({
               messageSender.send({ type: "restart", session_id });
             }}
           >
-            {React.createElement(
-              "svg",
-              {
-                width: "20",
-                height: "20",
-                viewBox: "0 0 20 20",
-                fill: "none",
-                xmlns: "http://www.w3.org/2000/svg",
-                style: { pointerEvents: "none" },
-              },
-              React.createElement("path", {
-                d: "M10 3a7 7 0 1 1-6.32 4",
-                stroke: "#fff",
-                strokeWidth: "2",
-                fill: "none",
-                strokeLinecap: "round",
-                strokeLinejoin: "round",
-              }),
-              React.createElement("polyline", {
-                points: "3 3 7 3 7 7",
-                stroke: "#fff",
-                strokeWidth: "2",
-                fill: "none",
-                strokeLinecap: "round",
-                strokeLinejoin: "round",
-              })
-            )}
+            <i className="codicon codicon-debug-restart" style={{
+              fontSize: "20px",
+              color: "#7fc17bff",
+              pointerEvents: "none",
+            }}></i>
           </button>
         </div>
       </div>
