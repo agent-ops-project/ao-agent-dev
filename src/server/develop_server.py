@@ -11,6 +11,8 @@ import shlex
 import multiprocessing
 from datetime import datetime
 from typing import Optional, Dict
+
+from common.utils import MODULE2FILE
 from aco.server.edit_manager import EDIT
 from aco.server.cache_manager import CACHE
 from aco.server import db
@@ -50,7 +52,7 @@ class DevelopServer:
         self.ui_connections = set()  # All UI connections (simplified)
         self.sessions = {}  # session_id -> Session (only for shim connections)
         self.rerun_sessions = set()  # Track sessions being rerun to avoid clearing llm_calls
-        self.module_to_file = module_to_file or {}  # Module mapping for file watcher
+        self.module_to_file = module_to_file or MODULE2FILE  # Module mapping for file watcher
         self.file_watcher_process = None  # Child process for file watching
 
     # ============================================================
@@ -724,12 +726,12 @@ class DevelopServer:
     def run_server(self) -> None:
         """Main server loop: accept clients and spawn handler threads."""
         # Clear the log file on server startup
-        try:
-            with open(ACO_LOG_PATH, 'w') as f:
-                pass  # Just truncate the file
-            logger.debug("Server log file cleared on startup")
-        except Exception as e:
-            logger.warning(f"Could not clear log file on startup: {e}")
+        # try:
+        #     with open(ACO_LOG_PATH, 'w') as f:
+        #         pass  # Just truncate the file
+        #     logger.debug("Server log file cleared on startup")
+        # except Exception as e:
+        #     logger.warning(f"Could not clear log file on startup: {e}")
         
         self.server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
