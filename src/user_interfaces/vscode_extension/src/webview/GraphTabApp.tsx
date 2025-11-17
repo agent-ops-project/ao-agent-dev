@@ -39,7 +39,12 @@ export const GraphTabApp: React.FC = () => {
   // Create MessageSender for VS Code environment
   const messageSender: MessageSender = {
     send: (message: any) => {
-      if (window.vscode) {
+      // Handle showNodeEditModal locally by dispatching window event
+      if (message.type === 'showNodeEditModal') {
+        window.dispatchEvent(new CustomEvent('show-node-edit-modal', {
+          detail: message.payload
+        }));
+      } else if (window.vscode) {
         window.vscode.postMessage(message);
       }
     }

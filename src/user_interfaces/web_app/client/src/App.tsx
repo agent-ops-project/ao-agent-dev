@@ -54,6 +54,14 @@ function App() {
     send: (message: any) => {
       if (message.type === "showEditDialog") {
         setEditDialog(message.payload);
+      } else if (message.type === "showNodeEditModal") {
+        // Handle showNodeEditModal by opening the edit dialog
+        setEditDialog({
+          nodeId: message.payload.nodeId,
+          field: message.payload.field,
+          value: message.payload.value,
+          label: message.payload.label,
+        });
       } else if (
         message.type === "trackNodeInputView" ||
         message.type === "trackNodeOutputView"
