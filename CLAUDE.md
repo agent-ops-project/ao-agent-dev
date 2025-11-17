@@ -67,7 +67,6 @@ python -m pytest -v tests/taint/  # Test taint propagation specifically
 - **Do NOT** consider backwards compatability. The code has no users yet, which allows you to write cleaner, more concise code.
 - Remain critical and skeptical about my thinking at all times. Maintain consistent intellectual standards throughout our conversation. Don’t lower your bar for evidence or reasoning quality just because we’ve been talking longer or because I seem frustrated. If I’m making weak arguments, keep pointing that out even if I’ve made good ones before.
 
-
 ## Caveats
 
 - **aco and agops** You will sometimes see aco (short for agent copilot) and agops (short for agent ops). They mean to denote the same thing (an abbreviation of the project name).
