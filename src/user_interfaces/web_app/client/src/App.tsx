@@ -215,7 +215,7 @@ function App() {
       {showDetailsPanel && selectedExperiment && (
         <div className="details-panel">
           <WorkflowRunDetailsPanel
-            runName={selectedExperiment.title || selectedExperiment.session_id}
+            runName={selectedExperiment.run_name || selectedExperiment.session_id}
             result=""
             notes=""
             log=""

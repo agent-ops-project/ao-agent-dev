@@ -157,12 +157,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
     setNodes,
     setEdges,
     session_id,
-  layoutEngine
+    layoutEngine
   ]);
 
   useEffect(() => {
     updateLayout();
   }, [updateLayout]);
+
 
   useEffect(() => {
     const handleResize = () => {
@@ -201,11 +202,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
     height: "100%",
   };
 
-  const titleContainerStyle: React.CSSProperties = {
-    marginBottom: '0px',
-    padding: '15px 15px 0 20px',
-  };
-
   const titleStyle: React.CSSProperties = {
     fontSize: '14px',
     fontWeight: '600',
@@ -241,13 +237,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
     >
       <div style={mainLayoutStyle}>
         <div>
-          <div style={titleContainerStyle}>
-            <div style={titleStyle}>
-              {experiment
-                ? experiment.title || "Workflow run"
-                : "Graph"}
-            </div>
-          </div>
           <ReactFlowProvider>
             <div
               className={styles.flowContainer}
@@ -307,9 +296,9 @@ export const GraphView: React.FC<GraphViewProps> = ({
             }}
             title="Show details panel"
             onClick={() => {
-              if (typeof window !== "undefined" && window.dispatchEvent) {
-                window.dispatchEvent(new CustomEvent("open-details-panel"));
-              }
+              window.dispatchEvent(new CustomEvent('show-run-details-modal', {
+                detail: { experiment }
+              }));
             }}
           >
             <i className="codicon codicon-tag" style={{

@@ -13,7 +13,6 @@ from datetime import datetime
 from typing import Optional, Dict
 from aco.server.edit_manager import EDIT
 from aco.server.cache_manager import CACHE
-from aco.server import db
 from aco.common.logger import logger
 from aco.common.constants import ACO_CONFIG, ACO_LOG_PATH, HOST, PORT
 from aco.server.telemetry.server_logger import log_server_message, log_shim_control_registration
@@ -159,7 +158,7 @@ class DevelopServer:
 
             # Get data from DB entries.
             timestamp = row["timestamp"]
-            title = row["name"]
+            run_name = row["name"]
             success = row["success"]
             notes = row["notes"]
             log = row["log"]
@@ -178,7 +177,7 @@ class DevelopServer:
                     "status": status,
                     "timestamp": timestamp,
                     "color_preview": color_preview,
-                    "title": title,
+                    "run_name": run_name,
                     "success": success,
                     "notes": notes,
                     "log": log,
@@ -332,6 +331,7 @@ class DevelopServer:
                 if node["id"] == node_id:
                     node["input"] = new_input
                     break
+            EDIT.update_graph_topology(session_id, self.session_graphs[session_id])
             self.broadcast_graph_update(session_id)
         logger.debug("Input overwrite completed")
 
@@ -347,6 +347,7 @@ class DevelopServer:
                 if node["id"] == node_id:
                     node["output"] = new_output
                     break
+            EDIT.update_graph_topology(session_id, self.session_graphs[session_id])
             self.broadcast_graph_update(session_id)
         logger.debug("Output overwrite completed")
 

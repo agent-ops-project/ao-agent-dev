@@ -63,17 +63,15 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
           }
         });
         
-        data.messageSender.send({
-          type: "showEditDialog",
-          payload: {
+        // Dispatch custom event for in-tab modal
+        window.dispatchEvent(new CustomEvent('show-node-edit-modal', {
+          detail: {
             nodeId: id,
             field: "input",
             value: data.input,
-            label: data.tab_title || "Input",
-            session_id: data.session_id,
-            attachments: data.attachments,
-          },
-        });
+            label: data.label || "Node",
+          }
+        }));
         break;
       case "editOutput":
         // Track node output view through MessageSender
@@ -87,17 +85,15 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
           }
         });
         
-        data.messageSender.send({
-          type: "showEditDialog",
-          payload: {
+        // Dispatch custom event for in-tab modal
+        window.dispatchEvent(new CustomEvent('show-node-edit-modal', {
+          detail: {
             nodeId: id,
             field: "output",
             value: data.output,
-            label: data.tab_title || "Output",
-            session_id: data.session_id,
-            attachments: data.attachments,
-          },
-        });
+            label: data.label || "Node",
+          }
+        }));
         break;
       case "changeLabel":
         setIsEditingLabel(true);

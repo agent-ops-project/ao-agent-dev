@@ -5,7 +5,7 @@ export class PythonServerClient {
     private static instance: PythonServerClient;
     private client = new net.Socket();
     private messageQueue: string[] = [];
-    private onMessageCallback?: (msg: any) => void;
+    private messageCallbacks: ((msg: any) => void)[] = [];
 
     private constructor() {
         this.connect();
@@ -34,7 +34,8 @@ export class PythonServerClient {
                 const line = buffer.slice(0, idx);
                 buffer = buffer.slice(idx + 1);
                 const msg = JSON.parse(line);
-                this.onMessageCallback?.(msg);
+                // Call all registered callbacks
+                this.messageCallbacks.forEach(callback => callback(msg));
             }
         });
 
@@ -68,6 +69,13 @@ export class PythonServerClient {
     }
 
     public onMessage(cb: (msg: any) => void) {
-        this.onMessageCallback = cb;
+        this.messageCallbacks.push(cb);
+    }
+
+    public removeMessageListener(cb: (msg: any) => void) {
+        const index = this.messageCallbacks.indexOf(cb);
+        if (index > -1) {
+            this.messageCallbacks.splice(index, 1);
+        }
     }
 } 
