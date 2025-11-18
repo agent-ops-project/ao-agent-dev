@@ -149,7 +149,7 @@ def run_test(program_file, api_type, create_response_func, create_input_func, ht
     start_time = time.time()
     print("Waiting for graph updates...")
 
-    while time.time() - start_time < 5:  # 5 second timeout
+    while time.time() - start_time < 10:  # 10 second timeout (with SQLite 5s is enough)
         try:
             msg = message_queue.get(timeout=1)
             if msg.get("type") == "graph_update" and msg.get("session_id") == session_id:

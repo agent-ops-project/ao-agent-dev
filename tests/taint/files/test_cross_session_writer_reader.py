@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 from aco.runner.taint_wrappers import TaintStr
 from aco.server.db import store_taint_info, get_taint_info
-from ...utils import cleanup_taint_db
+from ...utils import cleanup_taint_db, setup_test_session
 
 # Add the project root to Python path for imports
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -43,6 +43,9 @@ def test_cross_session_writer_reader():
 
         writer_session_id = "writer-session-12345"
         writer_node_id = "node-writer-67890"
+
+        # Create experiment record for writer session
+        setup_test_session(writer_session_id, name="Writer Session")
 
         # Set environment for writer session
         os.environ["AGENT_COPILOT_SESSION_ID"] = writer_session_id
@@ -104,6 +107,9 @@ def test_cross_session_writer_reader():
 
         reader_session_id = "reader-session-54321"
         reader_node_id = "node-reader-09876"
+
+        # Create experiment record for reader session
+        setup_test_session(reader_session_id, name="Reader Session")
 
         # Set environment for reader session
         os.environ["AGENT_COPILOT_SESSION_ID"] = reader_session_id
