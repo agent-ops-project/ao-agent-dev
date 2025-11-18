@@ -7,7 +7,6 @@ export interface GraphNode {
     position?: { x: number; y: number };
     border_color?: string;
     attachments?: any[];
-    tab_title?: string;
 }
 
 export interface GraphEdge {
@@ -64,11 +63,11 @@ export interface GraphData {
 
 export interface ProcessInfo {
     session_id: string;
-    title?: string;
     status: string;
     timestamp?: string;
     color_preview?: string[];
-    success?: string;
+    run_name?: string;
+    result?: string;
     notes?: string;
     log?: string;
 }
