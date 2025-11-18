@@ -722,7 +722,12 @@ class DevelopServer:
                 # Send session_id and config_path to this UI connection (None for UI)
                 self.conn_info[conn] = {"role": role, "session_id": None}
                 send_json(
-                    conn, {"type": "session_id", "session_id": None, "config_path": ACO_CONFIG}
+                    conn, {
+                        "type": "session_id", 
+                        "session_id": None, 
+                        "config_path": ACO_CONFIG,
+                        "database_mode": DB.get_current_mode()
+                    }
                 )
                 # Send experiment_list only to this UI connection
                 self.broadcast_experiment_list_to_uis(conn)

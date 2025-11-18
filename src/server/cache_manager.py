@@ -8,7 +8,7 @@ from aco.server.database_manager import DB
 from aco.common.utils import stream_hash, save_io_stream, set_seed
 from aco.runner.taint_wrappers import untaint_if_needed
 from aco.runner.monkey_patching.api_parser import get_input, get_model_name, set_input
-
+from aco.common.utils import hash_input
 
 class CacheManager:
     """
@@ -92,7 +92,7 @@ class CacheManager:
             "tools": tools,
         }
         input_pickle = dill.dumps(cacheable_input)
-        input_hash = DB.hash_input(input_pickle)
+        input_hash = hash_input(input_pickle)
 
         # Check if API call with same session_id & input has been made before.
         session_id = get_session_id()

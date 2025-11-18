@@ -26,6 +26,7 @@ interface WSMessage {
   payload?: GraphData;
   session_id?: string;
   color_preview? : string[];
+  database_mode?: string;
 }
 
 
@@ -36,6 +37,7 @@ function App() {
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
+  const [databaseMode, setDatabaseMode] = useState<'Local' | 'Remote'>('Local');
   // const [sidebarOpen, setSidebarOpen] = useState(true);
   const [editDialog, setEditDialog] = useState<{
     nodeId: string;
@@ -116,6 +118,15 @@ function App() {
           }
           break;
     
+        case "session_id":
+          // Handle initial connection message with database mode
+          if (msg.database_mode) {
+            const mode = msg.database_mode === 'local' ? 'Local' : 'Remote';
+            setDatabaseMode(mode);
+            console.log(`Synchronized database mode to: ${mode}`);
+          }
+          break;
+    
         default:
           console.warn(`Unhandled message type: ${msg.type}`);
       }
@@ -166,6 +177,9 @@ function App() {
   };
 
   const handleDatabaseModeChange = (mode: 'Local' | 'Remote') => {
+    // Update local state immediately for responsive UI
+    setDatabaseMode(mode);
+    
     // Send WebSocket message to server
     if (ws) {
       ws.send(JSON.stringify({
@@ -199,6 +213,7 @@ function App() {
           isDarkTheme={isDarkTheme}
           showHeader={true}
           onModeChange={handleDatabaseModeChange}
+          currentMode={databaseMode}
         />
       </div>
 

@@ -201,7 +201,7 @@ def get_taint_info(file_path, line_no):
     return None, []
 
 
-def add_experiment_to_db(session_id, parent_session_id, name, default_graph, timestamp, cwd, command, env_json, default_success, default_note, default_log):
+def add_experiment_query(session_id, parent_session_id, name, default_graph, timestamp, cwd, command, env_json, default_success, default_note, default_log):
     """Execute SQLite-specific INSERT for experiments table"""
     execute(
         "INSERT OR REPLACE INTO experiments (session_id, parent_session_id, name, graph_topology, timestamp, cwd, command, environment, success, notes, log) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -218,4 +218,69 @@ def add_experiment_to_db(session_id, parent_session_id, name, default_graph, tim
             default_note,
             default_log,
         ),
+    )
+
+
+def set_input_overwrite_query(input_overwrite, session_id, node_id):
+    """Execute SQLite-specific UPDATE for llm_calls input_overwrite"""
+    execute(
+        "UPDATE llm_calls SET input_overwrite=?, output=NULL WHERE session_id=? AND node_id=?",
+        (input_overwrite, session_id, node_id),
+    )
+
+
+def set_output_overwrite_query(output_overwrite, session_id, node_id):
+    """Execute SQLite-specific UPDATE for llm_calls output"""
+    execute(
+        "UPDATE llm_calls SET output=? WHERE session_id=? AND node_id=?",
+        (output_overwrite, session_id, node_id),
+    )
+
+
+def delete_llm_calls_query(session_id):
+    """Execute SQLite-specific DELETE for llm_calls"""
+    execute("DELETE FROM llm_calls WHERE session_id=?", (session_id,))
+
+
+def update_experiment_graph_topology_query(graph_json, session_id):
+    """Execute SQLite-specific UPDATE for experiments graph_topology"""
+    execute(
+        "UPDATE experiments SET graph_topology=? WHERE session_id=?", (graph_json, session_id)
+    )
+
+
+def update_experiment_timestamp_query(timestamp, session_id):
+    """Execute SQLite-specific UPDATE for experiments timestamp"""
+    execute("UPDATE experiments SET timestamp=? WHERE session_id=?", (timestamp, session_id))
+
+
+def update_experiment_name_query(run_name, session_id):
+    """Execute SQLite-specific UPDATE for experiments name"""
+    execute(
+        "UPDATE experiments SET name=? WHERE session_id=?",
+        (run_name, session_id),
+    )
+
+
+def update_experiment_result_query(result, session_id):
+    """Execute SQLite-specific UPDATE for experiments success"""
+    execute(
+        "UPDATE experiments SET success=? WHERE session_id=?",
+        (result, session_id),
+    )
+
+
+def update_experiment_notes_query(notes, session_id):
+    """Execute SQLite-specific UPDATE for experiments notes"""
+    execute(
+        "UPDATE experiments SET notes=? WHERE session_id=?",
+        (notes, session_id),
+    )
+
+
+def update_experiment_log_query(updated_log, updated_success, color_preview_json, graph_json, session_id):
+    """Execute SQLite-specific UPDATE for experiments log, success, color_preview, and graph_topology"""
+    execute(
+        "UPDATE experiments SET log=?, success=?, color_preview=?, graph_topology=? WHERE session_id=?",
+        (updated_log, updated_success, color_preview_json, graph_json, session_id),
     )

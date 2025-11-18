@@ -11,14 +11,14 @@ interface ExperimentsViewProps {
   isDarkTheme?: boolean;
   showHeader?: boolean;
   onModeChange?: (mode: 'Local' | 'Remote') => void;
+  currentMode?: 'Local' | 'Remote';
 }
 
-export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ similarProcesses, runningProcesses, finishedProcesses, onCardClick, isDarkTheme = false, showHeader = false, onModeChange }) => {
+export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ similarProcesses, runningProcesses, finishedProcesses, onCardClick, isDarkTheme = false, showHeader = false, onModeChange, currentMode = 'Local' }) => {
   // const isDarkTheme = useIsVsCodeDarkTheme();
   const [hoveredCards, setHoveredCards] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['running', 'similar', 'finished']));
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [selectedMode, setSelectedMode] = useState<'Local' | 'Remote'>('Local');
   
   // Debug logging
   console.log('ExperimentsView render - similarProcesses:', similarProcesses);
@@ -76,7 +76,6 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ similarProcess
 
   const handleModeChange = (mode: 'Local' | 'Remote') => {
     console.log(mode);
-    setSelectedMode(mode);
     setDropdownOpen(false);
     
     // Call parent handler to send message to server
@@ -222,7 +221,7 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ similarProcess
         style={dropdownButtonStyle}
         onClick={() => setDropdownOpen(!dropdownOpen)}
       >
-        {selectedMode}
+        {currentMode}
         <i className={`codicon ${dropdownOpen ? 'codicon-chevron-up' : 'codicon-chevron-down'}`} />
       </button>
       {dropdownOpen && (
@@ -230,38 +229,18 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ similarProcess
           <div
             style={{
               ...dropdownItemStyle,
-              backgroundColor: selectedMode === 'Local' ? (isDarkTheme ? '#094771' : '#e3f2fd') : 'transparent',
+              backgroundColor: currentMode === 'Local' ? (isDarkTheme ? '#094771' : '#e3f2fd') : 'transparent',
             }}
             onClick={() => handleModeChange('Local')}
-            onMouseEnter={(e) => {
-              if (selectedMode !== 'Local') {
-                e.currentTarget.style.backgroundColor = isDarkTheme ? '#2a2d2e' : '#f0f0f0';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (selectedMode !== 'Local') {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }
-            }}
           >
             Local
           </div>
           <div
             style={{
               ...dropdownItemStyle,
-              backgroundColor: selectedMode === 'Remote' ? (isDarkTheme ? '#094771' : '#e3f2fd') : 'transparent',
+              backgroundColor: currentMode === 'Remote' ? (isDarkTheme ? '#094771' : '#e3f2fd') : 'transparent',
             }}
             onClick={() => handleModeChange('Remote')}
-            onMouseEnter={(e) => {
-              if (selectedMode !== 'Remote') {
-                e.currentTarget.style.backgroundColor = isDarkTheme ? '#2a2d2e' : '#f0f0f0';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (selectedMode !== 'Remote') {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }
-            }}
           >
             Remote
           </div>

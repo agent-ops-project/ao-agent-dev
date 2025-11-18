@@ -1,63 +1,75 @@
 """
 PostgreSQL database backend for workflow experiments.
 """
-import threading
 import json
 import dill
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 from urllib.parse import urlparse
 
 from aco.common.logger import logger
 from aco.common.constants import REMOTE_DATABASE_URL
 from aco.common.utils import hash_input
 
-# Global lock for thread-safe database operations
-_db_lock = threading.RLock()
-_shared_conn = None
+# Global connection pool
+_connection_pool = None
+
+
+def _init_pool():
+    """Initialize the connection pool if not already created"""
+    global _connection_pool
+    
+    if _connection_pool is None:
+        database_url = REMOTE_DATABASE_URL
+        if not database_url:
+            raise ValueError(
+                "REMOTE_DATABASE_URL is required for Postgres connection (check config.yaml)"
+            )
+        
+        # Parse the connection string
+        result = urlparse(database_url)
+        
+        # Create connection pool (1 min, 10 max connections)
+        _connection_pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=10,
+            host=result.hostname,
+            port=result.port or 5432,
+            user=result.username,
+            password=result.password,
+            database=result.path[1:],  # Remove leading '/'
+            connect_timeout=30,
+        )
+        
+        # Initialize database schema using a connection from the pool
+        conn = _connection_pool.getconn()
+        try:
+            _init_db(conn)
+            logger.info(f"Initialized PostgreSQL connection pool to {result.hostname}")
+        finally:
+            _connection_pool.putconn(conn)
 
 
 def get_conn():
-    """Get the shared PostgreSQL connection, reconnecting if necessary"""
-    global _shared_conn
+    """Get a connection from the pool"""
+    _init_pool()
+    return _connection_pool.getconn()
 
-    # Check if connection exists and is still alive
-    if _shared_conn is not None:
-        try:
-            # Test if connection is still alive
-            _shared_conn.isolation_level
-        except (psycopg2.InterfaceError, psycopg2.OperationalError):
-            logger.warning("PostgreSQL connection lost, reconnecting...")
-            _shared_conn = None
 
-    if _shared_conn is None:
-        with _db_lock:
-            # Double-check pattern to avoid race condition during initialization
-            if _shared_conn is None:
-                database_url = REMOTE_DATABASE_URL
-                if not database_url:
-                    raise ValueError(
-                        "REMOTE_DATABASE_URL is required for Postgres connection (check config.yaml)"
-                    )
-                
-                # Parse the connection string
-                result = urlparse(database_url)
-                
-                # Connect to Postgres
-                _shared_conn = psycopg2.connect(
-                    host=result.hostname,
-                    port=result.port or 5432,
-                    user=result.username,
-                    password=result.password,
-                    database=result.path[1:],  # Remove leading '/'
-                    connect_timeout=30,  # Increased timeout for remote connections
-                )
-                _shared_conn.autocommit = False
-                
-                _init_db(_shared_conn)
-                logger.info(f"Initialized PostgreSQL connection to {result.hostname}")
+def return_conn(conn):
+    """Return a connection to the pool"""
+    if _connection_pool:
+        _connection_pool.putconn(conn)
 
-    return _shared_conn
+
+def close_all_connections():
+    """Close all connections in the pool"""
+    global _connection_pool
+    if _connection_pool:
+        _connection_pool.closeall()
+        _connection_pool = None
+        logger.debug("Closed PostgreSQL connection pool")
 
 
 def _init_db(conn):
@@ -147,68 +159,47 @@ def query_one(sql, params=()):
     """Execute a query and return one result"""
     # Convert SQLite placeholders (?) to PostgreSQL placeholders (%s)
     sql = sql.replace("?", "%s")
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            with _db_lock:
-                conn = get_conn()
-                c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-                c.execute(sql, params)
-                result = c.fetchone()
-                return result
-        except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
-            logger.warning(f"Database connection error on attempt {attempt + 1}: {e}")
-            if attempt < max_retries - 1:
-                global _shared_conn
-                _shared_conn = None  # Force reconnection
-            else:
-                raise
+    
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        c.execute(sql, params)
+        result = c.fetchone()
+        return result
+    finally:
+        return_conn(conn)
 
 
 def query_all(sql, params=()):
     """Execute a query and return all results"""
     # Convert SQLite placeholders (?) to PostgreSQL placeholders (%s)
     sql = sql.replace("?", "%s")
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            with _db_lock:
-                conn = get_conn()
-                c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-                c.execute(sql, params)
-                return c.fetchall()
-        except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
-            logger.warning(f"Database connection error on attempt {attempt + 1}: {e}")
-            if attempt < max_retries - 1:
-                global _shared_conn
-                _shared_conn = None  # Force reconnection
-            else:
-                raise
+    
+    conn = get_conn()
+    try:
+        c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        c.execute(sql, params)
+        return c.fetchall()
+    finally:
+        return_conn(conn)
 
 
 def execute(sql, params=()):
-    """Execute SQL with proper locking to prevent transaction conflicts"""
+    """Execute SQL statement"""
     # Convert SQLite placeholders (?) to PostgreSQL placeholders (%s)
     sql = sql.replace("?", "%s")
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            with _db_lock:
-                conn = get_conn()
-                c = conn.cursor()
-                c.execute(sql, params)
-                conn.commit()
-                return c.lastrowid if hasattr(c, 'lastrowid') else None
-        except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
-            logger.warning(f"Database connection error on attempt {attempt + 1}: {e}")
-            if attempt < max_retries - 1:
-                global _shared_conn
-                _shared_conn = None  # Force reconnection
-            else:
-                raise
+    
+    conn = get_conn()
+    try:
+        c = conn.cursor()
+        c.execute(sql, params)
+        conn.commit()
+        return c.lastrowid if hasattr(c, 'lastrowid') else None
+    finally:
+        return_conn(conn)
 
 
-def deserialize_input(input_blob, api_type):
+def deserialize_input(input_blob, api_type=None):
     """Deserialize input blob back to original dict"""
     if input_blob is None:
         return None
@@ -216,7 +207,7 @@ def deserialize_input(input_blob, api_type):
     return dill.loads(bytes(input_blob))
 
 
-def deserialize(output_json, api_type):
+def deserialize(output_json, api_type=None):
     """Deserialize output JSON back to response object"""
     if output_json is None:
         return None
@@ -269,7 +260,7 @@ def get_taint_info(file_path, line_no):
     return None, []
 
 
-def add_experiment_to_db(session_id, parent_session_id, name, default_graph, timestamp, cwd, command, env_json, default_success, default_note, default_log):
+def add_experiment_query(session_id, parent_session_id, name, default_graph, timestamp, cwd, command, env_json, default_success, default_note, default_log):
     """Execute PostgreSQL-specific INSERT for experiments table"""
     execute(
         """INSERT INTO experiments (session_id, parent_session_id, name, graph_topology, timestamp, cwd, command, environment, success, notes, log) 
@@ -298,4 +289,69 @@ def add_experiment_to_db(session_id, parent_session_id, name, default_graph, tim
             default_note,
             default_log,
         ),
+    )
+
+
+def set_input_overwrite_query(input_overwrite, session_id, node_id):
+    """Execute PostgreSQL-specific UPDATE for llm_calls input_overwrite"""
+    execute(
+        "UPDATE llm_calls SET input_overwrite=%s, output=NULL WHERE session_id=%s AND node_id=%s",
+        (input_overwrite, session_id, node_id),
+    )
+
+
+def set_output_overwrite_query(output_overwrite, session_id, node_id):
+    """Execute PostgreSQL-specific UPDATE for llm_calls output"""
+    execute(
+        "UPDATE llm_calls SET output=%s WHERE session_id=%s AND node_id=%s",
+        (output_overwrite, session_id, node_id),
+    )
+
+
+def delete_llm_calls_query(session_id):
+    """Execute PostgreSQL-specific DELETE for llm_calls"""
+    execute("DELETE FROM llm_calls WHERE session_id=%s", (session_id,))
+
+
+def update_experiment_graph_topology_query(graph_json, session_id):
+    """Execute PostgreSQL-specific UPDATE for experiments graph_topology"""
+    execute(
+        "UPDATE experiments SET graph_topology=%s WHERE session_id=%s", (graph_json, session_id)
+    )
+
+
+def update_experiment_timestamp_query(timestamp, session_id):
+    """Execute PostgreSQL-specific UPDATE for experiments timestamp"""
+    execute("UPDATE experiments SET timestamp=%s WHERE session_id=%s", (timestamp, session_id))
+
+
+def update_experiment_name_query(run_name, session_id):
+    """Execute PostgreSQL-specific UPDATE for experiments name"""
+    execute(
+        "UPDATE experiments SET name=%s WHERE session_id=%s",
+        (run_name, session_id),
+    )
+
+
+def update_experiment_result_query(result, session_id):
+    """Execute PostgreSQL-specific UPDATE for experiments success"""
+    execute(
+        "UPDATE experiments SET success=%s WHERE session_id=%s",
+        (result, session_id),
+    )
+
+
+def update_experiment_notes_query(notes, session_id):
+    """Execute PostgreSQL-specific UPDATE for experiments notes"""
+    execute(
+        "UPDATE experiments SET notes=%s WHERE session_id=%s",
+        (notes, session_id),
+    )
+
+
+def update_experiment_log_query(updated_log, updated_success, color_preview_json, graph_json, session_id):
+    """Execute PostgreSQL-specific UPDATE for experiments log, success, color_preview, and graph_topology"""
+    execute(
+        "UPDATE experiments SET log=%s, success=%s, color_preview=%s, graph_topology=%s WHERE session_id=%s",
+        (updated_log, updated_success, color_preview_json, graph_json, session_id),
     )

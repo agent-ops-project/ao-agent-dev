@@ -17,6 +17,7 @@ declare global {
 
 export const App: React.FC = () => {
   const [processes, setProcesses] = useLocalStorage<ProcessInfo[]>("experiments", []);
+  const [databaseMode, setDatabaseMode] = useLocalStorage<'Local' | 'Remote'>("databaseMode", 'Local');
   const isDarkTheme = useIsVsCodeDarkTheme();
 
   // Listen for backend messages and update state
@@ -25,6 +26,12 @@ export const App: React.FC = () => {
       const message = event.data;
       switch (message.type) {
         case "session_id":
+          // Handle initial connection message with database mode
+          if (message.database_mode) {
+            const mode = message.database_mode === 'local' ? 'Local' : 'Remote';
+            setDatabaseMode(mode);
+            console.log(`Synchronized database mode to: ${mode}`);
+          }
           break;
         case "configUpdate":
           // Config changed - forward to config bridge
@@ -82,6 +89,9 @@ export const App: React.FC = () => {
   };
 
   const handleDatabaseModeChange = (mode: 'Local' | 'Remote') => {
+    // Update local state immediately for responsive UI
+    setDatabaseMode(mode);
+    
     // Send message to VS Code extension to relay to server
     if (window.vscode) {
       window.vscode.postMessage({
@@ -120,6 +130,7 @@ export const App: React.FC = () => {
           isDarkTheme={isDarkTheme}
           showHeader={true}
           onModeChange={handleDatabaseModeChange}
+          currentMode={databaseMode}
         />
       </div>
     </div>

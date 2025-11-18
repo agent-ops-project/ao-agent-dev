@@ -77,8 +77,9 @@ class DatabaseManager:
             self._sqlite_module._shared_conn = None
             logger.debug("Cleared SQLite connection cache")
         if self._postgres_module:
-            self._postgres_module._shared_conn = None
-            logger.debug("Cleared PostgreSQL connection cache")
+            # Close the connection pool to force fresh connections
+            self._postgres_module.close_all_connections()
+            logger.debug("Cleared PostgreSQL connection pool")
 
     def get_current_mode(self) -> str:
         """
@@ -132,10 +133,55 @@ class DatabaseManager:
         backend = self._get_backend_module()
         return backend.get_taint_info(file_path, line_number)
 
-    def add_experiment_to_db(self, session_id, parent_session_id, name, default_graph, timestamp, cwd, command, env_json, default_success, default_note, default_log):
+    def add_experiment_query(self, session_id, parent_session_id, name, default_graph, timestamp, cwd, command, env_json, default_success, default_note, default_log):
         """Add experiment to database using backend-specific SQL syntax."""
         backend = self._get_backend_module()
-        return backend.add_experiment_to_db(session_id, parent_session_id, name, default_graph, timestamp, cwd, command, env_json, default_success, default_note, default_log)
+        return backend.add_experiment_query(session_id, parent_session_id, name, default_graph, timestamp, cwd, command, env_json, default_success, default_note, default_log)
+
+    def set_input_overwrite_query(self, input_overwrite, session_id, node_id):
+        """Update llm_calls input_overwrite using backend-specific SQL syntax."""
+        backend = self._get_backend_module()
+        return backend.set_input_overwrite_query(input_overwrite, session_id, node_id)
+
+    def set_output_overwrite_query(self, output_overwrite, session_id, node_id):
+        """Update llm_calls output using backend-specific SQL syntax."""
+        backend = self._get_backend_module()
+        return backend.set_output_overwrite_query(output_overwrite, session_id, node_id)
+
+    def delete_llm_calls_query(self, session_id):
+        """Delete llm_calls using backend-specific SQL syntax."""
+        backend = self._get_backend_module()
+        return backend.delete_llm_calls_query(session_id)
+
+    def update_experiment_graph_topology_query(self, graph_json, session_id):
+        """Update experiments graph_topology using backend-specific SQL syntax."""
+        backend = self._get_backend_module()
+        return backend.update_experiment_graph_topology_query(graph_json, session_id)
+
+    def update_experiment_timestamp_query(self, timestamp, session_id):
+        """Update experiments timestamp using backend-specific SQL syntax."""
+        backend = self._get_backend_module()
+        return backend.update_experiment_timestamp_query(timestamp, session_id)
+
+    def update_experiment_name_query(self, run_name, session_id):
+        """Update experiments name using backend-specific SQL syntax."""
+        backend = self._get_backend_module()
+        return backend.update_experiment_name_query(run_name, session_id)
+
+    def update_experiment_result_query(self, result, session_id):
+        """Update experiments success using backend-specific SQL syntax."""
+        backend = self._get_backend_module()
+        return backend.update_experiment_result_query(result, session_id)
+
+    def update_experiment_notes_query(self, notes, session_id):
+        """Update experiments notes using backend-specific SQL syntax."""
+        backend = self._get_backend_module()
+        return backend.update_experiment_notes_query(notes, session_id)
+
+    def update_experiment_log_query(self, updated_log, updated_success, color_preview_json, graph_json, session_id):
+        """Update experiments log, success, color_preview, and graph_topology using backend-specific SQL syntax."""
+        backend = self._get_backend_module()
+        return backend.update_experiment_log_query(updated_log, updated_success, color_preview_json, graph_json, session_id)
 
 
 # Create singleton instance following the established pattern
