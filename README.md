@@ -113,3 +113,7 @@ These are the processes running.
 2. `cd src/user_interface`
 3. Create VSIX package: `vsce package` . If you get errors like `npm error extraneous`, you need to `rm -rf node_modules package-lock.json`
 4. `vsce publish`. Ask Ferdi for personal access token if you don't have it.
+
+#### Web app
+
+Just push to webapp-prod. You can treat this as staging, since we don't have users currently.
