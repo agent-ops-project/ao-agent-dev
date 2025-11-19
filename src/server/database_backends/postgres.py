@@ -14,15 +14,17 @@ from aco.common.logger import logger
 from aco.common.constants import REMOTE_DATABASE_URL
 from aco.common.utils import hash_input
 
-# Global connection pool
-_connection_pool = None
+# Global shared connection
+_shared_conn = None
+_connection_params = None
+_connection_lock = threading.Lock()
 
 
-def _init_pool():
-    """Initialize the connection pool if not already created"""
-    global _connection_pool
+def _init_connection():
+    """Initialize the shared connection if not already created"""
+    global _shared_conn, _connection_params
     
-    if _connection_pool is None:
+    if _shared_conn is None:
         database_url = REMOTE_DATABASE_URL
         if not database_url:
             raise ValueError(
@@ -32,81 +34,76 @@ def _init_pool():
         # Parse the connection string
         result = urlparse(database_url)
         
-        # Create connection pool (1 min, 4 max connections to support concurrent access)
-        _connection_pool = psycopg2.pool.ThreadedConnectionPool(
-            minconn=1,
-            maxconn=4,
-            host=result.hostname,
-            port=result.port or 5432,
-            user=result.username,
-            password=result.password,
-            database=result.path[1:],  # Remove leading '/'
-            connect_timeout=30,
-        )
+        # Store connection parameters for reconnection
+        _connection_params = {
+            'host': result.hostname,
+            'port': result.port or 5432,
+            'user': result.username,
+            'password': result.password,
+            'database': result.path[1:],  # Remove leading '/'
+            'connect_timeout': 30,
+        }
         
-        # Initialize database schema using a connection from the pool
-        conn = _connection_pool.getconn()
+        # Create the shared connection
+        _shared_conn = psycopg2.connect(**_connection_params)
+        _shared_conn.autocommit = False  # Explicit transaction control
+        
+        # Initialize database schema
+        _init_db(_shared_conn)
+        logger.info(f"Initialized PostgreSQL shared connection to {result.hostname}")
+
+
+def _ensure_connection():
+    """Ensure we have a working connection, reconnecting if necessary"""
+    global _shared_conn
+    
+    with _connection_lock:
+        # First check if we need to initialize
+        if _shared_conn is None:
+            _init_connection()
+            return _shared_conn
+        
+        # Check if existing connection is still alive
         try:
-            _init_db(conn)
-            logger.info(f"Initialized PostgreSQL connection pool to {result.hostname}")
-        finally:
-            _connection_pool.putconn(conn)
+            with _shared_conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            # Connection is good
+            return _shared_conn
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            logger.warning(f"PostgreSQL connection lost: {e}, reconnecting...")
+            try:
+                _shared_conn.close()
+            except:
+                pass  # Ignore errors when closing broken connection
+            
+            # Reconnect
+            _shared_conn = psycopg2.connect(**_connection_params)
+            _shared_conn.autocommit = False
+            logger.info("PostgreSQL connection restored")
+            return _shared_conn
 
 
 def get_conn():
-    """Get a connection from the pool"""
-    _init_pool()
-    
-    # Get caller information for debugging
-    frame = inspect.currentframe()
-    try:
-        caller_frame = frame.f_back
-        caller_function = caller_frame.f_code.co_name
-        caller_file = caller_frame.f_code.co_filename.split('/')[-1]
-        caller_line = caller_frame.f_lineno
-    except:
-        caller_function = "unknown"
-        caller_file = "unknown"
-        caller_line = 0
-    finally:
-        del frame
-    
-    thread_id = threading.get_ident()
-    conn = _connection_pool.getconn()
-    
-    logger.info(f"[CONN] GET conn={id(conn)} thread={thread_id} caller={caller_file}:{caller_function}:{caller_line}")
-    return conn
+    """Get the shared connection (for compatibility with DatabaseManager)"""
+    return _ensure_connection()
 
 
 def return_conn(conn):
-    """Return a connection to the pool"""
-    if _connection_pool:
-        # Get caller information for debugging
-        frame = inspect.currentframe()
-        try:
-            caller_frame = frame.f_back
-            caller_function = caller_frame.f_code.co_name
-            caller_file = caller_frame.f_code.co_filename.split('/')[-1]
-            caller_line = caller_frame.f_lineno
-        except:
-            caller_function = "unknown"
-            caller_file = "unknown"
-            caller_line = 0
-        finally:
-            del frame
-        
-        thread_id = threading.get_ident()
-        logger.info(f"[CONN] RETURN conn={id(conn)} thread={thread_id} caller={caller_file}:{caller_function}:{caller_line}")
-        _connection_pool.putconn(conn)
+    """Return connection (no-op for shared connection)"""
+    pass  # No-op since we're using a shared connection
 
 
 def close_all_connections():
-    """Close all connections in the pool"""
-    global _connection_pool
-    if _connection_pool:
-        _connection_pool.closeall()
-        _connection_pool = None
-        logger.debug("Closed PostgreSQL connection pool")
+    """Close the shared connection"""
+    global _shared_conn
+    with _connection_lock:
+        if _shared_conn:
+            try:
+                _shared_conn.close()
+            except:
+                pass
+            _shared_conn = None
+            logger.debug("Closed PostgreSQL shared connection")
 
 
 def _init_db(conn):
@@ -200,19 +197,22 @@ def query_one(sql, params=()):
     thread_id = threading.get_ident()
     logger.info(f"[QUERY_ONE] START thread={thread_id} sql={sql[:100]}...")
     
-    conn = get_conn()
     try:
-        c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        c.execute(sql, params)
-        result = c.fetchone()
+        conn = _ensure_connection()
+        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
+            cursor.execute(sql, params)
+            result = cursor.fetchone()
+        conn.commit()
         logger.info(f"[QUERY_ONE] SUCCESS thread={thread_id} conn={id(conn)} result={'Found' if result else 'None'}")
         return result
     except Exception as e:
-        logger.error(f"[QUERY_ONE] ERROR thread={thread_id} conn={id(conn)} error={e}")
-        conn.rollback()
+        logger.error(f"[QUERY_ONE] ERROR thread={thread_id} error={e}")
+        try:
+            conn = _ensure_connection()
+            conn.rollback()
+        except:
+            pass
         raise
-    finally:
-        return_conn(conn)
 
 
 def query_all(sql, params=()):
@@ -223,19 +223,22 @@ def query_all(sql, params=()):
     thread_id = threading.get_ident()
     logger.info(f"[QUERY_ALL] START thread={thread_id} sql={sql[:100]}...")
     
-    conn = get_conn()
     try:
-        c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        c.execute(sql, params)
-        result = c.fetchall()
+        conn = _ensure_connection()
+        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
+            cursor.execute(sql, params)
+            result = cursor.fetchall()
+        conn.commit()
         logger.info(f"[QUERY_ALL] SUCCESS thread={thread_id} conn={id(conn)} rows={len(result)}")
         return result
     except Exception as e:
-        logger.error(f"[QUERY_ALL] ERROR thread={thread_id} conn={id(conn)} error={e}")
-        conn.rollback()
+        logger.error(f"[QUERY_ALL] ERROR thread={thread_id} error={e}")
+        try:
+            conn = _ensure_connection()
+            conn.rollback()
+        except:
+            pass
         raise
-    finally:
-        return_conn(conn)
 
 
 def execute(sql, params=()):
@@ -246,19 +249,22 @@ def execute(sql, params=()):
     thread_id = threading.get_ident()
     logger.info(f"[EXECUTE] START thread={thread_id} sql={sql[:100]}...")
     
-    conn = get_conn()
     try:
-        c = conn.cursor()
-        c.execute(sql, params)
+        conn = _ensure_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(sql, params)
+            lastrowid = cursor.lastrowid if hasattr(cursor, 'lastrowid') else None
         conn.commit()
         logger.info(f"[EXECUTE] SUCCESS thread={thread_id} conn={id(conn)}")
-        return c.lastrowid if hasattr(c, 'lastrowid') else None
+        return lastrowid
     except Exception as e:
-        logger.error(f"[EXECUTE] ERROR thread={thread_id} conn={id(conn)} error={e}")
-        conn.rollback()
+        logger.error(f"[EXECUTE] ERROR thread={thread_id} error={e}")
+        try:
+            conn = _ensure_connection()
+            conn.rollback()
+        except:
+            pass
         raise
-    finally:
-        return_conn(conn)
 
 
 def deserialize_input(input_blob, api_type=None):
