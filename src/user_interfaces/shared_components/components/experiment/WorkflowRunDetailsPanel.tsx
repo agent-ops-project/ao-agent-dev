@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { WorkflowRunDetailsPanelProps } from "../../types";
 import { useIsVsCodeDarkTheme } from "../../utils/themeUtils";
 
@@ -19,6 +19,7 @@ export const WorkflowRunDetailsPanel: React.FC<Props> = ({
   onBack,
   sessionId = "",
   isDarkTheme: isDarkThemeProp,
+  messageSender,
 }) => {
   const [localRunName, setLocalRunName] = useState(runName);
   const [localResult, setLocalResult] = useState(result);
@@ -26,48 +27,49 @@ export const WorkflowRunDetailsPanel: React.FC<Props> = ({
   const vscodeTheme = useIsVsCodeDarkTheme();
   const isDarkTheme = isDarkThemeProp !== undefined ? isDarkThemeProp : vscodeTheme;
 
+  // Sync local state with props when they change (e.g., new data from database)
+  useEffect(() => {
+    setLocalRunName(runName);
+  }, [runName]);
+
+  useEffect(() => {
+    setLocalResult(result);
+  }, [result]);
+
+  useEffect(() => {
+    setLocalNotes(notes);
+  }, [notes]);
+
   const handleRunNameChange = (value: string) => {
-    console.log('[WorkflowRunDetailsPanel] Run name changed:', value, 'sessionId:', sessionId);
     setLocalRunName(value);
-    if (window.vscode && sessionId) {
-      console.log('[WorkflowRunDetailsPanel] Sending update_run_name message to VSCode');
-      window.vscode.postMessage({
+    if (messageSender && sessionId) {
+      messageSender.send({
         type: "update_run_name",
         session_id: sessionId,
         run_name: value,
       });
-    } else {
-      console.warn('[WorkflowRunDetailsPanel] Cannot send message - window.vscode:', !!window.vscode, 'sessionId:', sessionId);
     }
   };
 
   const handleResultChange = (value: string) => {
-    console.log('[WorkflowRunDetailsPanel] Result changed:', value, 'sessionId:', sessionId);
     setLocalResult(value);
-    if (window.vscode && sessionId) {
-      console.log('[WorkflowRunDetailsPanel] Sending update_result message to VSCode');
-      window.vscode.postMessage({
+    if (messageSender && sessionId) {
+      messageSender.send({
         type: "update_result",
         session_id: sessionId,
         result: value,
       });
-    } else {
-      console.warn('[WorkflowRunDetailsPanel] Cannot send message - window.vscode:', !!window.vscode, 'sessionId:', sessionId);
     }
   };
 
   const handleNotesChange = (value: string) => {
-    console.log('[WorkflowRunDetailsPanel] Notes changed (length:', value.length, ') sessionId:', sessionId);
     setLocalNotes(value);
-    if (window.vscode && sessionId) {
-      console.log('[WorkflowRunDetailsPanel] Sending update_notes message to VSCode');
-      window.vscode.postMessage({
+    if (messageSender && sessionId) {
+      messageSender.send({
         type: "update_notes",
         session_id: sessionId,
         notes: value,
       });
-    } else {
-      console.warn('[WorkflowRunDetailsPanel] Cannot send message - window.vscode:', !!window.vscode, 'sessionId:', sessionId);
     }
   };
  

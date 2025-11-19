@@ -178,7 +178,7 @@ class DevelopServer:
                     "timestamp": timestamp,
                     "color_preview": color_preview,
                     "run_name": run_name,
-                    "success": success,
+                    "result": success,
                     "notes": notes,
                     "log": log,
                 }

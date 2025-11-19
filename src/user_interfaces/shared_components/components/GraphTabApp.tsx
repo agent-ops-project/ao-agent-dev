@@ -129,6 +129,7 @@ export const GraphTabApp: React.FC<GraphTabAppProps> = ({
                   log={experiment.log || ''}
                   sessionId={sessionId || ''}
                   isDarkTheme={isDarkTheme}
+                  messageSender={messageSender}
                 />
               ) : undefined}
             />
