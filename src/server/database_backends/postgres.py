@@ -6,6 +6,8 @@ import dill
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
+import threading
+import inspect
 from urllib.parse import urlparse
 
 from aco.common.logger import logger
@@ -30,10 +32,10 @@ def _init_pool():
         # Parse the connection string
         result = urlparse(database_url)
         
-        # Create connection pool (1 min, 1 max connections to avoid EventEmitter warnings)
+        # Create connection pool (1 min, 4 max connections to support concurrent access)
         _connection_pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=1,
-            maxconn=1,
+            maxconn=4,
             host=result.hostname,
             port=result.port or 5432,
             user=result.username,
@@ -54,12 +56,47 @@ def _init_pool():
 def get_conn():
     """Get a connection from the pool"""
     _init_pool()
-    return _connection_pool.getconn()
+    
+    # Get caller information for debugging
+    frame = inspect.currentframe()
+    try:
+        caller_frame = frame.f_back
+        caller_function = caller_frame.f_code.co_name
+        caller_file = caller_frame.f_code.co_filename.split('/')[-1]
+        caller_line = caller_frame.f_lineno
+    except:
+        caller_function = "unknown"
+        caller_file = "unknown"
+        caller_line = 0
+    finally:
+        del frame
+    
+    thread_id = threading.get_ident()
+    conn = _connection_pool.getconn()
+    
+    logger.info(f"[CONN] GET conn={id(conn)} thread={thread_id} caller={caller_file}:{caller_function}:{caller_line}")
+    return conn
 
 
 def return_conn(conn):
     """Return a connection to the pool"""
     if _connection_pool:
+        # Get caller information for debugging
+        frame = inspect.currentframe()
+        try:
+            caller_frame = frame.f_back
+            caller_function = caller_frame.f_code.co_name
+            caller_file = caller_frame.f_code.co_filename.split('/')[-1]
+            caller_line = caller_frame.f_lineno
+        except:
+            caller_function = "unknown"
+            caller_file = "unknown"
+            caller_line = 0
+        finally:
+            del frame
+        
+        thread_id = threading.get_ident()
+        logger.info(f"[CONN] RETURN conn={id(conn)} thread={thread_id} caller={caller_file}:{caller_function}:{caller_line}")
         _connection_pool.putconn(conn)
 
 
@@ -160,12 +197,20 @@ def query_one(sql, params=()):
     # Convert SQLite placeholders (?) to PostgreSQL placeholders (%s)
     sql = sql.replace("?", "%s")
     
+    thread_id = threading.get_ident()
+    logger.info(f"[QUERY_ONE] START thread={thread_id} sql={sql[:100]}...")
+    
     conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         c.execute(sql, params)
         result = c.fetchone()
+        logger.info(f"[QUERY_ONE] SUCCESS thread={thread_id} conn={id(conn)} result={'Found' if result else 'None'}")
         return result
+    except Exception as e:
+        logger.error(f"[QUERY_ONE] ERROR thread={thread_id} conn={id(conn)} error={e}")
+        conn.rollback()
+        raise
     finally:
         return_conn(conn)
 
@@ -175,11 +220,20 @@ def query_all(sql, params=()):
     # Convert SQLite placeholders (?) to PostgreSQL placeholders (%s)
     sql = sql.replace("?", "%s")
     
+    thread_id = threading.get_ident()
+    logger.info(f"[QUERY_ALL] START thread={thread_id} sql={sql[:100]}...")
+    
     conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         c.execute(sql, params)
-        return c.fetchall()
+        result = c.fetchall()
+        logger.info(f"[QUERY_ALL] SUCCESS thread={thread_id} conn={id(conn)} rows={len(result)}")
+        return result
+    except Exception as e:
+        logger.error(f"[QUERY_ALL] ERROR thread={thread_id} conn={id(conn)} error={e}")
+        conn.rollback()
+        raise
     finally:
         return_conn(conn)
 
@@ -189,12 +243,20 @@ def execute(sql, params=()):
     # Convert SQLite placeholders (?) to PostgreSQL placeholders (%s)
     sql = sql.replace("?", "%s")
     
+    thread_id = threading.get_ident()
+    logger.info(f"[EXECUTE] START thread={thread_id} sql={sql[:100]}...")
+    
     conn = get_conn()
     try:
         c = conn.cursor()
         c.execute(sql, params)
         conn.commit()
+        logger.info(f"[EXECUTE] SUCCESS thread={thread_id} conn={id(conn)}")
         return c.lastrowid if hasattr(c, 'lastrowid') else None
+    except Exception as e:
+        logger.error(f"[EXECUTE] ERROR thread={thread_id} conn={id(conn)} error={e}")
+        conn.rollback()
+        raise
     finally:
         return_conn(conn)
 

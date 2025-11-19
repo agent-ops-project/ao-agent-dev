@@ -108,10 +108,10 @@ class DatabaseManager:
         backend = self._get_backend_module()
         return backend.execute(query, params)
 
-    def get_conn(self):
-        """Get database connection."""
-        backend = self._get_backend_module()
-        return backend.get_conn()
+    # def get_conn(self):
+    #     """Get database connection."""
+    #     backend = self._get_backend_module()
+    #     return backend.get_conn()
 
     def deserialize_input(self, data):
         """Deserialize input data."""
