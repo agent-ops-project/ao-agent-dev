@@ -220,6 +220,14 @@ export const GraphView: React.FC<GraphViewProps> = ({
     }
   }, [availableWidth, isMetadataPanelOpen, userToggledPanel]);
 
+  // Auto-expand when window gets wide enough (but only if user hasn't manually toggled)
+  useEffect(() => {
+    const MIN_WIDTH_FOR_AUTO_EXPAND = 1000;
+    if (!userToggledPanel && !isMetadataPanelOpen && metadataPanel && availableWidth >= MIN_WIDTH_FOR_AUTO_EXPAND) {
+      setIsMetadataPanelOpen(true);
+    }
+  }, [availableWidth, isMetadataPanelOpen, userToggledPanel, metadataPanel]);
+
   // Always show the metadata button if we have a metadata panel
   const showMetadataButton = !!metadataPanel;
 
