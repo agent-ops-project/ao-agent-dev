@@ -3,7 +3,7 @@ import { GraphView } from '../../../shared_components/components/graph/GraphView
 import { GraphData, ProcessInfo } from '../../../shared_components/types';
 import { MessageSender } from '../../../shared_components/types/MessageSender';
 import { useIsVsCodeDarkTheme } from '../../../shared_components/utils/themeUtils';
-import { RunDetailsModalApp } from './RunDetailsModalApp';
+import { WorkflowRunDetailsPanel } from '../../../shared_components/components/experiment/WorkflowRunDetailsPanel';
 import { NodeEditModal } from './NodeEditModal';
 
 // Global type augmentation for window.vscode
@@ -22,8 +22,6 @@ export const GraphTabApp: React.FC = () => {
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isGraphReady, setIsGraphReady] = useState(false);
-  const [showRunDetailsModal, setShowRunDetailsModal] = useState(false);
-  const [modalExperiment, setModalExperiment] = useState<ProcessInfo | null>(null);
   const [showNodeEditModal, setShowNodeEditModal] = useState(false);
   const [nodeEditData, setNodeEditData] = useState<{ nodeId: string; field: 'input' | 'output'; label: string; value: string } | null>(null);
   const isDarkTheme = useIsVsCodeDarkTheme();
@@ -128,11 +126,6 @@ export const GraphTabApp: React.FC = () => {
                   }
                 });
               }
-              
-              // Also update modal experiment if it's the same one
-              if (modalExperiment && modalExperiment.session_id === sessionId) {
-                setModalExperiment(processInfo);
-              }
             }
           }
           break;
@@ -145,20 +138,14 @@ export const GraphTabApp: React.FC = () => {
     window.addEventListener('message', handleMessage);
 
     // Listen for custom events
-    const handleShowModal = (event: CustomEvent) => {
-      setModalExperiment(event.detail.experiment);
-      setShowRunDetailsModal(true);
-    };
-    
     const handleShowNodeEditModal = (event: CustomEvent) => {
       const { nodeId, field, label, value } = event.detail;
       setNodeEditData({ nodeId, field, label, value });
       setShowNodeEditModal(true);
     };
-    
-    window.addEventListener('show-run-details-modal', handleShowModal as EventListener);
+
     window.addEventListener('show-node-edit-modal', handleShowNodeEditModal as EventListener);
-    
+
     // Send ready message to indicate the webview is loaded
     if (window.vscode) {
       window.vscode.postMessage({ type: 'ready' });
@@ -166,7 +153,6 @@ export const GraphTabApp: React.FC = () => {
 
     return () => {
       window.removeEventListener('message', handleMessage);
-      window.removeEventListener('show-run-details-modal', handleShowModal as EventListener);
       window.removeEventListener('show-node-edit-modal', handleShowNodeEditModal as EventListener);
     };
   }, [sessionId]);
@@ -252,11 +238,12 @@ export const GraphTabApp: React.FC = () => {
           flex: 1,
           overflow: "hidden",
           display: "flex",
+          flexDirection: "row",
         }}
       >
         {/* Graph View */}
         {graphData && (
-          <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
+          <div style={{ flex: 1, overflow: "auto", position: "relative", minWidth: 0 }}>
             {/* Loading overlay */}
             {!isGraphReady && (
               <div
@@ -304,82 +291,23 @@ export const GraphTabApp: React.FC = () => {
           </div>
         )}
 
-        {/* Run Details Modal */}
-        {showRunDetailsModal && modalExperiment && (
+        {/* Metadata Panel - Always visible on right side */}
+        {experiment && (
           <div
             style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 10000,
-            }}
-            onMouseDown={(e) => {
-              if (e.target === e.currentTarget) {
-                setShowRunDetailsModal(false);
-              }
+              width: '350px',
+              borderLeft: `1px solid ${isDarkTheme ? '#3c3c3c' : '#e0e0e0'}`,
+              overflow: 'auto',
+              flexShrink: 0,
             }}
           >
-            <div
-              style={{
-                backgroundColor: 'var(--vscode-editor-background)',
-                border: '1px solid var(--vscode-editorWidget-border)',
-                borderRadius: '6px',
-                width: 'auto',
-                height: 'auto',
-                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <RunDetailsModalApp
-                experiment={modalExperiment}
-                onClose={() => setShowRunDetailsModal(false)}
-                onSave={(data) => {
-                  // Send VSCode messages like WorkflowRunDetailsPanel does
-                  if (window.vscode && sessionId) {
-                    console.log('[GraphTabApp] Sending update messages to VSCode');
-                    window.vscode.postMessage({
-                      type: "update_run_name",
-                      session_id: sessionId,
-                      run_name: data.runName,
-                    });
-                    window.vscode.postMessage({
-                      type: "update_result",
-                      session_id: sessionId,
-                      result: data.result,
-                    });
-                    window.vscode.postMessage({
-                      type: "update_notes",
-                      session_id: sessionId,
-                      notes: data.notes,
-                    });
-                  }
-
-                  // Update local state to reflect the changes
-                  if (modalExperiment) {
-                    const updatedExperiment = {
-                      ...modalExperiment,
-                      run_name: data.runName,
-                      result: data.result,
-                      notes: data.notes,
-                    };
-                    setModalExperiment(updatedExperiment);
-                    
-                    // Also update the main experiment if it's the same one
-                    if (experiment && experiment === modalExperiment) {
-                      setExperiment(updatedExperiment);
-                    }
-                  }
-                  console.log('Save run details:', data);
-                  // Don't close modal on save - let user close it manually
-                }}
-              />
-            </div>
+            <WorkflowRunDetailsPanel
+              runName={experiment.run_name || experiment.session_id}
+              result={experiment.result || ''}
+              notes={experiment.notes || ''}
+              log={experiment.log || ''}
+              sessionId={sessionId || ''}
+            />
           </div>
         )}
 
