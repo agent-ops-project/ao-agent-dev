@@ -16,6 +16,15 @@ export class PythonServerClient {
     }
 
     private connect() {
+        // Clean up existing client before reconnecting
+        if (this.client) {
+            this.client.removeAllListeners();
+            this.client.destroy();
+        }
+        
+        // Create a new socket for each connection attempt
+        this.client = new net.Socket();
+        
         this.client.connect(5959, '127.0.0.1', () => {
             this.client.write(JSON.stringify({
                 type: "hello",
@@ -44,7 +53,8 @@ export class PythonServerClient {
         });
 
         this.client.on('error', () => {
-            setTimeout(() => this.connect(), 2000);
+            // Don't call connect() again here since 'close' will also fire
+            // This prevents double reconnection attempts
         });
     }
 
