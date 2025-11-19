@@ -264,7 +264,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
           justifyContent: "center",
           height: "100%",
           opacity: isEditingLabel ? 0 : 1,
-          color: "var(--vscode-foreground, #303030)",
+          color: isDarkTheme ? "#cccccc" : "#303030",
           textAlign: "center",
           padding: "0 4px",
           wordBreak: "break-word",
