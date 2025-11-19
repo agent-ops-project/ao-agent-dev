@@ -4,7 +4,7 @@ import os
 import random
 import json
 import time
-from aco.server import db
+from aco.server.database_manager import DB
 from aco.runner.develop_shim import DevelopShim
 from aco.runner.develop_shim import ensure_server_running
 
@@ -32,12 +32,12 @@ async def main():
     return_code = shim._run_user_script_subprocess()
     assert return_code == 0, f"[DeepResearch] failed with return_code {return_code}"
 
-    rows = db.query_all(
+    rows = DB.query_all(
         "SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=?",
         (shim.session_id,),
     )
 
-    graph_topology = db.query_one(
+    graph_topology = DB.query_one(
         "SELECT log, success, graph_topology FROM experiments WHERE session_id=?",
         (shim.session_id,),
     )
@@ -54,12 +54,12 @@ async def main():
     returncode_rerun = shim._run_user_script_subprocess()
     assert returncode_rerun == 0, f"[DeepResearch] re-run failed with return_code {return_code}"
 
-    new_rows = db.query_all(
+    new_rows = DB.query_all(
         "SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=?",
         (shim.session_id,),
     )
 
-    new_graph_topology = db.query_one(
+    new_graph_topology = DB.query_one(
         "SELECT log, success, graph_topology FROM experiments WHERE session_id=?",
         (shim.session_id,),
     )

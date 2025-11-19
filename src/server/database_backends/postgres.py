@@ -30,10 +30,10 @@ def _init_pool():
         # Parse the connection string
         result = urlparse(database_url)
         
-        # Create connection pool (1 min, 10 max connections)
+        # Create connection pool (1 min, 1 max connections to avoid EventEmitter warnings)
         _connection_pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=1,
-            maxconn=10,
+            maxconn=1,
             host=result.hostname,
             port=result.port or 5432,
             user=result.username,
