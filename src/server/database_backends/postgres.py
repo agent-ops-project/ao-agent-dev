@@ -127,6 +127,7 @@ def _init_db(conn):
     )
     
     # Create llm_calls table
+    # HACK: Renove foreign key constrain bc parallel inserts experiment and llm calls.
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS llm_calls (
@@ -140,8 +141,7 @@ def _init_db(conn):
             label TEXT,
             api_type TEXT,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (session_id, node_id),
-            FOREIGN KEY (session_id) REFERENCES experiments (session_id)
+            PRIMARY KEY (session_id, node_id)
         )
     """
     )

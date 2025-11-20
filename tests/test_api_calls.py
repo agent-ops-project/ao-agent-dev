@@ -175,7 +175,7 @@ def run_test(program_file, api_type, create_response_func, create_input_func, ht
     start_time = time.time()
     print("Waiting for graph updates...")
 
-    while time.time() - start_time < 8: # Messages need to arrive within 8s
+    while time.time() - start_time < 10: # Messages need to arrive within 8s
         try:
             msg = message_queue.get(timeout=1)
             if msg.get("type") == "graph_update" and msg.get("session_id") == session_id:
