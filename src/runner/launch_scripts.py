@@ -17,7 +17,7 @@ from aco.common.utils import scan_user_py_files_and_modules
 from aco.common.logger import logger
 from aco.runner.monkey_patching.apply_monkey_patches import apply_all_monkey_patches
 from aco.server.ast_transformer import (
-    taint_fstring_join, taint_format_string, taint_percent_format, exec_func
+    taint_fstring_join, taint_format_string, taint_percent_format, exec_func, taint_open
 )
 from aco.server.database_manager import DB
 
@@ -33,6 +33,7 @@ builtins.taint_fstring_join = taint_fstring_join
 builtins.taint_format_string = taint_format_string
 builtins.taint_percent_format = taint_percent_format
 builtins.exec_func = exec_func
+builtins.taint_open = taint_open
 
 # Connect to server and apply monkey patches if enabled via environment variable.
 if os.environ.get("AGENT_COPILOT_ENABLE_TRACING"):

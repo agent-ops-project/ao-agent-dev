@@ -33,7 +33,7 @@ function operations, ensuring sensitive data remains tainted throughout executio
 import ast
 from dill import PicklingError, dumps
 from inspect import getsourcefile, iscoroutinefunction
-from aco.runner.taint_wrappers import TaintStr, get_taint_origins, untaint_if_needed, taint_wrap
+from aco.runner.taint_wrappers import TaintWrapper, get_taint_origins, untaint_if_needed, taint_wrap
 from aco.common.utils import get_aco_py_files, hash_input
 
 
@@ -132,13 +132,13 @@ def taint_fstring_join(*args):
     1. Collects taint origins from all arguments
     2. Unwraps all arguments to get raw values
     3. Joins all arguments into a single string
-    4. Returns a TaintStr with collected taint origins if any taint exists
+    4. Returns a TaintWrapper with collected taint origins if any taint exists
 
     Args:
         *args: Variable number of arguments to join (values from f-string expressions)
 
     Returns:
-        str or TaintStr: The joined string with taint information preserved
+        str or TaintWrapper: The joined string with taint information preserved
 
     Example:
         # Original: f"Hello {name}, you have {count} items"
@@ -154,7 +154,7 @@ def taint_fstring_join(*args):
     result = "".join(unwrapped_args)
 
     if all_origins:
-        return TaintStr(result, list(all_origins))
+        return TaintWrapper(result, list(all_origins))
     return result
 
 
@@ -171,7 +171,7 @@ def taint_format_string(format_string, *args, **kwargs):
     1. Collects taint origins from format string and all arguments
     2. Unwraps all arguments to get raw values
     3. Performs the string formatting operation
-    4. Returns a TaintStr if any taint exists
+    4. Returns a TaintWrapper if any taint exists
 
     Args:
         format_string (str): The format string template
@@ -179,7 +179,7 @@ def taint_format_string(format_string, *args, **kwargs):
         **kwargs: Keyword arguments for formatting
 
     Returns:
-        str or TaintStr: The formatted string with taint information preserved
+        str or TaintWrapper: The formatted string with taint information preserved
 
     Example:
         # Original: "Hello {}, you have {} items".format(name, count)
@@ -200,7 +200,7 @@ def taint_format_string(format_string, *args, **kwargs):
     result = unwrapped_format_string.format(*unwrapped_args, **unwrapped_kwargs)
 
     if all_origins:
-        return TaintStr(result, list(all_origins))
+        return TaintWrapper(result, list(all_origins))
     return result
 
 
@@ -216,14 +216,14 @@ def taint_percent_format(format_string, values):
     1. Collects taint origins from format string and values
     2. Unwraps all arguments to get raw values
     3. Performs the % formatting operation
-    4. Returns a TaintStr if any taint exists
+    4. Returns a TaintWrapper if any taint exists
 
     Args:
         format_string (str): The format string with % placeholders
         values: The values to format (single value, tuple, or list)
 
     Returns:
-        str or TaintStr: The formatted string with taint information preserved
+        str or TaintWrapper: The formatted string with taint information preserved
 
     Example:
         # Original: "Hello %s, you have %d items" % (name, count)
@@ -244,8 +244,26 @@ def taint_percent_format(format_string, values):
     result = unwrapped_format_string % unwrapped_values
 
     if all_origins:
-        return TaintStr(result, list(all_origins))
+        return TaintWrapper(result, list(all_origins))
     return result
+
+
+def taint_open(*args, **kwargs):
+    """Taint-aware replacement for open() that returns persistence-enabled TaintWrapper."""
+    # Extract filename for default taint origin
+    if args and len(args) >= 1:
+        filename = args[0]
+    else:
+        filename = kwargs.get('file') or kwargs.get('filename')
+    
+    # Call the original open
+    file_obj = open(*args, **kwargs)
+    
+    # Create default taint origin from filename
+    default_taint = f"file:{filename}" if filename else "file:unknown"
+    
+    # Return TaintWrapper with persistence enabled
+    return TaintWrapper(file_obj, taint_origin=[default_taint], enable_persistence=True)
 
 
 class TaintPropagationTransformer(ast.NodeTransformer):
@@ -445,6 +463,19 @@ class TaintPropagationTransformer(ast.NodeTransformer):
             ast.fix_missing_locations(new_node)
             return new_node
 
+        # Check if this is an open() call
+        elif isinstance(node.func, ast.Name) and node.func.id == "open":
+            # Mark that we need taint imports
+            self.needs_taint_imports = True
+            
+            # Transform open() to taint_open()
+            new_node = ast.Call(
+                func=ast.Name(id="taint_open", ctx=ast.Load()),
+                args=node.args,
+                keywords=node.keywords,
+            )
+            return ast.copy_location(new_node, node)
+
         # Check if this is a direct function call (function_name())
         elif isinstance(node.func, ast.Name):
             func_name = node.func.id
@@ -493,22 +524,38 @@ class TaintPropagationTransformer(ast.NodeTransformer):
 
     def visit_BinOp(self, node):
         """
-        Transform % formatting operations into taint_percent_format calls.
+        Transform binary operations into exec_func calls for taint propagation.
 
-        Detects binary modulo operations where the left operand is a string
-        literal and converts them to equivalent taint_percent_format calls.
+        Handles all binary operations including arithmetic, bitwise, and comparison.
+        Special case: string % formatting still uses taint_percent_format.
 
         Args:
-            node (ast.BinOp): The binary operation AST node to potentially transform
+            node (ast.BinOp): The binary operation AST node to transform
 
         Returns:
-            ast.Call or ast.BinOp: Either a transformed taint_percent_format call
-                                  or the original node
+            ast.Call: A transformed exec_func call with the operation
         """
         # First, recursively visit child nodes
         node = self.generic_visit(node)
 
-        # Check for string % formatting
+        # Map AST operators to operator module functions
+        op_mapping = {
+            ast.Add: 'add',
+            ast.Sub: 'sub',
+            ast.Mult: 'mul',
+            ast.Div: 'truediv',
+            ast.FloorDiv: 'floordiv',
+            ast.Mod: 'mod',
+            ast.Pow: 'pow',
+            ast.LShift: 'lshift',
+            ast.RShift: 'rshift',
+            ast.BitOr: 'or_',
+            ast.BitXor: 'xor',
+            ast.BitAnd: 'and_',
+            ast.MatMult: 'matmul'
+        }
+
+        # Special case: string % formatting
         if isinstance(node.op, ast.Mod) and (
             isinstance(node.left, ast.Constant) and isinstance(node.left.value, str)
         ):
@@ -522,6 +569,439 @@ class TaintPropagationTransformer(ast.NodeTransformer):
                 keywords=[],
             )
             return ast.copy_location(new_node, node)
+
+        # Handle all other binary operations
+        op_type = type(node.op)
+        if op_type in op_mapping:
+            # Mark that we need taint imports
+            self.needs_taint_imports = True
+
+            # Create operator function reference
+            op_func = ast.Attribute(
+                value=ast.Name(id='operator', ctx=ast.Load()),
+                attr=op_mapping[op_type],
+                ctx=ast.Load()
+            )
+
+            # Create args tuple
+            args_tuple = ast.Tuple(elts=[node.left, node.right], ctx=ast.Load())
+
+            # Create empty kwargs dict
+            kwargs_dict = ast.Dict(keys=[], values=[])
+
+            # Create user_py_files list
+            user_files_constant = ast.List(
+                elts=[ast.Constant(value=file_path) for file_path in self.user_py_files],
+                ctx=ast.Load(),
+            )
+
+            # Replace with exec_func(operator.op, (left, right), {}, user_py_files)
+            new_node = ast.Call(
+                func=ast.Name(id="exec_func", ctx=ast.Load()),
+                args=[op_func, args_tuple, kwargs_dict, user_files_constant],
+                keywords=[],
+            )
+            
+            return ast.copy_location(new_node, node)
+
+        return node
+
+    def visit_UnaryOp(self, node):
+        """
+        Transform unary operations into exec_func calls for taint propagation.
+
+        Handles unary operations like -x, +x, ~x. Note: 'not x' is not transformed
+        since it should return a plain bool for control flow.
+
+        Args:
+            node (ast.UnaryOp): The unary operation AST node to transform
+
+        Returns:
+            ast.Call or ast.UnaryOp: Either a transformed exec_func call or original node
+        """
+        # First, recursively visit child nodes
+        node = self.generic_visit(node)
+
+        # Map AST unary operators to operator module functions
+        op_mapping = {
+            ast.UAdd: 'pos',     # +x
+            ast.USub: 'neg',     # -x
+            ast.Invert: 'invert' # ~x
+        }
+
+        # Don't transform 'not' since it should return plain bool for control flow
+        if isinstance(node.op, ast.Not):
+            return node
+
+        # Handle other unary operations
+        op_type = type(node.op)
+        if op_type in op_mapping:
+            # Mark that we need taint imports
+            self.needs_taint_imports = True
+
+            # Create operator function reference
+            op_func = ast.Attribute(
+                value=ast.Name(id='operator', ctx=ast.Load()),
+                attr=op_mapping[op_type],
+                ctx=ast.Load()
+            )
+
+            # Create args tuple with single operand
+            args_tuple = ast.Tuple(elts=[node.operand], ctx=ast.Load())
+
+            # Create empty kwargs dict
+            kwargs_dict = ast.Dict(keys=[], values=[])
+
+            # Create user_py_files list
+            user_files_constant = ast.List(
+                elts=[ast.Constant(value=file_path) for file_path in self.user_py_files],
+                ctx=ast.Load(),
+            )
+
+            # Replace with exec_func(operator.op, (operand,), {}, user_py_files)
+            new_node = ast.Call(
+                func=ast.Name(id="exec_func", ctx=ast.Load()),
+                args=[op_func, args_tuple, kwargs_dict, user_files_constant],
+                keywords=[],
+            )
+            
+            return ast.copy_location(new_node, node)
+
+        return node
+
+    def visit_Compare(self, node):
+        """
+        Transform comparison operations into exec_func calls for taint propagation.
+
+        Handles comparison operations like ==, !=, <, <=, >, >=, is, is not, in, not in.
+
+        Args:
+            node (ast.Compare): The comparison operation AST node to transform
+
+        Returns:
+            ast.Call: A transformed exec_func call with the comparison operation
+        """
+        # First, recursively visit child nodes
+        node = self.generic_visit(node)
+
+        # For simplicity, we'll only handle single comparisons for now
+        # Multiple comparisons like a < b < c would need more complex handling
+        if len(node.ops) == 1 and len(node.comparators) == 1:
+            # Map AST comparison operators to operator module functions
+            op_mapping = {
+                ast.Eq: 'eq',         # ==
+                ast.NotEq: 'ne',      # !=
+                ast.Lt: 'lt',         # <
+                ast.LtE: 'le',        # <=
+                ast.Gt: 'gt',         # >
+                ast.GtE: 'ge',        # >=
+                ast.Is: 'is_',        # is
+                ast.IsNot: 'is_not',  # is not
+                ast.In: 'contains',   # in (note: swapped order)
+                ast.NotIn: '__not_contains__'  # not in (special case)
+            }
+
+            op_type = type(node.ops[0])
+            if op_type in op_mapping:
+                # Mark that we need taint imports
+                self.needs_taint_imports = True
+
+                op_name = op_mapping[op_type]
+                
+                # Special case for 'not in' - we need a custom function
+                if op_type == ast.NotIn:
+                    # Create a lambda that negates contains result
+                    op_func = ast.Lambda(
+                        args=ast.arguments(
+                            posonlyargs=[], args=[
+                                ast.arg(arg='a', annotation=None),
+                                ast.arg(arg='b', annotation=None)
+                            ],
+                            vararg=None, kwonlyargs=[], kw_defaults=[], kwarg=None, defaults=[]
+                        ),
+                        body=ast.UnaryOp(
+                            op=ast.Not(),
+                            operand=ast.Call(
+                                func=ast.Attribute(
+                                    value=ast.Name(id='operator', ctx=ast.Load()),
+                                    attr='contains',
+                                    ctx=ast.Load()
+                                ),
+                                args=[ast.Name(id='b', ctx=ast.Load()), ast.Name(id='a', ctx=ast.Load())],
+                                keywords=[]
+                            )
+                        )
+                    )
+                    args_tuple = ast.Tuple(elts=[node.left, node.comparators[0]], ctx=ast.Load())
+                # Special case for 'in' - swap operands since contains(container, item)
+                elif op_type == ast.In:
+                    op_func = ast.Attribute(
+                        value=ast.Name(id='operator', ctx=ast.Load()),
+                        attr='contains',
+                        ctx=ast.Load()
+                    )
+                    args_tuple = ast.Tuple(elts=[node.comparators[0], node.left], ctx=ast.Load())
+                else:
+                    # Standard comparison
+                    op_func = ast.Attribute(
+                        value=ast.Name(id='operator', ctx=ast.Load()),
+                        attr=op_name,
+                        ctx=ast.Load()
+                    )
+                    args_tuple = ast.Tuple(elts=[node.left, node.comparators[0]], ctx=ast.Load())
+
+                # Create empty kwargs dict
+                kwargs_dict = ast.Dict(keys=[], values=[])
+
+                # Create user_py_files list
+                user_files_constant = ast.List(
+                    elts=[ast.Constant(value=file_path) for file_path in self.user_py_files],
+                    ctx=ast.Load(),
+                )
+
+                # Replace with exec_func(operator.op, (left, right), {}, user_py_files)
+                new_node = ast.Call(
+                    func=ast.Name(id="exec_func", ctx=ast.Load()),
+                    args=[op_func, args_tuple, kwargs_dict, user_files_constant],
+                    keywords=[],
+                )
+                
+                return ast.copy_location(new_node, node)
+
+        return node
+
+    def visit_AugAssign(self, node):
+        """
+        Transform augmented assignment operations into exec_func calls for taint propagation.
+
+        Handles operations like +=, -=, *=, /=, etc. These are transformed into:
+        target = exec_func(operator.iadd, (target, value), {})
+
+        Args:
+            node (ast.AugAssign): The augmented assignment AST node to transform
+
+        Returns:
+            ast.Assign: A transformed assignment with exec_func call
+        """
+        # First, recursively visit child nodes
+        node = self.generic_visit(node)
+
+        # Map AST augmented assignment operators to operator module functions
+        op_mapping = {
+            ast.Add: 'iadd',        # +=
+            ast.Sub: 'isub',        # -=
+            ast.Mult: 'imul',       # *=
+            ast.Div: 'itruediv',    # /=
+            ast.FloorDiv: 'ifloordiv',  # //=
+            ast.Mod: 'imod',        # %=
+            ast.Pow: 'ipow',        # **=
+            ast.LShift: 'ilshift',  # <<=
+            ast.RShift: 'irshift',  # >>=
+            ast.BitOr: 'ior',       # |=
+            ast.BitXor: 'ixor',     # ^=
+            ast.BitAnd: 'iand',     # &=
+            ast.MatMult: 'imatmul'  # @=
+        }
+
+        op_type = type(node.op)
+        if op_type in op_mapping:
+            # Mark that we need taint imports
+            self.needs_taint_imports = True
+
+            # Create operator function reference
+            op_func = ast.Attribute(
+                value=ast.Name(id='operator', ctx=ast.Load()),
+                attr=op_mapping[op_type],
+                ctx=ast.Load()
+            )
+
+            # Create args tuple (target, value)
+            args_tuple = ast.Tuple(elts=[node.target, node.value], ctx=ast.Load())
+
+            # Create empty kwargs dict
+            kwargs_dict = ast.Dict(keys=[], values=[])
+
+            # Create user_py_files list
+            user_files_constant = ast.List(
+                elts=[ast.Constant(value=file_path) for file_path in self.user_py_files],
+                ctx=ast.Load(),
+            )
+
+            # Create exec_func call
+            exec_func_call = ast.Call(
+                func=ast.Name(id="exec_func", ctx=ast.Load()),
+                args=[op_func, args_tuple, kwargs_dict, user_files_constant],
+                keywords=[],
+            )
+
+            # Transform into assignment: target = exec_func(...)
+            new_node = ast.Assign(
+                targets=[node.target],
+                value=exec_func_call
+            )
+            
+            return ast.copy_location(new_node, node)
+
+        return node
+
+    def visit_Subscript(self, node):
+        """
+        Transform subscript operations into exec_func calls for taint propagation.
+
+        Handles operations like obj[key], obj[key] = value, del obj[key].
+
+        Args:
+            node (ast.Subscript): The subscript AST node to transform
+
+        Returns:
+            ast.Call: A transformed exec_func call with the subscript operation
+        """
+        # First, recursively visit child nodes
+        node = self.generic_visit(node)
+
+        # Only transform subscript operations in Load context (obj[key])
+        # Store (obj[key] = value) and Del (del obj[key]) contexts are handled differently
+        if isinstance(node.ctx, ast.Load):
+            # Mark that we need taint imports
+            self.needs_taint_imports = True
+
+            # Create operator.getitem function reference
+            op_func = ast.Attribute(
+                value=ast.Name(id='operator', ctx=ast.Load()),
+                attr='getitem',
+                ctx=ast.Load()
+            )
+
+            # Create args tuple (object, key)
+            args_tuple = ast.Tuple(elts=[node.value, node.slice], ctx=ast.Load())
+
+            # Create empty kwargs dict
+            kwargs_dict = ast.Dict(keys=[], values=[])
+
+            # Create user_py_files list
+            user_files_constant = ast.List(
+                elts=[ast.Constant(value=file_path) for file_path in self.user_py_files],
+                ctx=ast.Load(),
+            )
+
+            # Replace with exec_func(operator.getitem, (obj, key), {}, user_py_files)
+            new_node = ast.Call(
+                func=ast.Name(id="exec_func", ctx=ast.Load()),
+                args=[op_func, args_tuple, kwargs_dict, user_files_constant],
+                keywords=[],
+            )
+            
+            return ast.copy_location(new_node, node)
+
+        return node
+
+    def visit_Assign(self, node):
+        """
+        Transform assignment operations involving subscripts for taint propagation.
+
+        Handles operations like obj[key] = value by transforming them into
+        exec_func(operator.setitem, (obj, key, value), {})
+
+        Args:
+            node (ast.Assign): The assignment AST node to potentially transform
+
+        Returns:
+            ast.Expr: A transformed expr with exec_func call, or original node
+        """
+        # First, recursively visit child nodes
+        node = self.generic_visit(node)
+
+        # Check if any target is a subscript operation
+        for target in node.targets:
+            if isinstance(target, ast.Subscript):
+                # Mark that we need taint imports
+                self.needs_taint_imports = True
+
+                # Create operator.setitem function reference
+                op_func = ast.Attribute(
+                    value=ast.Name(id='operator', ctx=ast.Load()),
+                    attr='setitem',
+                    ctx=ast.Load()
+                )
+
+                # Create args tuple (object, key, value)
+                args_tuple = ast.Tuple(elts=[target.value, target.slice, node.value], ctx=ast.Load())
+
+                # Create empty kwargs dict
+                kwargs_dict = ast.Dict(keys=[], values=[])
+
+                # Create user_py_files list
+                user_files_constant = ast.List(
+                    elts=[ast.Constant(value=file_path) for file_path in self.user_py_files],
+                    ctx=ast.Load(),
+                )
+
+                # Replace with exec_func(operator.setitem, (obj, key, value), {})
+                exec_func_call = ast.Call(
+                    func=ast.Name(id="exec_func", ctx=ast.Load()),
+                    args=[op_func, args_tuple, kwargs_dict, user_files_constant],
+                    keywords=[],
+                )
+
+                # Wrap in Expr since setitem returns None
+                new_node = ast.Expr(value=exec_func_call)
+                
+                return ast.copy_location(new_node, node)
+
+        return node
+
+    def visit_Delete(self, node):
+        """
+        Transform delete operations involving subscripts for taint propagation.
+
+        Handles operations like del obj[key] by transforming them into
+        exec_func(operator.delitem, (obj, key), {})
+
+        Args:
+            node (ast.Delete): The delete AST node to potentially transform
+
+        Returns:
+            ast.Expr: A transformed expr with exec_func call, or original node
+        """
+        # First, recursively visit child nodes
+        node = self.generic_visit(node)
+
+        # Check if any target is a subscript operation
+        for target in node.targets:
+            if isinstance(target, ast.Subscript):
+                # Mark that we need taint imports
+                self.needs_taint_imports = True
+
+                # Create operator.delitem function reference
+                op_func = ast.Attribute(
+                    value=ast.Name(id='operator', ctx=ast.Load()),
+                    attr='delitem',
+                    ctx=ast.Load()
+                )
+
+                # Create args tuple (object, key)
+                args_tuple = ast.Tuple(elts=[target.value, target.slice], ctx=ast.Load())
+
+                # Create empty kwargs dict
+                kwargs_dict = ast.Dict(keys=[], values=[])
+
+                # Create user_py_files list
+                user_files_constant = ast.List(
+                    elts=[ast.Constant(value=file_path) for file_path in self.user_py_files],
+                    ctx=ast.Load(),
+                )
+
+                # Replace with exec_func(operator.delitem, (obj, key), {})
+                exec_func_call = ast.Call(
+                    func=ast.Name(id="exec_func", ctx=ast.Load()),
+                    args=[op_func, args_tuple, kwargs_dict, user_files_constant],
+                    keywords=[],
+                )
+
+                # Wrap in Expr since delitem returns None
+                new_node = ast.Expr(value=exec_func_call)
+                
+                return ast.copy_location(new_node, node)
 
         return node
 
@@ -586,7 +1066,7 @@ class TaintPropagationTransformer(ast.NodeTransformer):
         # Create safe import with fallbacks for plain Python execution
         safe_import_code = """
 try:
-    from aco.server.ast_transformer import exec_func, taint_fstring_join, taint_format_string, taint_percent_format
+    from aco.server.ast_transformer import exec_func, taint_fstring_join, taint_format_string, taint_percent_format, taint_open
 except ImportError:
     # Fallback implementations for plain Python execution
     def exec_func(func, args, kwargs, user_py_files=None):
@@ -597,6 +1077,8 @@ except ImportError:
         return fmt.format(*args, **kwargs)
     def taint_percent_format(fmt, values):
         return fmt % values
+    def taint_open(*args, **kwargs):
+        return open(*args, **kwargs)
 """
 
         # Parse the safe import code and inject it
@@ -734,6 +1216,10 @@ def exec_func(func, args, kwargs, user_py_files=None):
             if bound_self is not None:
                 all_origins.update(get_taint_origins(bound_self))
 
+            # Special handling for file operations with persistence
+            if bound_self and getattr(bound_self, '_enable_persistence', False):
+                return _handle_persistent_file_operation(bound_self, func, args, kwargs, all_origins)
+
             # Untaint arguments for the function call
             untainted_args = untaint_if_needed(args) if all_origins else args
             untainted_kwargs = untaint_if_needed(kwargs) if all_origins else kwargs
@@ -810,6 +1296,10 @@ def exec_func(func, args, kwargs, user_py_files=None):
         bound_taint = get_taint_origins(bound_self)
         all_origins.update(bound_taint)
 
+    # Special handling for file operations with persistence
+    if bound_self and getattr(bound_self, '_enable_persistence', False):
+        return _handle_persistent_file_operation(bound_self, func, args, kwargs, all_origins)
+
     # Untaint arguments for the function call
     untainted_args = untaint_if_needed(args)
     untainted_kwargs = untaint_if_needed(kwargs)
@@ -858,4 +1348,159 @@ def exec_func(func, args, kwargs, user_py_files=None):
         return taint_wrap(result, taint_origin=all_origins)
 
     # If no taint, return result unwrapped
+    return result
+
+
+def _handle_persistent_file_operation(bound_self, func, args, kwargs, all_origins):
+    """Handle file operations with database persistence."""
+    # Handle functools.partial objects from TaintWrapper.__getattr__
+    if hasattr(func, 'func') and hasattr(func, 'args') and hasattr(func, 'keywords'):
+        # This is a functools.partial object from TaintWrapper.bound_method
+        # The method name is the second argument to bound_method
+        if func.args and len(func.args) >= 1:
+            method_name = func.args[0]  # The method name passed to bound_method
+        else:
+            method_name = "unknown"
+    else:
+        method_name = getattr(func, '__name__', 'unknown')
+    
+    if method_name == 'write':
+        return _handle_file_write(bound_self, func, args, kwargs, all_origins)
+    elif method_name in ['read', 'readline']:
+        return _handle_file_read(bound_self, func, args, kwargs, all_origins, method_name)
+    elif method_name == 'writelines':
+        return _handle_file_writelines(bound_self, func, args, kwargs, all_origins)
+    else:
+        # All other file methods: just call normally and propagate taint
+        untainted_args = untaint_if_needed(args)
+        untainted_kwargs = untaint_if_needed(kwargs) 
+        result = func(*untainted_args, **untainted_kwargs)
+        if all_origins:
+            return taint_wrap(result, taint_origin=all_origins)
+        return result
+
+
+def _handle_file_write(bound_self, func, args, kwargs, all_origins):
+    """Handle file write operations with DB storage."""
+    from aco.server.database_manager import DB
+    
+    session_id = object.__getattribute__(bound_self, "_session_id")
+    line_no = object.__getattribute__(bound_self, "_line_no")
+    file_obj = object.__getattribute__(bound_self, "obj")
+    
+    # Get the data being written (first argument)
+    data = args[0] if args else None
+    if data is None:
+        return func(*args, **kwargs)
+    
+    # Untaint the data for the actual write operation
+    untainted_data = untaint_if_needed(data)
+    untainted_args = (untainted_data,) + args[1:] if len(args) > 1 else (untainted_data,)
+    untainted_kwargs = untaint_if_needed(kwargs)
+    
+    # Store taint information in database if we have session ID and filename
+    if session_id and hasattr(file_obj, "name"):
+        taint_nodes = get_taint_origins(data)
+        if taint_nodes:
+            try:
+                DB.store_taint_info(session_id, file_obj.name, line_no, taint_nodes)
+            except Exception as e:
+                import sys
+                print(f"Warning: Could not store taint info: {e}", file=sys.stderr)
+        
+        # Update line number
+        newline_count = untainted_data.count("\n") if isinstance(untainted_data, str) else 0
+        object.__setattr__(bound_self, "_line_no", line_no + max(1, newline_count))
+    
+    # Perform the actual write (works for both regular methods and functools.partial)
+    result = func(*untainted_args, **untainted_kwargs)
+    
+    # Write operations typically return number of bytes written or None
+    return result
+
+
+def _handle_file_read(bound_self, func, args, kwargs, all_origins, method_name=None):
+    """Handle file read operations with DB retrieval."""
+    from aco.server.database_manager import DB
+    
+    session_id = object.__getattribute__(bound_self, "_session_id")
+    line_no = object.__getattribute__(bound_self, "_line_no")
+    file_obj = object.__getattribute__(bound_self, "obj")
+    taint_origin = object.__getattribute__(bound_self, "_taint_origin")
+    
+    # Untaint arguments for the actual read operation
+    untainted_args = untaint_if_needed(args)
+    untainted_kwargs = untaint_if_needed(kwargs)
+    
+    # Perform the actual read (works for both regular methods and functools.partial)
+    data = func(*untainted_args, **untainted_kwargs)
+    
+    if isinstance(data, bytes):
+        # For binary mode, return as-is (could extend this later)
+        return data
+    
+    # Check for existing taint from previous sessions
+    combined_taint = list(taint_origin)  # Start with file's default taint
+    
+    if hasattr(file_obj, "name") and data:
+        try:
+            prev_session_id, stored_taint_nodes = DB.get_taint_info(file_obj.name, line_no)
+            if prev_session_id and stored_taint_nodes:
+                # Combine existing taint with stored taint
+                combined_taint.extend(stored_taint_nodes)
+                combined_taint = list(set(combined_taint))  # Remove duplicates
+        except Exception as e:
+            import sys
+            print(f"Warning: Could not retrieve taint info: {e}", file=sys.stderr)
+    
+    # Update line number for readline
+    if method_name == 'readline':
+        object.__setattr__(bound_self, "_line_no", line_no + 1)
+    
+    # Return tainted data
+    if combined_taint:
+        return taint_wrap(data, taint_origin=combined_taint)
+    return data
+
+
+def _handle_file_writelines(bound_self, func, args, kwargs, all_origins):
+    """Handle file writelines operations with DB storage."""
+    from aco.server.database_manager import DB
+    
+    session_id = object.__getattribute__(bound_self, "_session_id")
+    line_no = object.__getattribute__(bound_self, "_line_no")
+    file_obj = object.__getattribute__(bound_self, "obj")
+    
+    # Get the lines being written (first argument)
+    lines = args[0] if args else None
+    if lines is None:
+        return func(*args, **kwargs)
+    
+    # Process each line for taint storage and untainting
+    untainted_lines = []
+    current_line = line_no
+    
+    for line in lines:
+        # Store taint for each line
+        if session_id and hasattr(file_obj, "name"):
+            taint_nodes = get_taint_origins(line)
+            if taint_nodes:
+                try:
+                    DB.store_taint_info(session_id, file_obj.name, current_line, taint_nodes)
+                except Exception as e:
+                    import sys
+                    print(f"Warning: Could not store taint info: {e}", file=sys.stderr)
+        
+        current_line += 1
+        untainted_lines.append(untaint_if_needed(line))
+    
+    # Update the line number on the wrapper
+    object.__setattr__(bound_self, "_line_no", current_line)
+    
+    # Untaint arguments
+    untainted_args = (untainted_lines,) + args[1:] if len(args) > 1 else (untainted_lines,)
+    untainted_kwargs = untaint_if_needed(kwargs)
+    
+    # Perform the actual writelines (works for both regular methods and functools.partial)
+    result = func(*untainted_args, **untainted_kwargs)
     return result

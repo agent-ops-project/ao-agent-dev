@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 import io
 import re
 
-from aco.runner.taint_wrappers import untaint_if_needed, TaintObject, TaintStr, TaintInt
+from aco.runner.taint_wrappers import untaint_if_needed, TaintWrapper
 
 
 class Color(Enum):
@@ -97,12 +97,12 @@ class TestUntaintIfNeeded:
 
     def test_tainted_primitives(self):
         """Test tainted primitive types"""
-        tainted_str = TaintStr("hello", ["test_origin"])
+        tainted_str = TaintWrapper("hello", ["test_origin"])
         result = untaint_if_needed(tainted_str)
         assert result == "hello"
         assert not hasattr(result, "_taint_origin")
 
-        tainted_int = TaintInt(42, ["test_origin"])
+        tainted_int = TaintWrapper(42, ["test_origin"])
         result = untaint_if_needed(tainted_int)
         assert result == 42
         assert not hasattr(result, "_taint_origin")
@@ -176,11 +176,11 @@ class TestUntaintIfNeeded:
         func_with_attrs.number = 42
 
         # Add tainted attributes
-        func_with_attrs.tainted_str = TaintStr("tainted data", ["test_origin"])
-        func_with_attrs.tainted_int = TaintInt(123, ["test_origin"])
+        func_with_attrs.tainted_str = TaintWrapper("tainted data", ["test_origin"])
+        func_with_attrs.tainted_int = TaintWrapper(123, ["test_origin"])
         func_with_attrs.nested_taint = {
             "clean": "value",
-            "tainted": TaintStr("nested taint", ["nested_origin"]),
+            "tainted": TaintWrapper("nested taint", ["nested_origin"]),
         }
 
         # Test untainting
@@ -211,9 +211,9 @@ class TestUntaintIfNeeded:
         bound_method = obj.method
 
         # Add tainted attributes directly to the __dict__
-        bound_method.__dict__["metadata"] = TaintStr("method metadata", ["method_origin"])
+        bound_method.__dict__["metadata"] = TaintWrapper("method metadata", ["method_origin"])
         bound_method.__dict__["config"] = {
-            "setting": TaintInt(456, ["config_origin"]),
+            "setting": TaintWrapper(456, ["config_origin"]),
             "flag": True,
         }
 
@@ -235,8 +235,8 @@ class TestUntaintIfNeeded:
         lambda_func = lambda x: x * 3
 
         # Add tainted attributes to lambda
-        lambda_func.multiplier = TaintInt(3, ["lambda_origin"])
-        lambda_func.description = TaintStr("triple function", ["desc_origin"])
+        lambda_func.multiplier = TaintWrapper(3, ["lambda_origin"])
+        lambda_func.description = TaintWrapper("triple function", ["desc_origin"])
 
         result = untaint_if_needed(lambda_func)
 
@@ -257,7 +257,7 @@ class TestUntaintIfNeeded:
 
         # Create circular reference with taint
         circular_func.self_ref = circular_func
-        circular_func.tainted_data = TaintStr("circular taint", ["circular_origin"])
+        circular_func.tainted_data = TaintWrapper("circular taint", ["circular_origin"])
 
         result = untaint_if_needed(circular_func)
 
@@ -331,9 +331,9 @@ class TestUntaintIfNeeded:
         assert result.y == 20
 
     def test_taint_object_wrapper(self):
-        """Test TaintObject wrapper"""
+        """Test TaintWrapper wrapper"""
         original = SimpleClass("wrapped")
-        tainted = TaintObject(original, ["test_origin"])
+        tainted = TaintWrapper(original, ["test_origin"])
 
         result = untaint_if_needed(tainted)
         # Should extract the wrapped object
@@ -544,7 +544,7 @@ class TestUntaintIfNeeded:
             ("Simple Objects", self.test_simple_objects),
             ("Dataclass Objects", self.test_dataclass_objects),
             ("Objects with Slots", self.test_objects_with_slots),
-            ("TaintObject Wrapper", self.test_taint_object_wrapper),
+            ("TaintWrapper Wrapper", self.test_taint_object_wrapper),
             ("Circular References", self.test_circular_references),
             ("Builtin Objects", self.test_builtin_objects),
             ("Complex Nested Structure", self.test_complex_nested_structure),
