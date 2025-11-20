@@ -32,19 +32,40 @@ async def main():
     )
     shim.listener_thread.start()
 
-    return_code = shim._run_user_script_subprocess()
-    assert return_code == 0, f"[DeepResearch] failed with return_code {return_code}"
+    try:
+        return_code = shim._run_user_script_subprocess()
+        assert return_code == 0, f"[DeepResearch] failed with return_code {return_code}"
 
-    rows = DB.query_all(
-        "SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=?",
-        (shim.session_id,),
-    )
+        rows = DB.query_all(
+            "SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=?",
+            (shim.session_id,),
+        )
 
-    graph_topology = DB.query_one(
-        "SELECT log, success, graph_topology FROM experiments WHERE session_id=?",
-        (shim.session_id,),
-    )
-    graph = json.loads(graph_topology["graph_topology"])
+        graph_topology = DB.query_one(
+            "SELECT log, success, graph_topology FROM experiments WHERE session_id=?",
+            (shim.session_id,),
+        )
+        graph = json.loads(graph_topology["graph_topology"])
+    except Exception as e:
+        # Print server logs for debugging when test fails
+        import subprocess
+        print("\n" + "="*80)
+        print("SERVER LOGS (for debugging):")
+        print("="*80)
+        try:
+            result = subprocess.run(
+                ["aco-server", "logs"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            print(result.stdout)
+            if result.stderr:
+                print("STDERR:", result.stderr)
+        except Exception as log_error:
+            print(f"Failed to retrieve server logs: {log_error}")
+        print("="*80 + "\n")
+        raise e
 
     # send a restart message
     message = {"type": "restart", "role": "shim-control", "session_id": shim.session_id}

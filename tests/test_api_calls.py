@@ -89,11 +89,6 @@ def run_test(program_file, api_type, create_response_func, create_input_func, ht
     initial_http_calls = len(http_calls.calls) if http_calls else 0
     print(f"Initial HTTP calls: {initial_http_calls}")
 
-    # HACK: Inserts takes longer for remote, give additional 5s
-    TEST_TIMEOUT = 8
-    if db_backend != "local":
-        TEST_TIMEOUT += 5
-
     # 1. Set DB backend.
     print(f"Switching server database backend to: {db_backend}")
     admin_sock = socket.create_connection(("127.0.0.1", 5959))
@@ -179,7 +174,7 @@ def run_test(program_file, api_type, create_response_func, create_input_func, ht
     start_time = time.time()
     print("Waiting for graph updates...")
 
-    while time.time() - start_time < TEST_TIMEOUT: # Messages need to arrive within this time
+    while time.time() - start_time < 8: # Messages need to arrive within 8s
         try:
             msg = message_queue.get(timeout=1)
             if msg.get("type") == "graph_update" and msg.get("session_id") == session_id:
