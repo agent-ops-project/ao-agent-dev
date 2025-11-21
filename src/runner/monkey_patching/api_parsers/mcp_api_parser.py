@@ -8,12 +8,11 @@ def _get_input_mcp_client_session_call_tool(input_dict: dict):
     #   read_timeout_seconds: timedelta | None = None,
     #   progress_callback: ProgressFnT | None = None,
     # see <env-path>/lib/python3.13/site-packages/mcp/client/session.py
-    # We are only interested in name (this classifies as tool) and the arguments.
+    # We are only interested in name and the arguments.
     # The arguments can contain attachments.
     arguments = input_dict["arguments"]
-    tools = [input_dict["name"]]
     attachments = []
-    return str(arguments), attachments, tools
+    return str(arguments), attachments
 
 
 def _get_model_mcp_client_session_call_tool(
@@ -86,7 +85,7 @@ def _get_output_mcp_client_session_call_tool(response_obj: Any) -> str:
         else:
             content_list.append({"type": "Unknown", "data": {"type_name": str(type(content))}})
 
-    return json.dumps({"content": content_list}, indent=4)
+    return json.dumps({"content": content_list}, indent=2, ensure_ascii=False)
 
 
 def _set_input_mcp_client_session_call_tool(

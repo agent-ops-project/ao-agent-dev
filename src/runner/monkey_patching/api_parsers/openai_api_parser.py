@@ -2,27 +2,10 @@ import os
 import json
 from typing import Any, Dict, List, Tuple
 from aco.common.logger import logger
+from aco.runner.monkey_patching.api_parsers.api_parser_utils import _deep_serialize
 
 
 # --------------------- Helper functions ---------------------
-
-
-def _deep_serialize(obj: Any) -> Any:
-    """Recursively serialize objects to JSON-compatible format."""
-    if obj is None or isinstance(obj, (str, int, float, bool)):
-        return obj
-    elif isinstance(obj, dict):
-        return {k: _deep_serialize(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [_deep_serialize(item) for item in obj]
-    elif hasattr(obj, "__dict__"):
-        # Convert object to dict and recursively serialize
-        result = {}
-        for k, v in vars(obj).items():
-            result[k] = _deep_serialize(v)
-        return result
-    else:
-        return str(obj)
 
 
 def _serialize_chat_completion_message(message: Any) -> Dict[str, Any]:
@@ -105,20 +88,18 @@ def _serialize_usage(usage: Any) -> Dict[str, Any]:
 
 def _get_input_openai_chat_completions_create(
     input_dict: Dict[str, Any],
-) -> Tuple[str, List[str], List[str]]:
+) -> Tuple[str, List[str]]:
     """Serialize OpenAI chat completions input to JSON string.
 
     Returns:
-        Tuple of (json_str, attachments, tools):
+        Tuple of (json_str, attachments):
         - json_str: JSON representation of the input
         - attachments: List of attachment file IDs referenced in messages
-        - tools: List of tool/function names used in the request
     """
     from openai._types import NOT_GIVEN
 
     serialized = {}
     attachments = []
-    tools = []
 
     # Serialize all fields, handling NOT_GIVEN sentinel
     for key, value in input_dict.items():
@@ -130,21 +111,12 @@ def _get_input_openai_chat_completions_create(
             for msg in value:
                 serialized_msg = _serialize_chat_completion_message(msg)
                 serialized[key].append(serialized_msg)
-        elif key == "tools":
-            # Serialize tools and extract tool names
-            serialized[key] = _deep_serialize(value)
-            for tool in value:
-                if isinstance(tool, dict) and "function" in tool:
-                    if isinstance(tool["function"], dict) and "name" in tool["function"]:
-                        tools.append(tool["function"]["name"])
-                elif hasattr(tool, "function") and hasattr(tool.function, "name"):
-                    tools.append(tool.function.name)
         else:
             # Deep serialize everything else
             serialized[key] = _deep_serialize(value)
 
     json_str = json.dumps(serialized, indent=2, ensure_ascii=False)
-    return json_str, attachments, tools
+    return json_str, attachments
 
 
 def _set_input_openai_chat_completions_create(
@@ -406,47 +378,31 @@ def _get_model_openai_chat_completions_create(input_dict: Dict[str, Any]) -> str
 
 def _get_input_openai_responses_create(
     input_dict: Dict[str, Any],
-) -> Tuple[str, List[str], List[str]]:
-    """Extract input text, attachments, and tools from OpenAI responses create input."""
+) -> Tuple[str, List[str]]:
+    """Extract input text and attachments from OpenAI responses create input."""
     input_data = input_dict.get("input", [])
 
-    # Extract tools from the input_dict
-    tools = input_dict.get("tools", [])
-    tool_names = []
-
-    if isinstance(tools, list):
-        for tool in tools:
-            if isinstance(tool, dict):
-                tool_names.append(tool.get("name", "unknown_tool"))
-            elif hasattr(tool, "name"):
-                tool_names.append(tool.name)
-            else:
-                tool_names.append(str(tool))
-        tool_names = sorted(tool_names)  # Sort for consistent cache keys
-    else:
-        tool_names = []
-
     if not input_data:
-        return str(input_data), [], tool_names
+        return str(input_data), []
 
     # Handle different input formats
     if isinstance(input_data, list):
         # Find the first user message and return only that
         for item in input_data:
             if isinstance(item, dict) and item.get("role") == "user" and "content" in item:
-                return str(item["content"]), [], tool_names
+                return str(item["content"]), []
 
         # Fallback: if no user message found, try to extract any content
         for item in input_data:
             if isinstance(item, dict) and "content" in item:
-                return str(item["content"]), [], tool_names
+                return str(item["content"]), []
 
         # Last resort: return first item as string
         if input_data:
-            return str(input_data[0]), [], tool_names
-        return str(input_data), [], tool_names
+            return str(input_data[0]), []
+        return str(input_data), []
     else:
-        return str(input_data), [], tool_names
+        return str(input_data), []
 
 
 def _set_input_openai_responses_create(
@@ -481,7 +437,7 @@ def _get_model_openai_responses_create(input_dict: Dict[str, Any]) -> str:
 
 def _get_input_openai_beta_threads_create_and_poll(
     input_obj: Any,
-) -> Tuple[str, List[str], List[str]]:
+) -> Tuple[str, List[str]]:
     from aco.server.cache_manager import CACHE
 
     # Get paths to cached attachments.
@@ -490,12 +446,12 @@ def _get_input_openai_beta_threads_create_and_poll(
     attachments = CACHE.attachment_ids_to_paths(attachments)
     # Convert into format [(name, path), ...]
     attachments = [[os.path.basename(path), path] for path in attachments]
-    return message, attachments, []
+    return message, attachments
 
 
 def _get_input_openai_beta_threads_create(
     input_dict: Dict[str, Any],
-) -> Tuple[str, List[str], List[str]]:
+) -> Tuple[str, List[str]]:
     from aco.server.cache_manager import CACHE
 
     # Get paths to cached attachments.
@@ -507,7 +463,7 @@ def _get_input_openai_beta_threads_create(
     attachments = CACHE.attachment_ids_to_paths(attachments)
     # Convert into format [(name, path), ...]
     attachments = [[os.path.basename(path), path] for path in attachments]
-    return prompt, attachments, []
+    return prompt, attachments
 
 
 def _set_input_openai_beta_threads_create(input_dict: Dict[str, Any], new_input_text: str) -> None:
@@ -556,8 +512,8 @@ def _get_model_openai_beta_threads_create(input_dict: Dict[str, Any]) -> str:
 # ===============================================
 
 
-def get_input(input_dict: Dict[str, Any], api_type: str) -> Tuple[str, List[str], List[str]]:
-    """Extract input text, attachments, and tools from API input."""
+def get_input(input_dict: Dict[str, Any], api_type: str) -> Tuple[str, List[str]]:
+    """Extract input text and attachments from API input."""
     if api_type == "OpenAI.chat.completions.create":
         return _get_input_openai_chat_completions_create(input_dict)
     elif api_type == "AsyncOpenAI.chat.completions.create":

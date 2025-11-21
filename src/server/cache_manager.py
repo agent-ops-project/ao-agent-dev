@@ -10,6 +10,7 @@ from aco.runner.taint_wrappers import untaint_if_needed
 from aco.runner.monkey_patching.api_parser import get_input, get_model_name, set_input
 from aco.common.utils import hash_input
 
+
 class CacheManager:
     """
     Handles persistent caching and retrieval of LLM call inputs/outputs per experiment session.
@@ -71,14 +72,13 @@ class CacheManager:
 
         # Pickle input object.
         input_dict = untaint_if_needed(input_dict)
-        prompt, attachments, tools = get_input(input_dict, api_type)
+        prompt, attachments = get_input(input_dict, api_type)
         model = get_model_name(input_dict, api_type)
 
         cacheable_input = {
             "input": prompt,
             "attachments": attachments,
             "model": model,
-            "tools": tools,
         }
         input_pickle = dill.dumps(cacheable_input)
         input_hash = hash_input(input_pickle)

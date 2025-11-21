@@ -151,7 +151,7 @@ def send_graph_node_and_edges(node_id, input_dict, output_obj, source_node_ids, 
     codeLocation = f"{file_name}:{line_no}"
 
     # Get strings to display in UI.
-    input_string, attachments, tools = get_input(input_dict, api_type)
+    input_string, attachments = get_input(input_dict, api_type)
 
     # Untaint the output object before processing to avoid Pydantic validation issues
     untainted_output_obj = untaint_if_needed(output_obj)
