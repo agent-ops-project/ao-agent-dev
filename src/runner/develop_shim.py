@@ -68,6 +68,13 @@ class DevelopShim:
         self.is_module_execution = is_module_execution
         self.project_root = project_root
         self.sample_id = sample_id
+        
+        # Scan for Python files in project root for AST transformation
+        from aco.common.utils import scan_user_py_files_and_modules
+        self.project_module_to_file = scan_user_py_files_and_modules(os.path.abspath(self.project_root))
+        
+        # Merge with global module mapping to include both project files and ACO files
+        self.module_to_file = {**MODULE2FILE, **self.project_module_to_file}
 
         # State management
         self.restart_event = threading.Event()
@@ -287,7 +294,7 @@ class DevelopShim:
             "prev_session_id": os.getenv(
                 "AGENT_COPILOT_SESSION_ID"
             ),  # Is set if rerun, otherwise None
-            "module_to_file": MODULE2FILE,  # For file watcher
+            "module_to_file": self.module_to_file,  # For file watcher
         }
         try:
             self.server_conn.sendall((json.dumps(handshake) + "\n").encode("utf-8"))
@@ -353,7 +360,7 @@ class DevelopShim:
         runtime_tracing_dir = get_runnner_dir()
         wrapper_code = SCRIPT_WRAPPER_TEMPLATE.format(
             runtime_tracing_dir=repr(runtime_tracing_dir),
-            module_to_file=repr(MODULE2FILE),
+            module_to_file=repr(self.module_to_file),
             module_name=repr(module_name),
             script_args=repr(script_args),
         )
@@ -374,7 +381,7 @@ class DevelopShim:
             runtime_tracing_dir = get_runnner_dir()
             wrapper_code = MODULE_WRAPPER_TEMPLATE.format(
                 runtime_tracing_dir=repr(runtime_tracing_dir),
-                module_to_file=repr(MODULE2FILE),
+                module_to_file=repr(self.module_to_file),
                 module_name=repr(self.script_path),
                 script_args=repr(self.script_args),
             )

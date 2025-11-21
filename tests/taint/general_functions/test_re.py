@@ -253,7 +253,7 @@ def test_function_callbacks():
         str(result) == "[HELLO] [WORLD] [TEST]"
     ), f"Expected '[HELLO] [WORLD] [TEST]', got '{result}'"
 
-    print(f"✓ Function callbacks work: {result.get_raw()}")
+    print(f"✓ Function callbacks work")
 
 
 @with_ast_rewriting
@@ -397,7 +397,7 @@ def test_subn_with_count():
     assert count2 == 2, f"Expected 2 substitutions, got {count2}"
     assert isinstance(result2, TaintWrapper), "Limited subn result should be TaintWrapper"
 
-    print(f"✓ subn with count works: {count} substitutions, result={result.get_raw()}")
+    print(f"✓ subn with count works: {count} substitutions")
 
 
 @with_ast_rewriting
@@ -446,7 +446,7 @@ def test_expand_method():
     expected = "Hello John, you are 25 years old"
     assert str(expanded) == expected, f"Expected '{expected}', got '{expanded}'"
 
-    print(f"✓ expand() works: {expanded.get_raw()}")
+    print(f"✓ expand() works")
 
 
 @with_ast_rewriting

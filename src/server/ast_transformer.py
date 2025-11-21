@@ -82,6 +82,11 @@ def rewrite_source_to_code(source: str, filename: str, module_to_file: dict = No
         SyntaxError: If the source code is invalid
         Exception: If AST transformation fails
     """
+    # Inject future imports to prevent type annotations from being evaluated at import time
+    # This must be done before parsing to avoid AST transformation of type subscripts
+    if "from __future__ import annotations" not in source:
+        source = "from __future__ import annotations\n" + source
+    
     # Parse source into AST
     tree = ast.parse(source, filename=filename)
 
@@ -815,8 +820,19 @@ class TaintPropagationTransformer(ast.NodeTransformer):
                 ctx=ast.Load()
             )
 
+            # Create a copy of target with Load context for use in args
+            # The original node.target has Store context, but we need Load for reading
+            import copy
+            target_load = copy.deepcopy(node.target)
+            if hasattr(target_load, 'ctx'):
+                target_load.ctx = ast.Load()
+            # Recursively fix context for nested attributes/subscripts
+            for child in ast.walk(target_load):
+                if hasattr(child, 'ctx') and not isinstance(child.ctx, ast.Load):
+                    child.ctx = ast.Load()
+
             # Create args tuple (target, value)
-            args_tuple = ast.Tuple(elts=[node.target, node.value], ctx=ast.Load())
+            args_tuple = ast.Tuple(elts=[target_load, node.value], ctx=ast.Load())
 
             # Create empty kwargs dict
             kwargs_dict = ast.Dict(keys=[], values=[])
@@ -924,8 +940,22 @@ class TaintPropagationTransformer(ast.NodeTransformer):
                     ctx=ast.Load()
                 )
 
+                # Create copies of target.value and target.slice with Load context
+                # The originals have Store/Del context, but we need Load for reading
+                import copy
+                target_value_load = copy.deepcopy(target.value)
+                target_slice_load = copy.deepcopy(target.slice)
+                
+                # Fix context for all nodes in the copies
+                for child in ast.walk(target_value_load):
+                    if hasattr(child, 'ctx'):
+                        child.ctx = ast.Load()
+                for child in ast.walk(target_slice_load):
+                    if hasattr(child, 'ctx'):
+                        child.ctx = ast.Load()
+                
                 # Create args tuple (object, key, value)
-                args_tuple = ast.Tuple(elts=[target.value, target.slice, node.value], ctx=ast.Load())
+                args_tuple = ast.Tuple(elts=[target_value_load, target_slice_load, node.value], ctx=ast.Load())
 
                 # Create empty kwargs dict
                 kwargs_dict = ast.Dict(keys=[], values=[])
@@ -979,8 +1009,22 @@ class TaintPropagationTransformer(ast.NodeTransformer):
                     ctx=ast.Load()
                 )
 
+                # Create copies of target.value and target.slice with Load context
+                # The originals have Del context, but we need Load for reading
+                import copy
+                target_value_load = copy.deepcopy(target.value)
+                target_slice_load = copy.deepcopy(target.slice)
+                
+                # Fix context for all nodes in the copies
+                for child in ast.walk(target_value_load):
+                    if hasattr(child, 'ctx'):
+                        child.ctx = ast.Load()
+                for child in ast.walk(target_slice_load):
+                    if hasattr(child, 'ctx'):
+                        child.ctx = ast.Load()
+                
                 # Create args tuple (object, key)
-                args_tuple = ast.Tuple(elts=[target.value, target.slice], ctx=ast.Load())
+                args_tuple = ast.Tuple(elts=[target_value_load, target_slice_load], ctx=ast.Load())
 
                 # Create empty kwargs dict
                 kwargs_dict = ast.Dict(keys=[], values=[])
@@ -1004,6 +1048,7 @@ class TaintPropagationTransformer(ast.NodeTransformer):
                 return ast.copy_location(new_node, node)
 
         return node
+
 
     def _extract_project_root(self, current_file):
         """Extract project root by finding common prefix of module paths."""
@@ -1049,12 +1094,16 @@ class TaintPropagationTransformer(ast.NodeTransformer):
         # Find the insertion point after any __future__ imports
         insertion_point = 0
         has_future_imports = False
+        has_annotations_import = False
         last_future_import_pos = -1
 
         for i, node in enumerate(tree.body):
             if isinstance(node, ast.ImportFrom) and node.module == "__future__":
                 has_future_imports = True
                 last_future_import_pos = i
+                # Check if annotations is already imported
+                if any(alias.name == "annotations" for alias in (node.names or [])):
+                    has_annotations_import = True
 
         if has_future_imports:
             # Insert after the last __future__ import
@@ -1063,8 +1112,10 @@ class TaintPropagationTransformer(ast.NodeTransformer):
             # Insert at the beginning if no __future__ imports
             insertion_point = 0
 
+
         # Create safe import with fallbacks for plain Python execution
         safe_import_code = """
+import operator
 try:
     from aco.server.ast_transformer import exec_func, taint_fstring_join, taint_format_string, taint_percent_format, taint_open
 except ImportError:
@@ -1166,6 +1217,48 @@ def _get_bound_obj_hash(bound_self: object | None):
         else:
             bound_hash = hash_input(bytes_string)
     return bound_hash
+
+
+def _is_type_annotation_access(obj, key):
+    """
+    Detect if this getitem call is for type annotation rather than runtime access.
+    
+    Args:
+        obj: The object being subscripted
+        key: The key/index being accessed
+        
+    Returns:
+        bool: True if this looks like a type annotation access (e.g., Dict[str, int])
+    """
+    # Check 1: Is the object a type/class rather than an instance?
+    if isinstance(obj, type):
+        return True
+    
+    # Check 2: Is it from typing module?
+    if hasattr(obj, '__module__') and obj.__module__ == 'typing':
+        return True
+    
+    # Check 3: Is it a generic alias (Python 3.9+)?
+    if hasattr(obj, '__origin__'):  # GenericAlias objects like list[int]
+        return True
+    
+    # Check 4: Does it support generic subscripting (__class_getitem__)?
+    if hasattr(obj, '__class_getitem__'):
+        # Make sure it's not a regular dict/list/set with custom __class_getitem__
+        obj_type_name = type(obj).__name__
+        if obj_type_name in {'dict', 'list', 'tuple', 'set'}:
+            # This is a runtime collection instance, not a type
+            return False
+        # Likely a generic type that supports subscripting
+        return True
+    
+    # Check 5: Common type constructs by name
+    if hasattr(obj, '__name__'):
+        type_names = {'Dict', 'List', 'Tuple', 'Set', 'Optional', 'Union', 'Any', 'Callable'}
+        if obj.__name__ in type_names:
+            return True
+    
+    return False
 
 
 def exec_func(func, args, kwargs, user_py_files=None):
@@ -1304,8 +1397,21 @@ def exec_func(func, args, kwargs, user_py_files=None):
     untainted_args = untaint_if_needed(args)
     untainted_kwargs = untaint_if_needed(kwargs)
 
+    # Check if this is a type annotation access (e.g., Dict[str, int]) rather than runtime access
+    if (hasattr(func, '__name__') and func.__name__ == 'getitem' and 
+        len(untainted_args) >= 2):
+        
+        obj, key = untainted_args[0], untainted_args[1]
+        
+        # Detect type annotation patterns and skip taint wrapping
+        if _is_type_annotation_access(obj, key):
+            # This is a type annotation access - call normally without taint propagation
+            return func(*untainted_args, **untainted_kwargs)
+        
+
     # Call the original function with untainted arguments
     bound_hash_before_func = _get_bound_obj_hash(bound_self) if all_origins else None
+    
     result = func(*untainted_args, **untainted_kwargs)
     bound_hash_after_func = _get_bound_obj_hash(bound_self) if all_origins else None
 
@@ -1338,12 +1444,12 @@ def exec_func(func, args, kwargs, user_py_files=None):
             return taint_wrap(result, taint_origin=all_origins)
 
         # need to taint bound object (if any) as well
-        # we need to use inplace because you cannot assign __self__ of
-        # builtin functions ([1].append.__self__ = [1,2] does not work)
+        # Note: we cannot assign __self__ of builtin functions 
+        # ([1].append.__self__ = [1,2] does not work)
         if hasattr(func, "__self__"):
-            taint_wrap(bound_self, taint_origin=all_origins, inplace=True)
+            taint_wrap(bound_self, taint_origin=all_origins)
         elif hasattr(func, "func") and hasattr(func.func, "__self__"):
-            taint_wrap(bound_self, taint_origin=all_origins, inplace=True)
+            taint_wrap(bound_self, taint_origin=all_origins)
 
         return taint_wrap(result, taint_origin=all_origins)
 
