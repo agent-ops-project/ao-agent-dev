@@ -27,8 +27,8 @@ from openai.types.completion_usage import (
 )
 
 from aco.runner.monkey_patching.api_parsers.openai_api_parser import (
-    _get_output_openai_chat_completions_create,
-    _set_output_openai_chat_completions_create,
+    _get_output_openai,
+    _set_output_openai,
 )
 
 
@@ -62,7 +62,7 @@ def test_simple_text_response():
     )
 
     # Serialize
-    json_str = _get_output_openai_chat_completions_create(response)
+    json_str = _get_output_openai(response)
 
     # Verify it's valid JSON
     parsed = json.loads(json_str)
@@ -85,7 +85,7 @@ def test_simple_text_response():
             Choice(index=0, message=ChatCompletionMessage(role="assistant"), finish_reason="stop")
         ],
     )
-    _set_output_openai_chat_completions_create(new_response, json_str)
+    _set_output_openai(new_response, json_str)
 
     # Verify round-trip
     assert new_response.id == "chatcmpl-123"
@@ -128,7 +128,7 @@ def test_response_with_tool_calls():
     )
 
     # Serialize
-    json_str = _get_output_openai_chat_completions_create(response)
+    json_str = _get_output_openai(response)
 
     # Verify
     parsed = json.loads(json_str)
@@ -147,7 +147,7 @@ def test_response_with_tool_calls():
             Choice(index=0, message=ChatCompletionMessage(role="assistant"), finish_reason="stop")
         ],
     )
-    _set_output_openai_chat_completions_create(new_response, json_str)
+    _set_output_openai(new_response, json_str)
 
     # Verify round-trip
     assert new_response.choices[0].finish_reason == "tool_calls"
@@ -179,7 +179,7 @@ def test_response_with_refusal():
     )
 
     # Serialize
-    json_str = _get_output_openai_chat_completions_create(response)
+    json_str = _get_output_openai(response)
 
     # Verify
     parsed = json.loads(json_str)
@@ -197,7 +197,7 @@ def test_response_with_refusal():
             Choice(index=0, message=ChatCompletionMessage(role="assistant"), finish_reason="stop")
         ],
     )
-    _set_output_openai_chat_completions_create(new_response, json_str)
+    _set_output_openai(new_response, json_str)
 
     # Verify round-trip
     assert new_response.choices[0].message.refusal == "I cannot assist with that request."
@@ -247,7 +247,7 @@ def test_response_with_usage_details():
     )
 
     # Serialize
-    json_str = _get_output_openai_chat_completions_create(response)
+    json_str = _get_output_openai(response)
 
     # Verify
     parsed = json.loads(json_str)
@@ -265,7 +265,7 @@ def test_response_with_usage_details():
             Choice(index=0, message=ChatCompletionMessage(role="assistant"), finish_reason="stop")
         ],
     )
-    _set_output_openai_chat_completions_create(new_response, json_str)
+    _set_output_openai(new_response, json_str)
 
     # Verify round-trip
     assert new_response.usage.total_tokens == 350
@@ -301,7 +301,7 @@ def test_multiple_choices():
     )
 
     # Serialize
-    json_str = _get_output_openai_chat_completions_create(response)
+    json_str = _get_output_openai(response)
 
     # Verify
     parsed = json.loads(json_str)
@@ -318,7 +318,7 @@ def test_multiple_choices():
         model="",
         choices=choices,  # Use same choices for initialization
     )
-    _set_output_openai_chat_completions_create(new_response, json_str)
+    _set_output_openai(new_response, json_str)
 
     # Verify round-trip
     assert len(new_response.choices) == 3
@@ -353,7 +353,7 @@ def test_response_with_function_call():
     )
 
     # Serialize
-    json_str = _get_output_openai_chat_completions_create(response)
+    json_str = _get_output_openai(response)
 
     # Verify
     parsed = json.loads(json_str)
@@ -370,7 +370,7 @@ def test_response_with_function_call():
             Choice(index=0, message=ChatCompletionMessage(role="assistant"), finish_reason="stop")
         ],
     )
-    _set_output_openai_chat_completions_create(new_response, json_str)
+    _set_output_openai(new_response, json_str)
 
     # Verify round-trip
     assert new_response.choices[0].message.function_call.name == "calculator"
@@ -438,7 +438,7 @@ def test_response_with_logprobs():
     )
 
     # Serialize
-    json_str = _get_output_openai_chat_completions_create(response)
+    json_str = _get_output_openai(response)
 
     # Verify
     parsed = json.loads(json_str)
@@ -461,7 +461,7 @@ def test_response_with_logprobs():
             Choice(index=0, message=ChatCompletionMessage(role="assistant"), finish_reason="stop")
         ],
     )
-    _set_output_openai_chat_completions_create(new_response, json_str)
+    _set_output_openai(new_response, json_str)
 
     # Verify round-trip - logprobs should be reconstructed as proper ChoiceLogprobs object
     assert new_response.choices[0].logprobs is not None
@@ -494,7 +494,7 @@ def test_empty_response():
     )
 
     # Serialize
-    json_str = _get_output_openai_chat_completions_create(response)
+    json_str = _get_output_openai(response)
 
     # Verify
     parsed = json.loads(json_str)
@@ -512,7 +512,7 @@ def test_empty_response():
             Choice(index=0, message=ChatCompletionMessage(role="assistant"), finish_reason="stop")
         ],
     )
-    _set_output_openai_chat_completions_create(new_response, json_str)
+    _set_output_openai(new_response, json_str)
 
     # Verify round-trip
     assert new_response.choices[0].message.content == ""

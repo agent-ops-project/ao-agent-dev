@@ -30,7 +30,6 @@ class EditManager:
         input_overwrite["input"] = new_input
         input_overwrite = dill.dumps(input_overwrite)
 
-        
         DB.set_input_overwrite_query(input_overwrite, session_id, node_id)
 
     def set_output_overwrite(self, session_id, node_id, new_output):
@@ -53,7 +52,7 @@ class EditManager:
             # Create a simple fallback output object
             output_obj = {"choices": [{"message": {"content": ""}}]}
 
-        set_output(output_obj, new_output, row["api_type"])
+        output_obj = set_output(output_obj, new_output, row["api_type"])
         output_overwrite = dill.dumps(output_obj)
         DB.set_output_overwrite_query(output_overwrite, session_id, node_id)
 
@@ -69,7 +68,7 @@ class EditManager:
         default_graph = json.dumps({"nodes": [], "edges": []})
         parent_session_id = parent_session_id if parent_session_id else session_id
         env_json = json.dumps(environment)
-        
+
         # Use database manager to execute backend-specific SQL
         DB.add_experiment_query(
             session_id,
@@ -149,7 +148,9 @@ class EditManager:
         # Update experiments table with new `log`, `success`, `color_preview`, and `graph_topology`
         graph_json = json.dumps(updated_graph)
         color_preview_json = json.dumps(updated_color_preview)
-        DB.update_experiment_log_query(updated_log, updated_success, color_preview_json, graph_json, session_id)
+        DB.update_experiment_log_query(
+            updated_log, updated_success, color_preview_json, graph_json, session_id
+        )
 
         return updated_graph
 
