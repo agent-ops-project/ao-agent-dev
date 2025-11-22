@@ -3,6 +3,10 @@ from openai import OpenAI
 client = OpenAI()
 
 response = client.responses.create(
+    model="gpt-3.5-turbo", input=10, temperature=0
+)
+
+response = client.responses.create(
     model="gpt-3.5-turbo", input=f"Output the number 42 and nothing else", temperature=0
 )
 

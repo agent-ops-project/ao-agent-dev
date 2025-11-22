@@ -1,6 +1,4 @@
 import json
-
-import dill
 from aco.common.logger import logger
 from aco.common.constants import (
     DEFAULT_LOG,
@@ -10,7 +8,7 @@ from aco.common.constants import (
     SUCCESS_STRING,
 )
 from aco.server.database_manager import DB
-from aco.runner.monkey_patching.api_parser import set_output
+from aco.runner.monkey_patching.api_parser import json_str_to_api_obj
 
 
 class EditManager:
@@ -25,14 +23,12 @@ class EditManager:
             "SELECT input, api_type FROM llm_calls WHERE session_id=? AND node_id=?",
             (session_id, node_id),
         )
-
-        input_overwrite = dill.loads(row["input"])
+        input_overwrite = json.loads(row["input"])
         input_overwrite["input"] = new_input
-        input_overwrite = dill.dumps(input_overwrite)
-
+        input_overwrite = json.dumps(input_overwrite)
         DB.set_input_overwrite_query(input_overwrite, session_id, node_id)
 
-    def set_output_overwrite(self, session_id, node_id, new_output):
+    def set_output_overwrite(self, session_id, node_id, new_output: str):
         # Overwrite output for node.
         row = DB.query_one(
             "SELECT output, api_type FROM llm_calls WHERE session_id=? AND node_id=?",
@@ -46,15 +42,11 @@ class EditManager:
             return
 
         try:
-            output_obj = dill.loads(row["output"])
-        except (EOFError, Exception) as e:
-            logger.error(f"Failed to unpickle output for node {node_id}: {e}")
-            # Create a simple fallback output object
-            output_obj = {"choices": [{"message": {"content": ""}}]}
-
-        output_obj = set_output(output_obj, new_output, row["api_type"])
-        output_overwrite = dill.dumps(output_obj)
-        DB.set_output_overwrite_query(output_overwrite, session_id, node_id)
+            # try to parse the edit of the user
+            json_str_to_api_obj(new_output, row["api_type"])
+            DB.set_output_overwrite_query(new_output, session_id, node_id)
+        except Exception as e:
+            logger.error(f"Failed to parse output edit into API object: {e}")
 
     def erase(self, session_id):
         default_graph = json.dumps({"nodes": [], "edges": []})

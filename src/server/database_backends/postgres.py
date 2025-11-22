@@ -515,6 +515,11 @@ def delete_all_llm_calls_query():
     execute("DELETE FROM llm_calls")
 
 
+def delete_llm_calls_query(session_id):
+    """Delete all llm calls belonging to a session id."""
+    execute("DELETE FROM llm_calls WHERE session_id=?", (session_id,))
+
+
 def get_session_name_query(session_id):
     """Get session name by session_id."""
     return query_one("SELECT name FROM experiments WHERE session_id=%s", (session_id,))

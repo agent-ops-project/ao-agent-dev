@@ -3,7 +3,11 @@ from aco.runner.context_manager import get_session_id
 from aco.common.constants import CERTAINTY_YELLOW
 from aco.common.utils import send_to_server
 from aco.common.logger import logger
-from aco.runner.monkey_patching.api_parser import get_input, get_model_name, get_output
+from aco.runner.monkey_patching.api_parser import (
+    get_model_name,
+    func_kwargs_to_json_str,
+    api_obj_to_json_str,
+)
 from aco.runner.taint_wrappers import untaint_if_needed
 
 
@@ -66,11 +70,11 @@ def send_graph_node_and_edges(node_id, input_dict, output_obj, source_node_ids, 
     codeLocation = f"{file_name}:{line_no}"
 
     # Get strings to display in UI.
-    input_string, attachments = get_input(input_dict, api_type)
+    input_string, attachments = func_kwargs_to_json_str(input_dict, api_type)
 
     # Untaint the output object before processing to avoid Pydantic validation issues
     untainted_output_obj = untaint_if_needed(output_obj)
-    output_string = get_output(untainted_output_obj, api_type)
+    output_string = api_obj_to_json_str(untainted_output_obj, api_type)
     model = get_model_name(input_dict, api_type)
 
     # Send node

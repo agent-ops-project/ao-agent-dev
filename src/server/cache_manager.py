@@ -1,6 +1,5 @@
 import uuid
 import json
-import dill
 import random
 from dataclasses import dataclass
 from typing import Optional, Any
@@ -9,7 +8,12 @@ from aco.common.constants import ACO_ATTACHMENT_CACHE
 from aco.server.database_manager import DB
 from aco.common.utils import stream_hash, save_io_stream, set_seed
 from aco.runner.taint_wrappers import untaint_if_needed
-from aco.runner.monkey_patching.api_parser import get_input, get_model_name, set_input
+from aco.runner.monkey_patching.api_parser import (
+    get_model_name,
+    func_kwargs_to_json_str,
+    json_str_to_api_obj,
+    api_obj_to_json_str,
+)
 from aco.common.utils import hash_input
 
 
@@ -99,15 +103,15 @@ class CacheManager:
 
         # Pickle input object.
         input_dict = untaint_if_needed(input_dict)
-        prompt, attachments = get_input(input_dict, api_type)
+        api_json_str, attachments = func_kwargs_to_json_str(input_dict, api_type)
         model = get_model_name(input_dict, api_type)
 
         cacheable_input = {
-            "input": prompt,
+            "input": api_json_str,
             "attachments": attachments,
             "model": model,
         }
-        input_pickle = dill.dumps(cacheable_input)
+        input_pickle = json.dumps(cacheable_input)
         input_hash = hash_input(input_pickle)
 
         # Check if API call with same session_id & input has been made before.
@@ -134,14 +138,12 @@ class CacheManager:
         )
 
         if row["input_overwrite"] is not None:
-            # input_overwrite = dill.loads(row["input_overwrite"])
-            # input_overwrite = dill.dumps(input_overwrite) # TODO: Tmp, need to refactor the unnecessary dills
-            overwrite_pickle = row["input_overwrite"]
-            overwrite_text = dill.loads(overwrite_pickle)["input"]
-            set_input(input_dict, overwrite_text, api_type)
+            overwrite_json_str = row["input_overwrite"]
+            overwrite_text = json.loads(overwrite_json_str)["input"]
+            input_dict = json.loads(overwrite_text)
 
         if row["output"] is not None:
-            output = dill.loads(row["output"])
+            output = json_str_to_api_obj(row["output"], api_type)
         else:
             logger.warning(
                 f"Found result in the cache, but output is None. Is this call doing something useful?"
@@ -178,7 +180,7 @@ class CacheManager:
         logger.debug(
             f"Cache MISS, (session_id, node_id, input_hash): {(cache_result.session_id, node_id, cache_result.input_hash)}"
         )
-        output_pickle = dill.dumps(output_obj)
+        output_json_str = api_obj_to_json_str(output_obj, api_type)
         if cache:
             DB.insert_llm_call_with_output_query(
                 cache_result.session_id,
@@ -186,7 +188,7 @@ class CacheManager:
                 cache_result.input_hash,
                 node_id,
                 api_type,
-                output_pickle,
+                output_json_str,
             )
         cache_result.node_id = node_id
         cache_result.output = output_obj

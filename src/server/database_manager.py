@@ -249,12 +249,12 @@ class DatabaseManager:
         return backend.get_llm_call_by_session_and_hash_query(session_id, input_hash)
 
     def insert_llm_call_with_output_query(
-        self, session_id, input_pickle, input_hash, node_id, api_type, output_pickle
+        self, session_id, input_pickle, input_hash, node_id, api_type, output_str
     ):
         """Insert new LLM call record with output in a single operation."""
         backend = self._get_backend_module()
         return backend.insert_llm_call_with_output_query(
-            session_id, input_pickle, input_hash, node_id, api_type, output_pickle
+            session_id, input_pickle, input_hash, node_id, api_type, output_str
         )
 
     # Experiment list and graph queries
@@ -298,6 +298,10 @@ class DatabaseManager:
         """Delete all records from experiments table."""
         backend = self._get_backend_module()
         return backend.delete_all_experiments_query()
+
+    def delete_llm_calls_query(self, session_id):
+        backend = self._get_backend_module()
+        return backend.delete_llm_calls_query(session_id)
 
     def delete_all_llm_calls_query(self):
         """Delete all records from llm_calls table."""
