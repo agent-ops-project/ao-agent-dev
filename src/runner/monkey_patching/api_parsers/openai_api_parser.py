@@ -55,8 +55,8 @@ def _func_kwargs_to_json_str_openai_chat_completions_create(
 
     json_dict = maybe_transform(
         {
-            "messages": input_dict["messages"],
-            "model": input_dict["model"],
+            "messages": input_dict.get("messages"),
+            "model": input_dict.get("model"),
             "audio": input_dict.get("audio"),
             "frequency_penalty": input_dict.get("frequency_penalty"),
             "function_call": input_dict.get("function_call"),
