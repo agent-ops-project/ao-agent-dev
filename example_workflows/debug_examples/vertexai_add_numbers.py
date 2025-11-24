@@ -28,7 +28,7 @@ response2 = client.models.generate_content(
 
 sum_prompt = f"Add these two numbers together and just output the result: {response1.text} + {response2.text}"
 
-final_sum = response = client.models.generate_content(
+final_sum = client.models.generate_content(
     model=model,
     contents=sum_prompt,
 )

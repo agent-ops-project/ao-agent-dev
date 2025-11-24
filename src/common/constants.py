@@ -133,3 +133,9 @@ os.makedirs(ACO_ATTACHMENT_CACHE, exist_ok=True)
 # Path to the agent-copilot installation directory
 # Computed from this file's location: aco/common/constants.py -> agent-copilot/
 ACO_INSTALL_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Whitelist of third-party modules to include in module_to_file mapping
+# Add modules here that you want to track for AST rewrites
+WHITELISTED_THIRD_PARTY_MODULES = [
+    "google.genai.models",
+]

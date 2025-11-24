@@ -11,6 +11,12 @@ from aco.runner.monkey_patching.api_parsers.anthropic_api_parser import (
     json_str_to_api_obj_anthropic,
     get_model_anthropic,
 )
+from aco.runner.monkey_patching.api_parsers.google_api_parser import (
+    func_kwargs_to_json_str_google,
+    api_obj_to_json_str_google,
+    json_str_to_api_obj_google,
+    get_model_google,
+)
 
 
 def func_kwargs_to_json_str(input_dict: Dict[str, Any], api_type: str) -> Tuple[str, List[str]]:
@@ -23,6 +29,8 @@ def func_kwargs_to_json_str(input_dict: Dict[str, Any], api_type: str) -> Tuple[
         return func_kwargs_to_json_str_openai(input_dict, api_type)
     elif api_type == "Anthropic.messages.create":
         return func_kwargs_to_json_str_anthropic(input_dict)
+    elif api_type == "google.genai.models._api_client.request":
+        return func_kwargs_to_json_str_google(input_dict)
     else:
         raise ValueError(f"Unknown API type {api_type}")
 
@@ -37,6 +45,8 @@ def api_obj_to_json_str(response_obj: Any, api_type: str) -> str:
         return api_obj_to_json_str_openai(response_obj)
     elif api_type == "Anthropic.messages.create":
         return api_obj_to_json_str_anthropic(response_obj)
+    elif api_type == "google.genai.models._api_client.request":
+        return api_obj_to_json_str_google(response_obj)
     else:
         raise ValueError(f"Unknown API type {api_type}")
 
@@ -51,6 +61,8 @@ def json_str_to_api_obj(new_output_text: str, api_type: str) -> Any:
         return json_str_to_api_obj_openai(new_output_text, api_type)
     elif api_type == "Anthropic.messages.create":
         return json_str_to_api_obj_anthropic(new_output_text)
+    elif api_type == "google.genai.models._api_client.request":
+        return json_str_to_api_obj_google(new_output_text)
     else:
         raise ValueError(f"Unknown API type {api_type}")
 
@@ -65,5 +77,7 @@ def get_model_name(input_dict: Dict[str, Any], api_type: str) -> str:
         return get_model_openai(input_dict)
     elif api_type == "Anthropic.messages.create":
         return get_model_anthropic(input_dict)
+    elif api_type == "google.genai.models._api_client.request":
+        return get_model_google(input_dict)
     else:
         raise ValueError(f"Unknown API type {api_type}")

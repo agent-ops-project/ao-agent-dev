@@ -54,10 +54,62 @@ def is_valid_mod(mod_name: str):
         return False
 
 
+def get_module_file_path(module_name: str) -> str | None:
+    """
+    Get the file path for an installed module.
+
+    Args:
+        module_name: The module name (e.g., 'google.genai.models')
+
+    Returns:
+        The absolute path to the module file, or None if not found
+    """
+    try:
+        spec = importlib.util.find_spec(module_name)
+        if spec is None or spec.origin is None:
+            return None
+
+        # spec.origin gives us the file path
+        origin = spec.origin
+
+        # For packages, origin points to __init__.py, which is what we want
+        if os.path.exists(origin):
+            return os.path.abspath(origin)
+
+        return None
+    except (ImportError, ModuleNotFoundError, ValueError, AttributeError):
+        return None
+
+
+def add_whitelisted_modules_to_mapping(module_to_file: dict, whitelist: list[str]) -> dict:
+    """
+    Add whitelisted third-party modules to the module_to_file mapping.
+
+    Args:
+        module_to_file: Existing mapping of module names to file paths
+        whitelist: List of module names to add (e.g., ['google.genai.models'])
+
+    Returns:
+        Updated module_to_file mapping
+    """
+    for module_name in whitelist:
+        if module_name in module_to_file:
+            # Already in mapping, skip
+            continue
+
+        file_path = get_module_file_path(module_name)
+        if file_path:
+            module_to_file[module_name] = file_path
+        else:
+            # Module not installed or not found
+            pass
+
+    return module_to_file
+
+
 def scan_user_py_files_and_modules(root_dir):
     """
     Scan a directory for all .py files and return:
-      - user_py_files: set of absolute file paths
       - file_to_module: mapping from file path to module name (relative to root_dir)
 
     Excludes agent-copilot directories except for example_workflows.
@@ -445,3 +497,8 @@ packages_in_project_root = find_additional_packages_in_project_root(project_root
 for additional_package in packages_in_project_root:
     additional_package_module_to_file = scan_user_py_files_and_modules(additional_package)
     MODULE2FILE = {**MODULE2FILE, **additional_package_module_to_file}
+
+# Add whitelisted third-party modules to the mapping
+from aco.common.constants import WHITELISTED_THIRD_PARTY_MODULES
+
+MODULE2FILE = add_whitelisted_modules_to_mapping(MODULE2FILE, WHITELISTED_THIRD_PARTY_MODULES)

@@ -340,25 +340,6 @@ def untaint_if_needed(val, _seen=None):
         ),
     ):
         return val  # Never modify threading primitives
-    elif hasattr(val, "__dict__") and not isinstance(val, type):
-        untainted = {}  # avoid mods while iterating over same thing
-        for attr, value in val.__dict__.items():
-            untainted[attr] = untaint_if_needed(value, _seen)
-        for attr, value in untainted.items():
-            val.__dict__[attr] = value
-        return val
-    elif hasattr(val, "__slots__"):
-        # Handle objects with __slots__ (some objects have __slots__ but no __dict__).
-        untainted = {}  # avoid mods while iterating over same thing
-        for slot in val.__slots__:
-            if hasattr(val, slot):
-                untainted[slot] = untaint_if_needed(getattr(val, slot), _seen)
-        for slot, value in untainted.items():
-            try:
-                setattr(val, slot, value)
-            except Exception:
-                logger.error(f"[TaintWrapper] error untainting {val}")
-        return val
 
     # Return primitive types and other objects as-is
     return val

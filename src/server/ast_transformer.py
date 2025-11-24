@@ -340,9 +340,11 @@ class TaintPropagationTransformer(ast.NodeTransformer):
         """
         Transform .format() calls and function calls with exec_func wrapping.
 
-        Handles three types of transformations:
+        Handles four types of transformations:
         1. .format() method calls -> taint_format_string calls
-        2. Third-party library calls (module.function()) -> exec_func wrapped calls
+        2. Third-party library calls (simple or chained) -> exec_func wrapped calls
+           - Simple: module.function()
+           - Chained: google.genai.models.generate_content()
         3. Direct function calls (function_name()) -> exec_func wrapped calls
 
         Args:
@@ -367,9 +369,8 @@ class TaintPropagationTransformer(ast.NodeTransformer):
             )
             return ast.copy_location(new_node, node)
 
-        # Check if this is a third-party library call (module.function())
-        elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
-            module_name = node.func.value.id
+        # Check if this is an attribute access call (could be simple or chained)
+        elif isinstance(node.func, ast.Attribute):
             func_name = node.func.attr
 
             # Skip dunder methods - never wrap these
@@ -405,10 +406,18 @@ class TaintPropagationTransformer(ast.NodeTransformer):
             if func_name in dunder_methods:
                 return node
 
-            # Only wrap calls to third-party modules, not user-defined modules
-            if self._is_user_module(module_name):
+            # Extract the full dotted path (e.g., "google.genai.models" from google.genai.models.generate_content)
+            full_path, base_name = self._extract_dotted_name(node.func.value)
+
+            if full_path is None:
+                # Couldn't extract a dotted path, skip wrapping
                 return node
 
+            # Check if this is user code - check both the base name and full path
+            if self._is_user_module(base_name) or self._is_user_module(full_path):
+                return node
+
+            # This is a third-party call, wrap it with exec_func
             # Mark that we need taint imports
             self.needs_taint_imports = True
 
@@ -561,6 +570,41 @@ class TaintPropagationTransformer(ast.NodeTransformer):
         # Direct lookup: is this module name in our user modules?
         return module_name in self.module_to_file
 
+    def _extract_dotted_name(self, node):
+        """
+        Extract the full dotted name from a chained attribute access.
+
+        Examples:
+            google.genai.models.generate_content -> returns "google.genai.models"
+            module.Class.method -> returns "module.Class"
+            simple_name -> returns "simple_name"
+
+        Args:
+            node: An AST node (could be ast.Name or ast.Attribute)
+
+        Returns:
+            A tuple of (full_dotted_path, base_name) or (None, None) if not extractable
+            For example: ("google.genai.models", "google")
+        """
+        parts = []
+        current = node
+
+        # Walk up the chain of attributes
+        while isinstance(current, ast.Attribute):
+            parts.append(current.attr)
+            current = current.value
+
+        # Base case: we should end with an ast.Name
+        if isinstance(current, ast.Name):
+            parts.append(current.id)
+            # Reverse to get the correct order
+            parts.reverse()
+            full_path = ".".join(parts)
+            base_name = parts[0] if parts else None
+            return full_path, base_name
+
+        return None, None
+
     def _inject_taint_imports(self, tree):
         """Inject import statements for taint functions if needed."""
         if not self.needs_taint_imports:
@@ -585,18 +629,22 @@ class TaintPropagationTransformer(ast.NodeTransformer):
 
         # Create safe import with fallbacks for plain Python execution
         safe_import_code = """
+import os
+# Fallback implementations for plain Python execution
+def exec_func(func, args, kwargs, user_py_files=None):
+    return func(*args, **kwargs)
+def taint_fstring_join(*args):
+    return "".join(str(a) for a in args)
+def taint_format_string(fmt, *args, **kwargs):
+    return fmt.format(*args, **kwargs)
+def taint_percent_format(fmt, values):
+    return fmt % values
 try:
-    from aco.server.ast_transformer import exec_func, taint_fstring_join, taint_format_string, taint_percent_format
-except ImportError:
-    # Fallback implementations for plain Python execution
-    def exec_func(func, args, kwargs, user_py_files=None):
-        return func(*args, **kwargs)
-    def taint_fstring_join(*args):
-        return "".join(str(a) for a in args)
-    def taint_format_string(fmt, *args, **kwargs):
-        return fmt.format(*args, **kwargs)
-    def taint_percent_format(fmt, values):
-        return fmt % values
+    # only if we are in aco-launch mode, try to import
+    if os.environ.get("AGENT_COPILOT_ENABLE_TRACING", False):
+        from aco.server.ast_transformer import exec_func, taint_fstring_join, taint_format_string, taint_percent_format
+except Exception:
+    pass
 """
 
         # Parse the safe import code and inject it
