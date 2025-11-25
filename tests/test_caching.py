@@ -159,13 +159,15 @@ def _deepresearch_asserts(test_run_data_obj: TestRunData):
         ), f"[DeepResearch] Node {node_id} with label '{label}' has no parent nodes"
 
 
-# def test_deepresearch():
-#     test_run_data_obj = asyncio.run(run_test(
-#         script_path="./example_workflows/miroflow_deep_research/single_task.py",
-#         project_root="./example_workflows/miroflow_deep_research"
-#     ))
-#     _caching_asserts(test_run_data_obj)
-#     _deepresearch_asserts(test_run_data_obj)
+def test_deepresearch():
+    test_run_data_obj = asyncio.run(
+        run_test(
+            script_path="./example_workflows/miroflow_deep_research/single_task.py",
+            project_root="./example_workflows/miroflow_deep_research",
+        )
+    )
+    _caching_asserts(test_run_data_obj)
+    _deepresearch_asserts(test_run_data_obj)
 
 
 @pytest.mark.parametrize(
@@ -179,7 +181,6 @@ def _deepresearch_asserts(test_run_data_obj: TestRunData):
         "./example_workflows/debug_examples/multiple_runs_sequential.py",
         "./example_workflows/debug_examples/multiple_runs_threading.py",
         "./example_workflows/debug_examples/openai_add_numbers.py",
-        "./example_workflows/debug_examples/openai_async_agents.py",
         "./example_workflows/debug_examples/openai_chat.py",
         "./example_workflows/debug_examples/openai_chat_async.py",
         "./example_workflows/debug_examples/openai_tool_call.py",

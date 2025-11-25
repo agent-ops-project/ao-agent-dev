@@ -1,4 +1,5 @@
 import asyncio
+import platform
 from mcp.client.stdio import stdio_client
 from mcp import ClientSession, StdioServerParameters
 
@@ -7,10 +8,12 @@ async def test_filesystem():
     """Simple MCP test using filesystem server."""
 
     # MCP server parameters for filesystem
-    # On macOS, /tmp is a symlink to /private/tmp
+    # On macOS, /tmp is a symlink to /private/tmp, so use /private/tmp
+    # On Linux, use /tmp directly
+    tmp_dir = "/private/tmp" if platform.system() == "Darwin" else "/tmp"
     server_params = StdioServerParameters(
         command="npx",
-        args=["-y", "@modelcontextprotocol/server-filesystem", "/private/tmp"],
+        args=["-y", "@modelcontextprotocol/server-filesystem", tmp_dir],
     )
 
     # Connect to the MCP server
@@ -21,10 +24,11 @@ async def test_filesystem():
             # First call: Write to a file
             print("\nFirst call: Writing to test file")
             test_content = "Hello from MCP test! This is a test file with some content written via MCP."
+            test_file_path = f"{tmp_dir}/test_mcp.txt"
             result1 = await session.call_tool(
                 "write_file",
                 arguments={
-                    "path": "/private/tmp/test_mcp.txt",
+                    "path": test_file_path,
                     "content": test_content
                 }
             )
@@ -34,7 +38,7 @@ async def test_filesystem():
             print("\nSecond call: Reading test file")
             result2 = await session.call_tool(
                 "read_file",
-                arguments={"path": "/private/tmp/test_mcp.txt"}
+                arguments={"path": test_file_path}
             )
 
             # Extract the result

@@ -1,9 +1,12 @@
+import os
 import asyncio
 from google import genai
 from google.genai.types import HttpOptions
 
 model = "gemini-2.5-flash"
 
+if "GOOGLE_API_KEY" in os.environ:
+    del os.environ["GOOGLE_API_KEY"]
 
 async def main():
     # Create a Vertex AI client using default credentials

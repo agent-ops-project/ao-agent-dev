@@ -1,5 +1,9 @@
+import os
 from google import genai
 from google.genai import types
+
+if "GOOGLE_API_KEY" in os.environ:
+    del os.environ["GOOGLE_API_KEY"]
 
 # Create a Vertex AI client using default credentials
 client = genai.Client()

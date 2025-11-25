@@ -113,20 +113,6 @@ jobs:
         pip install -e example_workflows/miroflow_deep_research/MiroFlow/libs/miroflow-tool
         pip install -e example_workflows/miroflow_deep_research/MiroFlow/libs/miroflow
 
-    - name: Create cross-platform temp directory
-      run: |
-        # Create /tmp if it doesn't exist (standard on Ubuntu)
-        mkdir -p /tmp
-        # On Ubuntu, create /private/tmp as a symlink to /tmp (for macOS compatibility)
-        if [ ! -d /private/tmp ]; then
-          sudo mkdir -p /private
-          sudo ln -s /tmp /private/tmp
-        fi
-        # Verify the directory exists and is writable
-        ls -la /private/tmp
-        touch /private/tmp/test_write && rm /private/tmp/test_write
-        echo "Successfully created and verified /private/tmp"
-
     - name: Launch shim server
       run: |
         export PATH="$HOME/miniconda/bin:$PATH"
@@ -139,6 +125,8 @@ jobs:
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
         JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
         TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}

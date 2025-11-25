@@ -1,7 +1,11 @@
+import os
 from google import genai
 from google.genai.types import HttpOptions
 
 model = "gemini-2.5-flash"
+
+if "GOOGLE_API_KEY" in os.environ:
+    del os.environ["GOOGLE_API_KEY"]
 
 # Create a Vertex AI client using default credentials
 client = genai.Client(http_options=HttpOptions(api_version="v1"))
