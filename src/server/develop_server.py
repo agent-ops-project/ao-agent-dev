@@ -53,6 +53,8 @@ class DevelopServer:
         self.rerun_sessions = set()  # Track sessions being rerun to avoid clearing llm_calls
         self.module_to_file = module_to_file or MODULE2FILE  # Module mapping for file watcher
         self.file_watcher_process = None  # Child process for file watching
+        self.optimization_process = None  # Child process for optimization server
+        self.optimization_conn = None  # Connection from optimization server
 
     # ============================================================
     # File Watcher Management
@@ -117,6 +119,67 @@ class DevelopServer:
                 logger.error(f"[DevelopServer] Error stopping file watcher process: {e}")
             finally:
                 self.file_watcher_process = None
+
+    # ============================================================
+    # Optimization Server Management
+    # ============================================================
+
+    def start_optimization_server(self) -> None:
+        """Start the optimization server process."""
+        logger.info("[DevelopServer] Starting optimization server...")
+        
+        if self.optimization_process and self.optimization_process.poll() is None:
+            logger.warning("[DevelopServer] Optimization server is already running")
+            return
+
+        try:
+            # Start optimization server as a subprocess
+            import sys
+            optimization_cmd = [
+                sys.executable,
+                "-m",
+                "aco.optimizations.optimization_server"
+            ]
+            
+            self.optimization_process = subprocess.Popen(
+                optimization_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                close_fds=True,
+                start_new_session=True
+            )
+            
+            logger.info(f"[DevelopServer] Optimization server started (PID: {self.optimization_process.pid})")
+            
+        except Exception as e:
+            logger.error(f"[DevelopServer] Failed to start optimization server: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+    def stop_optimization_server(self) -> None:
+        """Stop the optimization server process."""
+        # Send shutdown message if we have a connection
+        if self.optimization_conn:
+            try:
+                send_json(self.optimization_conn, {"type": "shutdown"})
+                time.sleep(0.5)  # Give it time to shutdown gracefully
+            except Exception:
+                pass
+                
+        # Then terminate the process
+        if self.optimization_process:
+            try:
+                self.optimization_process.terminate()
+                self.optimization_process.wait(timeout=2)
+                if self.optimization_process.poll() is None:
+                    # Force kill if it doesn't terminate gracefully
+                    self.optimization_process.kill()
+                    self.optimization_process.wait()
+                logger.info("[DevelopServer] Optimization server stopped")
+            except Exception as e:
+                logger.error(f"[DevelopServer] Error stopping optimization server: {e}")
+            finally:
+                self.optimization_process = None
 
     # ============================================================
     # Utils
@@ -566,6 +629,8 @@ class DevelopServer:
         logger.info("[DevelopServer] Shutdown command received. Closing all connections.")
         # Stop file watcher process first
         self.stop_file_watcher()
+        # Stop optimization server
+        self.stop_optimization_server()
         # Close all client sockets
         for s in list(self.conn_info.keys()):
             logger.debug(f"[DevelopServer] Closing socket: {s}")
@@ -584,6 +649,31 @@ class DevelopServer:
             {"type": "graph_update", "session_id": None, "payload": {"nodes": [], "edges": []}}
         )
         logger.info("[DevelopServer] Database and in-memory state cleared.")
+
+    # Handlers for optimization server responses
+    def handle_similarity_search_result(self, msg: dict) -> None:
+        """Handle similarity search results from optimization server."""
+        session_id = msg.get("session_id")
+        results = msg.get("results", [])
+        logger.info(f"[DevelopServer] Similarity search results for session {session_id}: {len(results)} matches")
+        # Broadcast results to UIs
+        self.broadcast_to_all_uis(msg)
+
+    def handle_cluster_result(self, msg: dict) -> None:
+        """Handle clustering results from optimization server."""
+        session_id = msg.get("session_id")
+        clusters = msg.get("clusters", [])
+        logger.info(f"[DevelopServer] Clustering results for session {session_id}: {len(clusters)} clusters")
+        # Broadcast results to UIs
+        self.broadcast_to_all_uis(msg)
+
+    def handle_optimization_result(self, msg: dict) -> None:
+        """Handle graph optimization results from optimization server."""
+        session_id = msg.get("session_id")
+        optimized_graph = msg.get("optimized_graph")
+        logger.info(f"[DevelopServer] Optimization results for session {session_id}")
+        # Broadcast to UIs
+        self.broadcast_to_all_uis(msg)
 
     def handle_set_database_mode(self, msg: dict):
         """Handle database mode switching from UI dropdown."""
@@ -658,6 +748,12 @@ class DevelopServer:
             self.handle_set_database_mode(msg)
         elif msg_type == "get_all_experiments":
             self.handle_get_all_experiments(conn)
+        elif msg_type == "similarity_search_result":
+            self.handle_similarity_search_result(msg)
+        elif msg_type == "cluster_result":
+            self.handle_cluster_result(msg)
+        elif msg_type == "optimization_result":
+            self.handle_optimization_result(msg)
         else:
             logger.error(f"[DevelopServer] Unknown message type. Message:\n{msg}")
 
@@ -745,6 +841,12 @@ class DevelopServer:
                 )
                 # Send experiment_list only to this UI connection
                 self.broadcast_experiment_list_to_uis(conn)
+            elif role == "optimization":
+                # Track optimization server connection
+                self.optimization_conn = conn
+                self.conn_info[conn] = {"role": role, "session_id": None}
+                send_json(conn, {"type": "session_id", "session_id": None})
+                logger.info("[DevelopServer] Optimization server connected")
 
             # Main message loop
             try:
@@ -780,6 +882,11 @@ class DevelopServer:
             elif info and role == "ui":
                 # Remove from global UI connections list
                 self.ui_connections.discard(conn)
+            elif info and role == "optimization":
+                # Clear optimization connection
+                if self.optimization_conn == conn:
+                    self.optimization_conn = None
+                    logger.info("[DevelopServer] Optimization server disconnected")
             try:
                 conn.close()
             except Exception as e:
@@ -819,6 +926,9 @@ class DevelopServer:
 
         # Start file watcher process for AST recompilation
         self.start_file_watcher()
+        
+        # Start optimization server
+        self.start_optimization_server()
 
         # Load finished runs on startup
         self.load_finished_runs()
@@ -833,6 +943,8 @@ class DevelopServer:
         finally:
             # Stop file watcher process
             self.stop_file_watcher()
+            # Stop optimization server
+            self.stop_optimization_server()
             self.server_sock.close()
             logger.info("[DevelopServer] Develop server stopped.")
 
