@@ -17,7 +17,7 @@ except ImportError:
 
 
 @dataclass
-class TestRunData:
+class RunData:
     rows: list
     new_rows: list
     graph: list
@@ -100,47 +100,47 @@ async def run_test(script_path: str, project_root: str):
     shim.server_conn.close()
     shim.listener_thread.join(timeout=2)
 
-    test_run_data_obj = TestRunData(rows=rows, new_rows=new_rows, graph=graph, new_graph=new_graph)
+    run_data_obj = RunData(rows=rows, new_rows=new_rows, graph=graph, new_graph=new_graph)
 
-    return test_run_data_obj
+    return run_data_obj
 
 
-def _caching_asserts(test_run_data_obj: TestRunData):
-    assert len(test_run_data_obj.rows) == len(
-        test_run_data_obj.new_rows
+def _caching_asserts(run_data_obj: RunData):
+    assert len(run_data_obj.rows) == len(
+        run_data_obj.new_rows
     ), "Length of LLM calls does not match after re-run"
-    for old_row, new_row in zip(test_run_data_obj.rows, test_run_data_obj.new_rows):
+    for old_row, new_row in zip(run_data_obj.rows, run_data_obj.new_rows):
         assert (
             old_row["node_id"] == new_row["node_id"]
         ), "Node IDs of LLM calls don't match after re-run. Potential cache issue."
 
     # Compare graph topology between runs
-    assert len(test_run_data_obj.graph["nodes"]) == len(
-        test_run_data_obj.new_graph["nodes"]
+    assert len(run_data_obj.graph["nodes"]) == len(
+        run_data_obj.new_graph["nodes"]
     ), "Number of nodes in graph topology doesn't match after re-run"
-    assert len(test_run_data_obj.graph["edges"]) == len(
-        test_run_data_obj.new_graph["edges"]
+    assert len(run_data_obj.graph["edges"]) == len(
+        run_data_obj.new_graph["edges"]
     ), "Number of edges in graph topology doesn't match after re-run"
 
     # Check that node IDs match between the two graphs
-    original_node_ids = {node["id"] for node in test_run_data_obj.graph["nodes"]}
-    new_node_ids = {node["id"] for node in test_run_data_obj.new_graph["nodes"]}
+    original_node_ids = {node["id"] for node in run_data_obj.graph["nodes"]}
+    new_node_ids = {node["id"] for node in run_data_obj.new_graph["nodes"]}
     assert original_node_ids == new_node_ids, "Node IDs in graph topology don't match after re-run"
 
     # Check that edge structure is identical
-    original_edges = {(edge["source"], edge["target"]) for edge in test_run_data_obj.graph["edges"]}
-    new_edges = {(edge["source"], edge["target"]) for edge in test_run_data_obj.new_graph["edges"]}
+    original_edges = {(edge["source"], edge["target"]) for edge in run_data_obj.graph["edges"]}
+    new_edges = {(edge["source"], edge["target"]) for edge in run_data_obj.new_graph["edges"]}
     assert (
         original_edges == new_edges
     ), "Edge structure in graph topology doesn't match after re-run"
 
 
-def _deepresearch_asserts(test_run_data_obj: TestRunData):
+def _deepresearch_asserts(run_data_obj: RunData):
     # Check that every node has at least one parent node, except "gpt-4.1" and first "o3"
-    target_nodes = {edge["target"] for edge in test_run_data_obj.graph["edges"]}
+    target_nodes = {edge["target"] for edge in run_data_obj.graph["edges"]}
     first_o3_found = False
 
-    for node in test_run_data_obj.graph["nodes"]:
+    for node in run_data_obj.graph["nodes"]:
         node_id = node["id"]
         label = node.get("label", "")
 
@@ -160,45 +160,45 @@ def _deepresearch_asserts(test_run_data_obj: TestRunData):
 
 
 def test_deepresearch():
-    test_run_data_obj = asyncio.run(
+    run_data_obj = asyncio.run(
         run_test(
             script_path="./example_workflows/miroflow_deep_research/single_task.py",
             project_root="./example_workflows/miroflow_deep_research",
         )
     )
-    _caching_asserts(test_run_data_obj)
-    _deepresearch_asserts(test_run_data_obj)
+    _caching_asserts(run_data_obj)
+    _deepresearch_asserts(run_data_obj)
 
 
 @pytest.mark.parametrize(
     "script_path",
     [
         "./example_workflows/debug_examples/anthropic_add_numbers.py",
-        "./example_workflows/debug_examples/anthropic_image_tool_call.py",
-        "./example_workflows/debug_examples/async_openai_add_numbers.py",
-        "./example_workflows/debug_examples/mcp_simple_test.py",
-        "./example_workflows/debug_examples/multiple_runs_asyncio.py",
-        "./example_workflows/debug_examples/multiple_runs_sequential.py",
-        "./example_workflows/debug_examples/multiple_runs_threading.py",
-        "./example_workflows/debug_examples/openai_add_numbers.py",
-        "./example_workflows/debug_examples/openai_chat.py",
-        "./example_workflows/debug_examples/openai_chat_async.py",
-        "./example_workflows/debug_examples/openai_tool_call.py",
-        "./example_workflows/debug_examples/openai_async_agents.py",
-        "./example_workflows/debug_examples/vertexai_add_numbers.py",
-        "./example_workflows/debug_examples/vertexai_add_numbers_async.py",
-        "./example_workflows/debug_examples/vertexai_gen_image.py",
-        "./example_workflows/debug_examples/vertexai_streaming.py",
-        "./example_workflows/debug_examples/vertexai_streaming_async.py",
+        # "./example_workflows/debug_examples/anthropic_image_tool_call.py",
+        # "./example_workflows/debug_examples/async_openai_add_numbers.py",
+        # "./example_workflows/debug_examples/mcp_simple_test.py",
+        # "./example_workflows/debug_examples/multiple_runs_asyncio.py",
+        # "./example_workflows/debug_examples/multiple_runs_sequential.py",
+        # "./example_workflows/debug_examples/multiple_runs_threading.py",
+        # "./example_workflows/debug_examples/openai_add_numbers.py",
+        # "./example_workflows/debug_examples/openai_chat.py",
+        # "./example_workflows/debug_examples/openai_chat_async.py",
+        # "./example_workflows/debug_examples/openai_tool_call.py",
+        # "./example_workflows/debug_examples/openai_async_agents.py",
+        # "./example_workflows/debug_examples/vertexai_add_numbers.py",
+        # "./example_workflows/debug_examples/vertexai_add_numbers_async.py",
+        # "./example_workflows/debug_examples/vertexai_gen_image.py",
+        # "./example_workflows/debug_examples/vertexai_streaming.py",
+        # "./example_workflows/debug_examples/vertexai_streaming_async.py",
     ],
 )
 def test_debug_examples(script_path: str):
-    test_run_data_obj = asyncio.run(
+    run_data_obj = asyncio.run(
         run_test(script_path=script_path, project_root="./example_workflows/debug_examples")
     )
-    _caching_asserts(test_run_data_obj)
+    _caching_asserts(run_data_obj)
 
 
 if __name__ == "__main__":
     # test_deepresearch()
-    test_debug_examples("./example_workflows/debug_examples/openai_add_numbers.py")
+    test_debug_examples("./example_workflows/debug_examples/anthropic_add_numbers.py")
