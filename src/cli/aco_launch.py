@@ -24,6 +24,19 @@ def parse_sample_id() -> Optional[int]:
     return None
 
 
+def parse_user_id() -> Optional[int]:
+    """Parse the --user_id flag from command line arguments anywhere in sys.argv."""
+    try:
+        for i, arg in enumerate(sys.argv):
+            if arg == "--user_id" and i + 1 < len(sys.argv):
+                return int(sys.argv[i + 1])
+            elif arg.startswith("--user_id="):
+                return int(arg.split("=", 1)[1])
+    except (ValueError, IndexError):
+        pass
+    return None
+
+
 def launch_command_parser():
     parser = ArgumentParser(
         usage="aco-launch <script.py> [<args>]",
@@ -101,11 +114,8 @@ def _validate_launch_command(args):
     return args
 
 
-def launch_command(args):
+def launch_command(args, *, sample_id: Optional[int] = None, user_id: Optional[int] = None):
     args = _validate_launch_command(args)
-
-    # Parse sample_id from command line
-    sample_id = parse_sample_id()
 
     # Note: UI event logging moved to DevelopShim where session_id is available
     shim = DevelopShim(
@@ -115,14 +125,44 @@ def launch_command(args):
         project_root=args.project_root,
         packages_in_project_root=args.packages_in_project_root,
         sample_id=sample_id,
+        user_id=user_id,
     )
     shim.run()
 
 
 def main():
-    parser = launch_command_parser()
-    args = parser.parse_args()
-    launch_command(args)
+    # Parse sample_id and user_id from the original argv before we filter them
+    sample_id = parse_sample_id()
+    user_id = parse_user_id()
+
+    # Filter out --user_id and --sample_id before argparse sees them
+    # (they are parsed manually by parse_user_id/parse_sample_id functions)
+    filtered_argv = []
+    i = 0
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        if arg in ("--user_id", "--sample_id"):
+            # Skip this arg and its value
+            i += 2
+            continue
+        elif arg.startswith("--user_id=") or arg.startswith("--sample_id="):
+            # Skip this arg (value is embedded)
+            i += 1
+            continue
+        filtered_argv.append(arg)
+        i += 1
+    
+    # Temporarily replace sys.argv for argparse
+    original_argv = sys.argv
+    sys.argv = filtered_argv
+    
+    try:
+        parser = launch_command_parser()
+        args = parser.parse_args()
+        launch_command(args, sample_id=sample_id, user_id=user_id)
+    finally:
+        # Restore original sys.argv
+        sys.argv = original_argv
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import { EditDialogProvider } from './EditDialogProvider';
 import { NotesLogTabProvider } from './NotesLogTabProvider';
 import { PythonServerClient } from './PythonServerClient';
 import { configManager } from './ConfigManager';
+import { AuthManager } from './AuthManager';
 
 export class GraphViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'graphExtension.graphView';
@@ -12,12 +13,23 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     private _notesLogTabProvider?: NotesLogTabProvider;
     private _pendingMessages: any[] = [];
     private _pythonClient: PythonServerClient | null = null;
+    private _authManager: AuthManager;
     // The Python server connection is deferred until the webview sends 'ready'.
     // Buffering is needed to ensure no messages are lost if the server sends messages before the webview is ready.
 
-    constructor(private readonly _extensionUri: vscode.Uri) {
+    constructor(private readonly _extensionUri: vscode.Uri, private readonly _context: vscode.ExtensionContext) {
         // Set up Python server message forwarding with buffering
-        // Removed _pendingEdit
+        this._authManager = AuthManager.getInstance(_context);
+        
+        // Listen to auth state changes and update webview
+        this._authManager.onAuthStateChanged((state) => {
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'authStateChanged',
+                    payload: state
+                });
+            }
+        });
     }
 
 
@@ -135,17 +147,26 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                         this._pythonClient.onMessage((msg) => {
                             // Intercept session_id message to set up config management
                             if (msg.type === 'session_id' && msg.config_path) {
-                                configManager.setConfigPath(msg.config_path);
-                                
-                                // Set up config forwarding to webview
-                                configManager.onConfigChange((config) => {
-                                    if (this._view) {
-                                        this._view.webview.postMessage({
-                                            type: 'configUpdate',
-                                            detail: config
+                                // Only attempt to use the config path if it exists on the local filesystem.
+                                try {
+                                    if (fs.existsSync(msg.config_path)) {
+                                        configManager.setConfigPath(msg.config_path);
+
+                                        // Set up config forwarding to webview
+                                        configManager.onConfigChange((config) => {
+                                            if (this._view) {
+                                                this._view.webview.postMessage({
+                                                    type: 'configUpdate',
+                                                    detail: config
+                                                });
+                                            }
                                         });
+                                    } else {
+                                        console.warn('[GraphViewProvider] Ignoring remote config_path (not present locally):', msg.config_path);
                                     }
-                                });
+                                } catch (e) {
+                                    console.warn('[GraphViewProvider] Error checking config_path:', e);
+                                }
                             }
                             
                             if (this._view) {
@@ -156,6 +177,30 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                         });
                         this._pythonClient.startServerIfNeeded();
                     }
+                    
+                    // Send current auth state to webview
+                    const authState = this._authManager.getCurrentState();
+                    if (this._view) {
+                        this._view.webview.postMessage({
+                            type: 'authStateChanged',
+                            payload: authState
+                        });
+                    }
+                    break;
+                case 'signIn':
+                    this._authManager.signIn().then((state) => {
+                        if (state.authenticated && this._pythonClient) {
+                            this._pythonClient.setUserId(state.userId);
+                            this._pythonClient.sendMessage({ type: 'auth', user_id: state.userId });
+                        }
+                    });
+                    break;
+                case 'signOut':
+                    this._authManager.signOut().then(() => {
+                        if (this._pythonClient) {
+                            this._pythonClient.setUserId(undefined);
+                        }
+                    });
                     break;
                 case 'navigateToCode':
                     // Handle code navigation

@@ -57,29 +57,77 @@ class EditManager:
         )
 
     def add_experiment(
-        self, session_id, name, timestamp, cwd, command, environment, parent_session_id=None
+        self, session_id, name, timestamp, cwd, command, environment, parent_session_id=None, user_id=None
     ):
         # Initial values.
         default_graph = json.dumps({"nodes": [], "edges": []})
         parent_session_id = parent_session_id if parent_session_id else session_id
 
         env_json = json.dumps(environment)
-        db.execute(
-            "INSERT OR REPLACE INTO experiments (session_id, parent_session_id, name, graph_topology, timestamp, cwd, command, environment, success, notes, log) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                session_id,
-                parent_session_id,
-                name,
-                default_graph,
-                timestamp,
-                cwd,
-                command,
-                env_json,
-                DEFAULT_SUCCESS,
-                DEFAULT_NOTE,
-                DEFAULT_LOG,
-            ),
-        )
+        
+        # Check if using PostgreSQL
+        import os
+        from aco.common.logger import logger
+        use_postgres = os.environ.get("DATABASE_URL") is not None
+        
+        logger.info(f"[EditManager] Adding experiment session_id={session_id}, user_id={user_id}, use_postgres={use_postgres}")
+        
+        if use_postgres:
+            # PostgreSQL: Use INSERT ... ON CONFLICT ... DO UPDATE
+            try:
+                db.execute(
+                    """INSERT INTO experiments (session_id, parent_session_id, name, graph_topology, timestamp, cwd, command, environment, success, notes, log, user_id) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT (session_id) DO UPDATE SET
+                           parent_session_id = EXCLUDED.parent_session_id,
+                           name = EXCLUDED.name,
+                           graph_topology = EXCLUDED.graph_topology,
+                           timestamp = EXCLUDED.timestamp,
+                           cwd = EXCLUDED.cwd,
+                           command = EXCLUDED.command,
+                           environment = EXCLUDED.environment,
+                           success = EXCLUDED.success,
+                           notes = EXCLUDED.notes,
+                           log = EXCLUDED.log,
+                           user_id = EXCLUDED.user_id""",
+                    (
+                        session_id,
+                        parent_session_id,
+                        name,
+                        default_graph,
+                        timestamp,
+                        cwd,
+                        command,
+                        env_json,
+                        DEFAULT_SUCCESS,
+                        DEFAULT_NOTE,
+                        DEFAULT_LOG,
+                        user_id,
+                    ),
+                )
+                logger.info(f"[EditManager] Successfully inserted/updated experiment session_id={session_id}")
+            except Exception as e:
+                logger.error(f"[EditManager] Failed to add experiment: {e}")
+                raise
+        else:
+            # SQLite: Use INSERT OR REPLACE
+            db.execute(
+                "INSERT OR REPLACE INTO experiments (session_id, parent_session_id, name, graph_topology, timestamp, cwd, command, environment, success, notes, log, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    session_id,
+                    parent_session_id,
+                    name,
+                    default_graph,
+                    timestamp,
+                    cwd,
+                    command,
+                    env_json,
+                    DEFAULT_SUCCESS,
+                    DEFAULT_NOTE,
+                    DEFAULT_LOG,
+                    user_id,
+                ),
+            )
 
     def update_graph_topology(self, session_id, graph_dict):
         graph_json = json.dumps(graph_dict)

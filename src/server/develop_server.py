@@ -75,53 +75,71 @@ class DevelopServer:
 
     def broadcast_experiment_list_to_uis(self, conn=None) -> None:
         """Only broadcast to one UI (conn) or, if conn is None, to all."""
-        # Get all experiments from database (already sorted by name ASC)
-        db_experiments = CACHE.get_all_experiments_sorted()
+        # If a specific conn is provided, send experiments filtered by that conn's user
+        def build_and_send(target_conn, db_rows):
+            session_map = {session.session_id: session for session in self.sessions.values()}
+            experiment_list = []
+            for row in db_rows:
+                session_id = row["session_id"]
+                session = session_map.get(session_id)
 
-        # Create a map of session_id to session for quick lookup
-        session_map = {session.session_id: session for session in self.sessions.values()}
+                # Get status from in-memory session, or default to "finished"
+                status = session.status if session else "finished"
 
-        experiment_list = []
-        for row in db_experiments:
-            session_id = row["session_id"]
-            session = session_map.get(session_id)
+                # Get data from DB entries.
+                timestamp = row["timestamp"]
+                # Convert timestamp to string if it's a datetime object (PostgreSQL)
+                if hasattr(timestamp, 'strftime'):
+                    timestamp = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                title = row["name"]
+                success = row["success"]
+                notes = row["notes"]
+                log = row["log"]
 
-            # Get status from in-memory session, or default to "finished"
-            status = session.status if session else "finished"
+                # Parse color_preview from database
+                color_preview = []
+                if row["color_preview"]:
+                    try:
+                        color_preview = json.loads(row["color_preview"])
+                    except:
+                        color_preview = []
 
-            # Get data from DB entries.
-            timestamp = row["timestamp"]
-            title = row["name"]
-            success = row["success"]
-            notes = row["notes"]
-            log = row["log"]
+                experiment_list.append(
+                    {
+                        "session_id": session_id,
+                        "status": status,
+                        "timestamp": timestamp,
+                        "color_preview": color_preview,
+                        "title": title,
+                        "success": success,
+                        "notes": notes,
+                        "log": log,
+                    }
+                )
 
-            # Parse color_preview from database
-            color_preview = []
-            if row["color_preview"]:
-                try:
-                    color_preview = json.loads(row["color_preview"])
-                except:
-                    color_preview = []
+            msg = {"type": "experiment_list", "experiments": experiment_list}
+            try:
+                send_json(target_conn, msg)
+            except Exception as e:
+                logger.error(f"Error sending experiment list to UI: {e}")
 
-            experiment_list.append(
-                {
-                    "session_id": session_id,
-                    "status": status,
-                    "timestamp": timestamp,
-                    "color_preview": color_preview,
-                    "title": title,
-                    "success": success,
-                    "notes": notes,
-                    "log": log,
-                }
-            )
-
-        msg = {"type": "experiment_list", "experiments": experiment_list}
         if conn:
-            send_json(conn, msg)
-        else:
-            self.broadcast_to_all_uis(msg)
+            user_id = None
+            info = self.conn_info.get(conn)
+            if info:
+                user_id = info.get("user_id")
+            db_experiments = CACHE.get_all_experiments_sorted(user_id)
+            build_and_send(conn, db_experiments)
+            return
+
+        # Broadcast to all UIs, but filter per UI by their user_id
+        for ui_conn in list(self.ui_connections):
+            user_id = None
+            info = self.conn_info.get(ui_conn)
+            if info:
+                user_id = info.get("user_id")
+            db_experiments = CACHE.get_all_experiments_sorted(user_id)
+            build_and_send(ui_conn, db_experiments)
 
     def print_graph(self, session_id):
         # Debug utility.
@@ -145,15 +163,18 @@ class DevelopServer:
 
     def load_finished_runs(self):
         # Load only session_id and timestamp for finished runs
-        rows = CACHE.get_finished_runs()
-        for row in rows:
-            session_id = row["session_id"]
-            # Mark as finished (not running)
-            session = self.sessions.get(session_id)
-            if not session:
-                session = Session(session_id)
-                session.status = "finished"
-                self.sessions[session_id] = session
+        try:
+            rows = CACHE.get_finished_runs()
+            for row in rows:
+                session_id = row["session_id"]
+                # Mark as finished (not running)
+                session = self.sessions.get(session_id)
+                if not session:
+                    session = Session(session_id)
+                    session.status = "finished"
+                    self.sessions[session_id] = session
+        except Exception as e:
+            logger.warning(f"Failed to load finished runs from database: {e}")
 
     def handle_graph_request(self, conn, session_id):
         # Query graph_topology for the session and reconstruct the in-memory graph
@@ -337,9 +358,19 @@ class DevelopServer:
             cwd = msg.get("cwd")
             command = msg.get("command")
             environment = msg.get("environment")
-            timestamp = datetime.now().strftime("%d/%m %H:%M")
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             name = msg.get("name")
             parent_session_id = msg.get("parent_session_id")
+            # Determine user_id: prefer explicit msg value, else inherit from parent experiment
+            user_id = msg.get("user_id")
+            if user_id is None and parent_session_id:
+                try:
+                    row = db.query_one("SELECT user_id FROM experiments WHERE session_id = ?", (parent_session_id,))
+                    if row:
+                        user_id = row.get("user_id")
+                except Exception:
+                    user_id = None
+
             EDIT.add_experiment(
                 session_id,
                 name,
@@ -348,6 +379,7 @@ class DevelopServer:
                 command,
                 environment,
                 parent_session_id,
+                user_id,
             )
         # Insert session if not present.
         with self.lock:
@@ -442,7 +474,7 @@ class DevelopServer:
                 if session:
                     session.status = "running"
                     # Update database timestamp so it sorts correctly
-                    new_timestamp = datetime.now().strftime("%d/%m %H:%M")
+                    new_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     EDIT.update_timestamp(child_session_id, new_timestamp)
                     # Broadcast updated experiment list with rerun session at the front
                     self.broadcast_experiment_list_to_uis()
@@ -495,6 +527,20 @@ class DevelopServer:
         log_server_message(msg, self.session_graphs)
 
         msg_type = msg.get("type")
+        # Handle auth messages from UI clients (optional): attach user_id to connection
+        if msg_type == "auth":
+            try:
+                user_id = msg.get("user_id")
+                info = self.conn_info.get(conn)
+                if info is None:
+                    self.conn_info[conn] = {"role": "ui", "session_id": None, "user_id": user_id}
+                else:
+                    info["user_id"] = user_id
+                # Send filtered list to this connection
+                self.broadcast_experiment_list_to_uis(conn)
+            except Exception as e:
+                logger.error(f"Error handling auth message: {e}")
+            return
         if msg_type == "shutdown":
             self.handle_shutdown()
         elif msg_type == "restart":
@@ -554,8 +600,10 @@ class DevelopServer:
                     cwd = handshake.get("cwd")
                     command = handshake.get("command")
                     environment = handshake.get("environment")
-                    timestamp = datetime.now().strftime("%d/%m %H:%M")
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     name = handshake.get("name")
+                    # Try to pick up user_id from handshake if present
+                    user_id = handshake.get("user_id") if isinstance(handshake, dict) else None
                     EDIT.add_experiment(
                         session_id,
                         name,
@@ -563,6 +611,8 @@ class DevelopServer:
                         cwd,
                         command,
                         environment,
+                        None,
+                        user_id,
                     )
                 # Insert session if not present.
                 with self.lock:
@@ -584,8 +634,10 @@ class DevelopServer:
                 # Always reload finished runs from the DB before sending experiment list
                 self.load_finished_runs()
                 self.ui_connections.add(conn)
+                # Read user_id from handshake (populated by web proxy from cookie)
+                user_id = handshake.get("user_id") if isinstance(handshake, dict) else None
                 # Send session_id and config_path to this UI connection (None for UI)
-                self.conn_info[conn] = {"role": role, "session_id": None}
+                self.conn_info[conn] = {"role": role, "session_id": None, "user_id": user_id}
                 send_json(
                     conn, {"type": "session_id", "session_id": None, "config_path": ACO_CONFIG}
                 )
@@ -668,3 +720,6 @@ class DevelopServer:
         finally:
             self.server_sock.close()
             logger.info("Develop server stopped.")
+
+if __name__ == "__main__":
+    DevelopServer().run_server()

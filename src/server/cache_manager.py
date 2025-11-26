@@ -137,17 +137,30 @@ class CacheManager:
             (output_pickle, session_id, node_id),
         )
 
-    def get_finished_runs(self):
-        return db.query_all(
-            "SELECT session_id, timestamp FROM experiments ORDER BY timestamp DESC", ()
-        )
+    def get_finished_runs(self, user_id=None):
+        """Return finished runs; if user_id provided, filter by that user."""
+        if user_id is None:
+            return db.query_all(
+                "SELECT session_id, timestamp FROM experiments ORDER BY timestamp DESC", ()
+            )
+        else:
+            return db.query_all(
+                "SELECT session_id, timestamp FROM experiments WHERE user_id = ? ORDER BY timestamp DESC",
+                (user_id,),
+            )
 
-    def get_all_experiments_sorted(self):
-        """Get all experiments sorted by name (alphabetical)"""
-        return db.query_all(
-            "SELECT session_id, timestamp, color_preview, name, success, notes, log FROM experiments ORDER BY timestamp DESC",
-            (),
-        )
+    def get_all_experiments_sorted(self, user_id=None):
+        """Get all experiments sorted by timestamp desc. If user_id provided, filter by user."""
+        if user_id is None:
+            return db.query_all(
+                "SELECT session_id, timestamp, color_preview, name, success, notes, log FROM experiments ORDER BY timestamp DESC",
+                (),
+            )
+        else:
+            return db.query_all(
+                "SELECT session_id, timestamp, color_preview, name, success, notes, log FROM experiments WHERE user_id = ? ORDER BY timestamp DESC",
+                (user_id,),
+            )
 
     def get_graph(self, session_id):
         return db.query_one(

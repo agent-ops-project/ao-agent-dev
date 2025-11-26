@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { WorkflowRunDetailsPanel } from '../../../shared_components/components/experiment/WorkflowRunDetailsPanel';
 import { GraphView } from '../../../shared_components/components/graph/GraphView';
 import { ExperimentsView } from '../../../shared_components/components/experiment/ExperimentsView';
+import { LoginScreen } from './LoginScreen';
 import { GraphNode, GraphEdge, GraphData, ProcessInfo } from '../../../shared_components/types';
 import { sendReady, sendGetGraph, sendMessage } from '../../../shared_components/utils/messaging';
 import { MessageSender } from '../../../shared_components/types/MessageSender';
@@ -24,6 +25,7 @@ export const App: React.FC = () => {
   const [selectedExperiment, setSelectedExperiment] = useLocalStorage<ProcessInfo | null>("selectedExperiment", null);
   const [allGraphs, setAllGraphs] = useLocalStorage<Record<string, GraphData>>("graphs", {});
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
+  const [user, setUser] = useState<{ displayName: string; email: string; avatarUrl: string } | null>(null);
   const isDarkTheme = useIsVsCodeDarkTheme();
 
   // Create MessageSender for VS Code environment
@@ -47,6 +49,25 @@ export const App: React.FC = () => {
       const message = event.data;
       switch (message.type) {
         case "session_id":
+          break;
+        case "authStateChanged":
+          // Update user state from auth provider
+          console.log('[App] Received authStateChanged:', message.payload);
+          if (message.payload?.session) {
+            const account = message.payload.session.account;
+            const userAvatar = message.payload.userAvatar || 
+                              account.picture || 
+                              'https://www.gravatar.com/avatar/?d=mp&s=200';
+            console.log('[App] Setting user from session:', account, 'avatar:', userAvatar);
+            setUser({
+              displayName: account.label,
+              email: account.label,
+              avatarUrl: userAvatar
+            });
+          } else {
+            console.log('[App] Clearing user (no session)');
+            setUser(null);
+          }
           break;
         case "configUpdate":
           // Config changed - forward to config bridge
@@ -151,7 +172,8 @@ export const App: React.FC = () => {
   };
 
   // Use experiments in the order sent by server (already sorted by name ascending)
-  const sortedProcesses = processes;
+  // Only show experiments if user is logged in
+  const sortedProcesses = user ? processes : [];
   
   const runningExperiments = sortedProcesses.filter(p => p.status === 'running');
   const finishedExperiments = sortedProcesses.filter(p => p.status === 'finished');
@@ -161,6 +183,20 @@ export const App: React.FC = () => {
       sendGetGraph(selectedExperiment.session_id);
     }
   }, [selectedExperiment, allGraphs]);
+
+  // Show login screen if user is not authenticated
+  if (!user) {
+    return (
+      <LoginScreen
+        onLogin={() => {
+          if (window.vscode) {
+            window.vscode.postMessage({ type: 'signIn' });
+          }
+        }}
+        isDarkTheme={isDarkTheme}
+      />
+    );
+  }
 
   return (
     <div
@@ -228,6 +264,17 @@ export const App: React.FC = () => {
             finishedProcesses={finishedExperiments}
             onCardClick={handleExperimentCardClick}
             isDarkTheme={isDarkTheme}
+            user={user || undefined}
+            onLogin={() => {
+              if (window.vscode) {
+                window.vscode.postMessage({ type: 'signIn' });
+              }
+            }}
+            onLogout={() => {
+              if (window.vscode) {
+                window.vscode.postMessage({ type: 'signOut' });
+              }
+            }}
           />
         ) : activeTab === "experiment-graph" && selectedExperiment && !showDetailsPanel ? (
           <GraphView

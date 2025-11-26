@@ -21,8 +21,38 @@
         "command": "graphExtension.showGraph",
         "title": "Show Graph Panel",
         "category": "Graph Extension"
+      },
+      {
+        "command": "graphExtension.signIn",
+        "title": "Sign In with Google",
+        "category": "Graph Extension"
+      },
+      {
+        "command": "graphExtension.signOut",
+        "title": "Sign Out",
+        "category": "Graph Extension"
       }
     ],
+    "configuration": {
+      "title": "Agops Agent Copilot",
+      "properties": {
+        "agopsAgentCopilot.authServerUrl": {
+          "type": "string",
+          "default": "http://localhost:5958",
+          "description": "URL of the authentication server"
+        },
+        "agopsAgentCopilot.pythonServerHost": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Host of the Python develop server"
+        },
+        "agopsAgentCopilot.pythonServerPort": {
+          "type": "number",
+          "default": 5959,
+          "description": "Port of the Python develop server"
+        }
+      }
+    },
     "views": {
       "graph-extension": [
         {

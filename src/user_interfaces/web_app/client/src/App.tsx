@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef} from "react";
+import { useEffect, useState, useRef } from "react";
+import { LoginScreen } from "./LoginScreen";
 import "./App.css";
 import type { GraphNode, GraphEdge, ProcessInfo } from "../../../shared_components/types";
 import { GraphView } from "../../../shared_components/components/graph/GraphView";
@@ -26,7 +27,12 @@ interface WSMessage {
   session_id?: string;
 }
 
+
 function App() {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [user, setUser] = useState<any | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const API_BASE = import.meta.env.VITE_API_BASE || "";
   const [experiments, setExperiments] = useState<ProcessInfo[]>([]);
   const [selectedExperiment, setSelectedExperiment] = useState<ProcessInfo | null>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
@@ -64,10 +70,30 @@ function App() {
   };
 
   useEffect(() => {
-    const socket = new WebSocket("ws://localhost:4000");
+    if (!authenticated) return;
+    // Permitir definir la URL del WebSocket por variable de entorno
+    const wsUrl = import.meta.env.VITE_APP_WS_URL || (() => {
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsHost = window.location.hostname === "localhost"
+        ? "localhost:4000"
+        : window.location.host;
+      return `${wsProtocol}//${wsHost}/ws`;
+    })();
+
+    const socket = new WebSocket(wsUrl);
     setWs(socket);
 
-    socket.onopen = () => console.log("Connected to backend");
+    socket.onopen = () => {
+      console.log("Connected to backend");
+      try {
+        // send optional auth message with user id so backend can filter experiments
+        if (socket && user && user.id) {
+          socket.send(JSON.stringify({ type: "auth", user_id: user.id }));
+        }
+      } catch (e) {
+        console.warn("Failed to send auth message on websocket open", e);
+      }
+    };
 
     socket.onmessage = (event: MessageEvent) => {
       const msg: WSMessage = JSON.parse(event.data);
@@ -79,6 +105,39 @@ function App() {
     };
 
     return () => socket.close();
+  }, [authenticated]);
+
+  // On app mount check session (useful after OAuth redirect)
+  // Fetch session and set user+authenticated state
+  const checkSession = async () => {
+    setCheckingSession(true);
+    try {
+      const resp = await fetch(`${API_BASE}/auth/session`, { credentials: 'include' });
+      if (!resp.ok) {
+        setAuthenticated(false);
+        setUser(null);
+        return;
+      }
+      const data = await resp.json();
+      if (data && data.user) {
+        setAuthenticated(true);
+        setUser(data.user);
+      } else {
+        setAuthenticated(false);
+        setUser(null);
+      }
+    } catch (err) {
+      console.error('Failed to check session', err);
+      setAuthenticated(false);
+      setUser(null);
+    } finally {
+      setCheckingSession(false);
+    }
+  };
+
+  useEffect(() => {
+    checkSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleNodeUpdate = (nodeId: string, field: keyof GraphNode, value: string) => {
@@ -133,6 +192,29 @@ function App() {
   const running = sortedExperiments.filter((e) => e.status === "running");
   const finished = sortedExperiments.filter((e) => e.status === "finished");
 
+  if (checkingSession) {
+    // while we verify session do not show the login screen to avoid flicker
+    return (
+      <div className={`app-container ${isDarkTheme ? 'dark' : ''}`}>
+        <div style={{ padding: 24 }}>
+          Checking authentication...
+        </div>
+      </div>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <LoginScreen
+        onSuccess={async () => {
+          setAuthenticated(true);
+          // after successful login try to load session user
+          await checkSession();
+        }}
+      />
+    );
+  }
+
   return (
     <div className={`app-container ${isDarkTheme ? 'dark' : ''}`}>
       <div className="sidebar">
@@ -141,6 +223,17 @@ function App() {
           finishedProcesses={finished}
           onCardClick={handleExperimentClick}
           isDarkTheme={isDarkTheme}
+          user={{
+            displayName: user?.name || user?.displayName,
+            avatarUrl: user?.picture || user?.avatarUrl,
+            email: user?.email,
+          }}
+          onLogout={() => {
+            fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
+              .catch((err) => console.warn('Logout request failed', err));
+            setAuthenticated(false);
+            setUser(null);
+          }}
         />
       </div>
 
