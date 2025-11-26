@@ -85,9 +85,9 @@ def _init_db(conn):
         CREATE TABLE IF NOT EXISTS llm_calls (
             session_id TEXT,
             node_id TEXT,
-            input BLOB,
+            input TEXT,
             input_hash TEXT,
-            input_overwrite BLOB,
+            input_overwrite TEXT,
             output TEXT,
             color TEXT,
             label TEXT,

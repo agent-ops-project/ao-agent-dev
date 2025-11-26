@@ -134,9 +134,9 @@ def _init_db(conn):
         CREATE TABLE IF NOT EXISTS llm_calls (
             session_id TEXT,
             node_id TEXT,
-            input BYTEA,
+            input TEXT,
             input_hash TEXT,
-            input_overwrite BYTEA,
+            input_overwrite TEXT,
             output TEXT,
             color TEXT,
             label TEXT,
@@ -448,10 +448,10 @@ def insert_llm_call_with_output_query(
     """Insert new LLM call record with output in a single operation (upsert)."""
     execute(
         """
-        INSERT INTO llm_calls (session_id, input, input_hash, node_id, api_type, output)
+        INSERT INTO llm_calls (session_id, input, input_hash, node_id, api_type, output) 
         VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (session_id, node_id)
-        DO UPDATE SET output = excluded.output
+        ON CONFLICT (session_id, node_id) 
+        DO UPDATE SET output = EXCLUDED.output
         """,
         (session_id, input_pickle, input_hash, node_id, api_type, output_pickle),
     )
