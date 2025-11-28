@@ -842,18 +842,35 @@ def exec_func(func, args, kwargs, user_py_files=None):
             origins.update(get_taint_origins(bound))
         return origins
 
-    def _retaint_mutated_args(untainted_a, untainted_kw, hashes_before, hashes_after, origins):
-        """Re-taint any arguments that were mutated during the function call."""
+    def _collect_per_arg_origins(a, kw):
+        """Collect taint origins for each individual arg and kwarg value."""
+        args_origins = [get_taint_origins(arg) for arg in a]
+        kwargs_origins = [get_taint_origins(val) for val in kw.values()]
+        return args_origins, kwargs_origins
+
+    def _retaint_args(
+        untainted_a, untainted_kw, hashes_before, hashes_after, per_arg_origins, all_origins
+    ):
+        """Re-taint arguments: original taint if unchanged, all_origins if mutated."""
         args_before, kwargs_before = hashes_before
         args_after, kwargs_after = hashes_after
+        args_origins, kwargs_origins = per_arg_origins
 
-        for arg, before, after in zip(untainted_a, args_before, args_after):
+        for arg, before, after, original_taint in zip(
+            untainted_a, args_before, args_after, args_origins
+        ):
             if _was_mutated(before, after):
-                taint_wrap(arg, origins, inplace=True)
+                taint_wrap(arg, all_origins, inplace=True)
+            elif original_taint:
+                taint_wrap(arg, original_taint, inplace=True)
 
-        for val, before, after in zip(untainted_kw.values(), kwargs_before, kwargs_after):
+        for val, before, after, original_taint in zip(
+            untainted_kw.values(), kwargs_before, kwargs_after, kwargs_origins
+        ):
             if _was_mutated(before, after):
-                taint_wrap(val, origins, inplace=True)
+                taint_wrap(val, all_origins, inplace=True)
+            elif original_taint:
+                taint_wrap(val, original_taint, inplace=True)
 
     def _update_bound_self_taint(bound, a, kw):
         """Update a TaintObject's taint with new taint from inputs."""
@@ -889,6 +906,7 @@ def exec_func(func, args, kwargs, user_py_files=None):
 
             set_lost_taint(all_origins)
 
+            per_arg_origins = _collect_per_arg_origins(args, kwargs)
             untainted_args = untaint_if_needed(args)
             untainted_kwargs = untaint_if_needed(kwargs)
 
@@ -906,8 +924,13 @@ def exec_func(func, args, kwargs, user_py_files=None):
             )
             bound_hash_after = _get_bound_obj_hash(bound_self)
 
-            _retaint_mutated_args(
-                untainted_args, untainted_kwargs, hashes_before, hashes_after, all_origins
+            _retaint_args(
+                untainted_args,
+                untainted_kwargs,
+                hashes_before,
+                hashes_after,
+                per_arg_origins,
+                all_origins,
             )
             set_lost_taint(set())
 
@@ -932,6 +955,7 @@ def exec_func(func, args, kwargs, user_py_files=None):
 
     set_lost_taint(all_origins)
 
+    per_arg_origins = _collect_per_arg_origins(args, kwargs)
     untainted_args = untaint_if_needed(args)
     untainted_kwargs = untaint_if_needed(kwargs)
 
@@ -943,8 +967,8 @@ def exec_func(func, args, kwargs, user_py_files=None):
     hashes_after = (_compute_hashes(untainted_args), _compute_hashes(untainted_kwargs.values()))
     bound_hash_after = _get_bound_obj_hash(bound_self)
 
-    _retaint_mutated_args(
-        untainted_args, untainted_kwargs, hashes_before, hashes_after, all_origins
+    _retaint_args(
+        untainted_args, untainted_kwargs, hashes_before, hashes_after, per_arg_origins, all_origins
     )
     set_lost_taint(set())
 
