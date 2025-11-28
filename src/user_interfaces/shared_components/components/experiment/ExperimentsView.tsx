@@ -19,6 +19,7 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ similarProcess
   const [hoveredCards, setHoveredCards] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['running', 'similar', 'finished']));
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   
   const containerStyle: React.CSSProperties = {
     padding: '20px 20px 40px 20px',
@@ -72,12 +73,33 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ similarProcess
   const handleModeChange = (mode: 'Local' | 'Remote') => {
     console.log(mode);
     setDropdownOpen(false);
-    
+
     // Call parent handler to send message to server
     if (onModeChange) {
       onModeChange(mode);
     }
   };
+
+  // Filter processes based on search query
+  const filterProcesses = (processes: ProcessInfo[]) => {
+    if (!searchQuery.trim()) return processes;
+
+    const query = searchQuery.toLowerCase();
+    return processes.filter(process => {
+      const runName = (process.run_name || '').toLowerCase();
+      const sessionId = (process.session_id || '').toLowerCase();
+      const notes = (process.notes || '').toLowerCase();
+
+      return runName.includes(query) ||
+             sessionId.includes(query) ||
+             notes.includes(query);
+    });
+  };
+
+  // Apply filtering to all process lists
+  const filteredRunning = filterProcesses(runningProcesses);
+  const filteredSimilar = filterProcesses(similarProcesses);
+  const filteredFinished = filterProcesses(finishedProcesses);
 
   const renderExperimentSection = (
     processes: ProcessInfo[],
@@ -210,6 +232,34 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ similarProcess
     color: 'var(--vscode-editor-foreground)',
   };
 
+  const searchBarContainerStyle: React.CSSProperties = {
+    position: 'relative',
+    marginBottom: '16px',
+  };
+
+  const searchIconStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: '10px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    color: isDarkTheme ? '#858585' : '#666666',
+    pointerEvents: 'none',
+    fontSize: '13px',
+  };
+
+  const searchBarInputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '5px 10px 5px 28px',
+    fontSize: '13px',
+    backgroundColor: isDarkTheme ? '#3c3c3c' : '#ffffff',
+    color: isDarkTheme ? '#cccccc' : '#333333',
+    border: `1px solid ${isDarkTheme ? '#555555' : '#cccccc'}`,
+    borderRadius: '4px',
+    outline: 'none',
+    fontFamily: "var(--vscode-font-family, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif)",
+    boxSizing: 'border-box',
+  };
+
   const renderDropdown = () => (
     <div style={dropdownStyle}>
       <button
@@ -273,9 +323,22 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({ similarProcess
           {renderDropdown()}
         </div>
       )}
-      {renderExperimentSection(runningProcesses, 'Running', 'running')}
-      {renderExperimentSection(similarProcesses, 'Similar', 'similar', 16)}
-      {renderExperimentSection(finishedProcesses, 'Finished', 'finished', 16)}
+
+      {/* Search Bar */}
+      <div style={searchBarContainerStyle}>
+        <i className="codicon codicon-search" style={searchIconStyle} />
+        <input
+          type="text"
+          placeholder="Search experiments..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={searchBarInputStyle}
+        />
+      </div>
+
+      {renderExperimentSection(filteredRunning, 'Running', 'running')}
+      {renderExperimentSection(filteredSimilar, 'Similar', 'similar', 16)}
+      {renderExperimentSection(filteredFinished, 'Finished', 'finished', 16)}
     </div>
   );
 }; 

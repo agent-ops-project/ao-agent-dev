@@ -306,14 +306,33 @@ function App() {
 
       <div className="graph-container" ref={graphContainerRef}>
         {selectedExperiment && graphData ? (
-          <GraphTabApp
-            experiment={selectedExperiment}
-            graphData={graphData}
-            sessionId={selectedExperiment.session_id}
-            messageSender={messageSender}
-            isDarkTheme={isDarkTheme}
-            onNodeUpdate={handleNodeUpdate}
-          />
+          <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+            {/* Graph Title Header */}
+            <div
+              style={{
+                padding: "12px 20px",
+                borderBottom: `1px solid ${isDarkTheme ? "#3c3c3c" : "#e0e0e0"}`,
+                backgroundColor: isDarkTheme ? "#1e1e1e" : "#ffffff",
+                color: isDarkTheme ? "#e5e5e5" : "#333333",
+                fontSize: "16px",
+                fontWeight: 600,
+                flexShrink: 0,
+              }}
+            >
+              {selectedExperiment.run_name || selectedExperiment.session_id}
+            </div>
+            {/* Graph */}
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <GraphTabApp
+                experiment={selectedExperiment}
+                graphData={graphData}
+                sessionId={selectedExperiment.session_id}
+                messageSender={messageSender}
+                isDarkTheme={isDarkTheme}
+                onNodeUpdate={handleNodeUpdate}
+              />
+            </div>
+          </div>
         ) : (
           <div className="no-graph">
             {selectedExperiment ? "Loading graph..." : "Select an experiment to view its graph"}

@@ -329,8 +329,10 @@ export const GraphView: React.FC<GraphViewProps> = ({
             gap: 4,
             marginTop: "10px",
             marginRight: "30px",
-            position: "relative",
+            position: "sticky",
+            top: "10px",
             zIndex: 200, // Higher than metadata panel
+            alignSelf: "flex-start",
           }}
         >
           {/* Metadata Panel Toggle Button */}
