@@ -10,6 +10,7 @@ import json
 import random
 import glob
 import builtins
+import warnings
 from aco.runner.ast_rewrite_hook import install_patch_hook, set_module_to_user_file
 from aco.runner.context_manager import set_parent_session_id, set_server_connection
 from aco.common.constants import HOST, PORT, SOCKET_TIMEOUT
@@ -78,13 +79,17 @@ if os.environ.get("AGENT_COPILOT_ENABLE_TRACING"):
             raise Exception("Error converting ACO_SEED to int.")
     logger.debug(f"ACO_SEED was set to {{aco_random_seed}}")
     try:
-        from numpy.random import seed
-        seed(aco_random_seed)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", module="numpy")
+            from numpy.random import seed
+            seed(aco_random_seed)
     except:
         logger.debug("Failed to set the numpy seed")
     try:
-        from torch import manual_seed
-        manual_seed(aco_random_seed)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", module="torch")
+            from torch import manual_seed
+            manual_seed(aco_random_seed)
     except:
         logger.debug("Failed to set the torch seed")
     random.seed(aco_random_seed)

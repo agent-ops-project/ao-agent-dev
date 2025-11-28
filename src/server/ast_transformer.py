@@ -31,6 +31,7 @@ function operations, ensuring sensitive data remains tainted throughout executio
 """
 
 import ast
+import warnings
 from dill import PicklingError, dumps
 from json import dumps as json_dumps
 from inspect import getsourcefile, iscoroutinefunction, isbuiltin
@@ -778,7 +779,9 @@ def _get_bound_obj_hash(bound_self: object | None):
     """
     bound_hash = None
     try:
-        bytes_string = dumps(bound_self)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", module="dill")
+            bytes_string = dumps(bound_self)
     except (PicklingError, TypeError):
         try:
             bound_hash = hash_input(bound_self)

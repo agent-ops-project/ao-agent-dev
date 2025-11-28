@@ -1,11 +1,27 @@
 import io
 import inspect
 import threading
+import warnings
 from typing import Any, Set
 from types import ModuleType
 from enum import Enum
+from functools import wraps
 from aco.server.database_manager import DB
-from aco.common.logger import logger
+
+
+def suppress_warnings(func):
+    """
+    Suppress warning that arise when we get taints and access,
+    for example, deprecated modules.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            return func(*args, **kwargs)
+
+    return wrapper
 
 
 class TaintObject:
@@ -371,6 +387,7 @@ def is_tainted(obj):
         return False
 
 
+@suppress_warnings
 def get_taint_origins(val, _seen=None, _depth=0, _max_depth=100):
     """
     Return a flat list of all taint origins for the input, including nested objects.
