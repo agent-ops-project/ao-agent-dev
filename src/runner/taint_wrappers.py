@@ -314,12 +314,20 @@ def untaint_if_needed(val, _seen=None):
 
     # Handle nested data structures
     if isinstance(val, dict):
-        return {k: untaint_if_needed(v, _seen) for k, v in val.items()}
-    elif isinstance(val, (list, tuple)):
-        result = [untaint_if_needed(item, _seen) for item in val]
-        return tuple(result) if isinstance(val, tuple) else result
+        for k, v in val.items():
+            val[k] = untaint_if_needed(v, _seen)
+        return val
+    elif isinstance(val, list):
+        for i, item in enumerate(val):
+            val[i] = untaint_if_needed(item, _seen)
+        return val
+    elif isinstance(val, tuple):
+        return tuple(untaint_if_needed(item, _seen) for item in val)
     elif isinstance(val, set):
-        return {untaint_if_needed(item, _seen) for item in val}
+        items = [untaint_if_needed(item, _seen) for item in val]
+        val.clear()
+        val.update(items)
+        return val
     elif isinstance(val, Enum):
         return val
     elif isinstance(val, ModuleType):

@@ -32,6 +32,7 @@ function operations, ensuring sensitive data remains tainted throughout executio
 
 import ast
 from dill import PicklingError, dumps
+from json import dumps as json_dumps
 from inspect import getsourcefile, iscoroutinefunction, isbuiltin
 from aco.runner.taint_wrappers import TaintStr, get_taint_origins, untaint_if_needed, taint_wrap
 from aco.common.utils import get_aco_py_files, hash_input
@@ -758,16 +759,19 @@ def _get_bound_obj_hash(bound_self: object | None):
         The hash of the object if hashable, None otherwise.
     """
     bound_hash = None
-    if bound_self:
+    try:
+        bytes_string = dumps(bound_self)
+    except (PicklingError, TypeError):
         try:
-            bytes_string = dumps(bound_self)
-        except (PicklingError, TypeError):
+            bound_hash = hash_input(bound_self)
+        except Exception:
             try:
-                bound_hash = hash_input(bound_self)
+                json_str = json_dumps(bound_self)
+                bound_hash = hash_input(json_str)
             except Exception:
                 pass
-        else:
-            bound_hash = hash_input(bytes_string)
+    else:
+        bound_hash = hash_input(bytes_string)
     return bound_hash
 
 
@@ -904,19 +908,41 @@ def exec_func(func, args, kwargs, user_py_files=None):
     untainted_args = untaint_if_needed(args)
     untainted_kwargs = untaint_if_needed(kwargs)
 
+    untainted_args_hash_before = (
+        [_get_bound_obj_hash(el) for el in untainted_args] if all_origins else None
+    )
+    untainted_kwargs_hash_before = (
+        [_get_bound_obj_hash(val) for val in untainted_kwargs.values()] if all_origins else None
+    )
+
     # Call the original function with untainted arguments
     bound_hash_before_func = _get_bound_obj_hash(bound_self) if all_origins else None
     result = func(*untainted_args, **untainted_kwargs)
     bound_hash_after_func = _get_bound_obj_hash(bound_self) if all_origins else None
 
-    if all_origins:
-        set_lost_taint(set())
-
-    no_side_effect = (
-        bound_hash_before_func is not None
-        and bound_hash_after_func is not None
-        and bound_hash_before_func == bound_hash_after_func
+    untainted_args_hash_after = (
+        [_get_bound_obj_hash(el) for el in untainted_args] if all_origins else None
     )
+    untainted_kwargs_hash_after = (
+        [_get_bound_obj_hash(val) for val in untainted_kwargs.values()] if all_origins else None
+    )
+
+    def has_side_effects(hash_before: str, hash_after: str) -> bool:
+        """Check if the hashes are the same and non-None"""
+        return not (
+            hash_before is not None and hash_after is not None and hash_before == hash_after
+        )
+
+    if all_origins:
+        for i, arg in enumerate(untainted_args):
+            if has_side_effects(untainted_args_hash_before[i], untainted_args_hash_after[i]):
+                taint_wrap(arg, all_origins, inplace=True)
+
+        for i, kwarg_v in enumerate(untainted_kwargs.values()):
+            if has_side_effects(untainted_kwargs_hash_before[i], untainted_kwargs_hash_after[i]):
+                taint_wrap(kwarg_v, all_origins, inplace=True)
+
+        set_lost_taint(set())
 
     # If func is a bound method on a TaintObject, update its taint with any new taint from inputs
     # This ensures the object accumulates taint as it's used with tainted data
@@ -937,7 +963,7 @@ def exec_func(func, args, kwargs, user_py_files=None):
 
     # Wrap result with taint if there is any taint
     if all_origins:
-        if no_side_effect:
+        if not has_side_effects(bound_hash_before_func, bound_hash_after_func):
             return taint_wrap(result, taint_origin=all_origins)
 
         # need to taint bound object (if any) as well
