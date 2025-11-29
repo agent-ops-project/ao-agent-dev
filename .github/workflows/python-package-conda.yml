@@ -104,9 +104,9 @@ jobs:
         source $HOME/miniconda/bin/activate aco
         
         # Install MiroFlow packages (submodules already initialized by checkout)
-        pip install -e example_workflows/miroflow_deep_research/MiroFlow/libs/miroflow-contrib
-        pip install -e example_workflows/miroflow_deep_research/MiroFlow/libs/miroflow-tool
-        pip install -e example_workflows/miroflow_deep_research/MiroFlow/libs/miroflow
+        # pip install -e example_workflows/miroflow_deep_research/MiroFlow/libs/miroflow-contrib
+        # pip install -e example_workflows/miroflow_deep_research/MiroFlow/libs/miroflow-tool
+        # pip install -e example_workflows/miroflow_deep_research/MiroFlow/libs/miroflow
 
     - name: Launch shim server
       run: |
