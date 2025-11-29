@@ -56,6 +56,11 @@ wss.on("connection", (ws, req) => {
     ws.close();
   });
 
+  client.on("error", (err) => {
+    console.error("Error connecting to Python backend:", err);
+    ws.close();
+  });
+
   // forward Python server → browser
   client.on("data", (data) => {
     data

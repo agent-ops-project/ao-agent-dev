@@ -1,4 +1,31 @@
+# Register taint functions in builtins BEFORE any other imports
+import builtins
+import sys
+import os
+
+# Add current directory to path to import modules directly
+current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
+# Import directly from file path to avoid triggering aco.__init__.py
+import importlib.util
+
+ast_transformer_path = os.path.join(current_dir, "server", "ast_transformer.py")
+if os.path.exists(ast_transformer_path):
+    spec = importlib.util.spec_from_file_location("ast_transformer", ast_transformer_path)
+    ast_transformer = importlib.util.module_from_spec(spec)
+    sys.modules["ast_transformer"] = ast_transformer
+    spec.loader.exec_module(ast_transformer)
+
+    builtins.taint_fstring_join = ast_transformer.taint_fstring_join
+    builtins.taint_format_string = ast_transformer.taint_format_string
+    builtins.taint_percent_format = ast_transformer.taint_percent_format
+    builtins.exec_func = ast_transformer.exec_func
+
+# Now safe to import other modules
 import argparse
+import os
 from aco.common.config import (
     Config,
     _ask_field,
@@ -16,6 +43,13 @@ def get_user_input() -> Config:
         default=ACO_PROJECT_ROOT,
         error_message="Please enter a valid path to a directory.",
     )
+
+    # database_url = _ask_field(
+    #     "Database URL (leave empty for SQLite): ",
+    #     str,
+    #     default=os.environ.get("DATABASE_URL"),
+    #     error_message="Please enter a valid database URL or leave empty.",
+    # )
 
     collect_telemetry = _ask_field(
         "Enable telemetry collection? [yes/NO]: ",
@@ -57,6 +91,7 @@ def get_user_input() -> Config:
         telemetry_url=telemetry_url,
         telemetry_key=telemetry_key,
         telemetry_username=telemetry_username,
+        database_url=None,
     )
     return config
 

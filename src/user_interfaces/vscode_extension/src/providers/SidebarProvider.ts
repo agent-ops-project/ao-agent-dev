@@ -1,19 +1,19 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { EditDialogProvider } from './EditDialogProvider';
-import { NotesLogTabProvider } from './NotesLogTabProvider';
+import { GraphTabProvider } from './GraphTabProvider';
 import { PythonServerClient } from './PythonServerClient';
 import { configManager } from './ConfigManager';
 import { AuthManager } from './AuthManager';
 
-export class GraphViewProvider implements vscode.WebviewViewProvider {
+export class SidebarProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'graphExtension.graphView';
     private _view?: vscode.WebviewView;
-    private _editDialogProvider?: EditDialogProvider;
-    private _notesLogTabProvider?: NotesLogTabProvider;
+    private _graphTabProvider?: GraphTabProvider;
     private _pendingMessages: any[] = [];
     private _pythonClient: PythonServerClient | null = null;
     private _authManager: AuthManager;
+    private _messageHandler?: (msg: any) => void;
+    private _windowStateListener?: vscode.Disposable;
     // The Python server connection is deferred until the webview sends 'ready'.
     // Buffering is needed to ensure no messages are lost if the server sends messages before the webview is ready.
 
@@ -30,15 +30,24 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                 });
             }
         });
+
+        // Set up window focus detection to request experiments when VS Code regains focus
+        this._windowStateListener = vscode.window.onDidChangeWindowState((state) => {
+            if (state.focused && this._pythonClient) {
+                // Window regained focus - request fresh experiment list from server
+                this._pythonClient.sendMessage({ type: 'get_all_experiments' });
+            }
+        });
     }
 
 
-    public setNotesLogTabProvider(provider: NotesLogTabProvider): void {
-        this._notesLogTabProvider = provider;
+
+    public setGraphTabProvider(provider: GraphTabProvider): void {
+        this._graphTabProvider = provider;
     }
 
     // Robustly show or reveal the webview
-    public showWebview(context: vscode.ExtensionContext) {
+    public showWebview() {
         if (!this._view || (this._view as any)._disposed) {
             // Create new webview view
             vscode.commands.executeCommand('workbench.view.extension.graphExtension-sidebar');
@@ -48,29 +57,23 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    public setEditDialogProvider(provider: EditDialogProvider): void {
-        this._editDialogProvider = provider;
-    }
 
     public handleEditDialogSave(value: string, context: { nodeId: string; field: string; session_id?: string; attachments?: any }): void {
-        if (this._view) {
-            this._view.webview.postMessage({
-                type: 'updateNode',
-                payload: {
-                    nodeId: context.nodeId,
-                    field: context.field,
-                    value,
-                    session_id: context.session_id, // should be present!
-                }
-            });
-        } else {
-            console.warn('Tried to send message to disposed or missing webview');
-        }
+        this._view?.webview.postMessage({
+            type: 'updateNode',
+            payload: {
+                nodeId: context.nodeId,
+                field: context.field,
+                value,
+                session_id: context.session_id,
+            }
+        });
     }
+
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
-        context: vscode.WebviewViewResolveContext,
+_context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ) {
         this._view = webviewView;
@@ -78,6 +81,13 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
         // Clean up reference when disposed
         webviewView.onDidDispose(() => {
             this._view = undefined;
+        });
+
+        // Request fresh experiment list when the webview becomes visible
+        webviewView.onDidChangeVisibility(() => {
+            if (webviewView.visible && this._pythonClient) {
+                this._pythonClient.sendMessage({ type: 'get_all_experiments' });
+            }
         });
 
         // Flush any pending messages to the webview
@@ -90,7 +100,10 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [this._extensionUri]
+            localResourceRoots: [
+                this._extensionUri,
+                vscode.Uri.joinPath(this._extensionUri, '..', 'node_modules')
+            ]
         };
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
@@ -101,91 +114,72 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
         // Handle messages from the webview
         webviewView.webview.onDidReceiveMessage(data => {
-            console.log('[GraphViewProvider] Received message from webview:', data.type, data);
-            if (data.type === 'restart') {
-                if (!data.session_id) {
-                    console.error('Restart message missing session_id! Not forwarding to Python server.');
-                    return;
-                }
-                if (this._pythonClient) {
-                    this._pythonClient.sendMessage({ type: 'restart', session_id: data.session_id });
-                }
-            }
             switch (data.type) {
+                case 'restart':
+                    if (!data.session_id) {
+                        console.error('Restart message missing session_id! Not forwarding to Python server.');
+                        return;
+                    }
+                    this._pythonClient?.sendMessage({ type: 'restart', session_id: data.session_id });
+                    break;
                 case 'open_log_tab_side_by_side':
-                    if (this._notesLogTabProvider) {
-                        this._notesLogTabProvider.openLogTab(data.payload);
-                    } else {
-                        console.error('NotesLogTabProvider instance not set!');
-                    }
+                    console.warn('NotesLogTabProvider not available');
                     break;
-                case 'updateNode':
-                    if (this._pythonClient) {
-                        this._pythonClient.sendMessage(data);
-                    }
-                    break;
+                case 'update_node':
                 case 'edit_input':
-                    if (this._pythonClient) {
-                        this._pythonClient.sendMessage(data);
-                    }
-                    break;
                 case 'edit_output':
-                    if (this._pythonClient) {
-                        this._pythonClient.sendMessage(data);
-                    }
-                    break;
                 case 'get_graph':
-                    if (this._pythonClient) {
-                        this._pythonClient.sendMessage(data);
-                    }
+                case 'erase':
+                    this._pythonClient?.sendMessage(data);
+                    break;
+                case 'setDatabaseMode':
+                    this._pythonClient?.sendMessage({ 
+                        type: 'set_database_mode', 
+                        mode: data.mode 
+                    });
                     break;
                 case 'ready':
                     // Webview is ready - now connect to the Python server and set up message forwarding
                     if (!this._pythonClient) {
                         this._pythonClient = PythonServerClient.getInstance();
-                        // Forward all messages from the Python server to the webview, buffer if not ready
-                        this._pythonClient.onMessage((msg) => {
+                        this._pythonClient.ensureConnected(); // async but don't await - webview is ready
+                        // Create message handler and store reference for cleanup
+                        this._messageHandler = (msg) => {
                             // Intercept session_id message to set up config management
                             if (msg.type === 'session_id' && msg.config_path) {
-                                // Only attempt to use the config path if it exists on the local filesystem.
                                 try {
-                                    if (fs.existsSync(msg.config_path)) {
-                                        configManager.setConfigPath(msg.config_path);
+                                    configManager.setConfigPath(msg.config_path);
 
-                                        // Set up config forwarding to webview
-                                        configManager.onConfigChange((config) => {
-                                            if (this._view) {
-                                                this._view.webview.postMessage({
-                                                    type: 'configUpdate',
-                                                    detail: config
-                                                });
-                                            }
-                                        });
-                                    } else {
-                                        console.warn('[GraphViewProvider] Ignoring remote config_path (not present locally):', msg.config_path);
-                                    }
+                                    // Set up config forwarding to webview
+                                    configManager.onConfigChange((config) => {
+                                        if (this._view) {
+                                            this._view.webview.postMessage({
+                                                type: 'configUpdate',
+                                                detail: config
+                                            });
+                                        }
+                                    });
                                 } catch (e) {
-                                    console.warn('[GraphViewProvider] Error checking config_path:', e);
+                                    console.warn('[SidebarProvider] Error setting config_path:', e);
                                 }
                             }
-                            
                             if (this._view) {
                                 this._view.webview.postMessage(msg);
                             } else {
                                 this._pendingMessages.push(msg);
                             }
-                        });
+                        };
+                        // Forward all messages from the Python server to the webview, buffer if not ready
+                        this._pythonClient.onMessage(this._messageHandler);
                         this._pythonClient.startServerIfNeeded();
                     }
                     
                     // Send current auth state to webview
                     const authState = this._authManager.getCurrentState();
-                    if (this._view) {
-                        this._view.webview.postMessage({
-                            type: 'authStateChanged',
-                            payload: authState
-                        });
-                    }
+                    this._view?.webview.postMessage({
+                        type: 'authStateChanged',
+                        payload: authState
+                    });
                     break;
                 case 'signIn':
                     this._authManager.signIn().then((state) => {
@@ -213,48 +207,17 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
                         });
                     }
                     break;
-                case 'showEditDialog':
-                    if (this._editDialogProvider) {
-                        // Show the edit dialog with the provided data
-                        this._editDialogProvider.show(
-                            `${data.payload.label} ${data.payload.field === 'input' ? 'Input' : 'Output'}`,
-                            data.payload.value,
-                            {
-                                nodeId: data.payload.nodeId,
-                                field: data.payload.field,
-                                session_id: data.payload.session_id,
-                                attachments: data.payload.attachments
-                            }
-                        );
-                    }
-                    break;
-                case 'erase':
-                    if (this._pythonClient) {
-                        this._pythonClient.sendMessage(data);
-                    }
-                    break;
-                case 'update_run_name':
-                    console.log('[GraphViewProvider] Forwarding update_run_name to Python server:', data);
-                    if (this._pythonClient) {
-                        this._pythonClient.sendMessage(data);
+                case 'openGraphTab':
+                    if (this._graphTabProvider && data.payload.experiment) {
+                        this._graphTabProvider.createOrShowGraphTab(data.payload.experiment);
                     } else {
-                        console.warn('[GraphViewProvider] No Python client available for update_run_name');
+                        console.warn('[GraphViewProvider] No GraphTabProvider available or missing experiment data');
                     }
                     break;
-                case 'update_result':
-                    console.log('[GraphViewProvider] Forwarding update_result to Python server:', data);
+                case 'requestExperimentRefresh':
+                    // ExperimentsView has mounted and is ready to display data - request experiment list
                     if (this._pythonClient) {
-                        this._pythonClient.sendMessage(data);
-                    } else {
-                        console.warn('[GraphViewProvider] No Python client available for update_result');
-                    }
-                    break;
-                case 'update_notes':
-                    console.log('[GraphViewProvider] Forwarding update_notes to Python server:', data);
-                    if (this._pythonClient) {
-                        this._pythonClient.sendMessage(data);
-                    } else {
-                        console.warn('[GraphViewProvider] No Python client available for update_notes');
+                        this._pythonClient.sendMessage({ type: 'get_all_experiments' });
                     }
                     break;
             }
@@ -273,8 +236,8 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
 
     private _getHtmlForWebview(webview: vscode.Webview) {
         const path = require('path');
-        const os = require('os');
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview.js'));
+        const codiconsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, '..', 'node_modules', '@vscode/codicons', 'dist', 'codicon.css'));
         const templatePath = path.join(
             this._extensionUri.fsPath,
             'src',
@@ -305,6 +268,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
         html = html.replace('const vscode = acquireVsCodeApi();', 
             `${configBridge}\n        const vscode = acquireVsCodeApi();`);
         html = html.replace(/{{scriptUri}}/g, scriptUri.toString());
+        html = html.replace(/{{codiconsUri}}/g, codiconsUri.toString());
         return html;
     }
 
@@ -321,6 +285,16 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     public dispose(): void {
+        // Clean up message listener
+        if (this._pythonClient && this._messageHandler) {
+            this._pythonClient.removeMessageListener(this._messageHandler);
+            this._messageHandler = undefined;
+        }
+        // Clean up window state listener
+        if (this._windowStateListener) {
+            this._windowStateListener.dispose();
+            this._windowStateListener = undefined;
+        }
         // Clean up is handled by ConfigManager
     }
 }

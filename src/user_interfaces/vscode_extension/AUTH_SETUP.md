@@ -6,8 +6,8 @@ The VSCode extension supports Google authentication so experiments can be filter
 ## Requirements
 
 1. **Google OAuth Credentials**: Make sure you have OAuth credentials configured in Google Cloud Console.
-2. **Auth Server**: The authentication server (`auth_app.py`) must be running (either locally or deployed on AWS).
-3. **Python Develop Server**: The develop server (`develop_server.py`) must be running and reachable from VSCode.
+2. **Auth Server**: The authentication server (`auth_app.py`) must be running (either locally or deployed on AWS): `uvicorn aco.server.auth_app:app --host 0.0.0.0 --port 5958 --reload`
+3. **Python Develop Server**: The develop server (`develop_server.py`) must be running and reachable from VSCode. 
 
 ## Google Cloud Console configuration
 

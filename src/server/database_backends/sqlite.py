@@ -1,14 +1,16 @@
 """
 SQLite database backend for workflow experiments.
 """
+
 import os
 import sqlite3
 import threading
-import hashlib
+import json
 import dill
 
 from aco.common.logger import logger
 from aco.common.constants import ACO_DB_PATH
+from aco.common.utils import hash_input
 
 
 # Global lock among concurrent threads: Threads within a process share a single
@@ -36,7 +38,12 @@ def get_conn():
                 db_path = os.path.join(ACO_DB_PATH, "experiments.sqlite")
                 # Ensure the directory exists with proper permissions
                 os.makedirs(os.path.dirname(db_path), exist_ok=True)
-                _shared_conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30.0, detect_types=sqlite3.PARSE_DECLTYPES)
+                _shared_conn = sqlite3.connect(
+                    db_path,
+                    check_same_thread=False,
+                    timeout=30.0,
+                    detect_types=sqlite3.PARSE_DECLTYPES,
+                )
                 _shared_conn.row_factory = sqlite3.Row
                 # Enable WAL mode for better concurrent access
                 _shared_conn.execute("PRAGMA journal_mode=WAL")
@@ -50,6 +57,22 @@ def get_conn():
 
 def _init_db(conn):
     c = conn.cursor()
+    
+    # Create users table
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            google_id TEXT NOT NULL UNIQUE,
+            email TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            picture TEXT,
+            created_at TIMESTAMP DEFAULT (datetime('now')),
+            updated_at TIMESTAMP DEFAULT (datetime('now'))
+        )
+    """
+    )
+    
     # Create experiments table
     c.execute(
         """
@@ -67,6 +90,7 @@ def _init_db(conn):
             success TEXT CHECK (success IN ('', 'Satisfactory', 'Failed')),
             notes TEXT,
             log TEXT,
+            user_id TEXT,
             FOREIGN KEY (parent_session_id) REFERENCES experiments (session_id),
             UNIQUE (parent_session_id, name)
         )
@@ -149,13 +173,6 @@ def execute(sql, params=()):
         return c.lastrowid
 
 
-def hash_input(input_bytes):
-    if isinstance(input_bytes, bytes):
-        return hashlib.sha256(input_bytes).hexdigest()
-    else:
-        return hashlib.sha256(input_bytes.encode("utf-8")).hexdigest()
-
-
 def deserialize_input(input_blob, api_type):
     """Deserialize input blob back to original dict"""
     if input_blob is None:
@@ -174,8 +191,6 @@ def deserialize(output_json, api_type):
 
 def store_taint_info(session_id, file_path, line_no, taint_nodes):
     """Store taint information for a line in a file"""
-    import json
-
     file_id = f"{session_id}:{file_path}:{line_no}"
     content_hash = hash_input(f"{file_path}:{line_no}")
     taint_json = json.dumps(taint_nodes) if taint_nodes else "[]"
@@ -193,8 +208,6 @@ def store_taint_info(session_id, file_path, line_no, taint_nodes):
 
 def get_taint_info(file_path, line_no):
     """Get taint information for a specific line in a file from any previous session"""
-    import json
-
     row = query_one(
         """
         SELECT session_id, taint FROM attachments 
@@ -209,3 +222,242 @@ def get_taint_info(file_path, line_no):
         taint_nodes = json.loads(row["taint"]) if row["taint"] else []
         return row["session_id"], taint_nodes
     return None, []
+
+
+def add_experiment_query(
+    session_id,
+    parent_session_id,
+    name,
+    default_graph,
+    timestamp,
+    cwd,
+    command,
+    env_json,
+    default_success,
+    default_note,
+    default_log,
+    user_id,
+):
+    """Execute SQLite-specific INSERT for experiments table"""
+    execute(
+        "INSERT OR REPLACE INTO experiments (session_id, parent_session_id, name, graph_topology, timestamp, cwd, command, environment, success, notes, log, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            session_id,
+            parent_session_id,
+            name,
+            default_graph,
+            timestamp,
+            cwd,
+            command,
+            env_json,
+            default_success,
+            default_note,
+            default_log,
+            user_id,
+        ),
+    )
+
+
+def set_input_overwrite_query(input_overwrite, session_id, node_id):
+    """Execute SQLite-specific UPDATE for llm_calls input_overwrite"""
+    execute(
+        "UPDATE llm_calls SET input_overwrite=?, output=NULL WHERE session_id=? AND node_id=?",
+        (input_overwrite, session_id, node_id),
+    )
+
+
+def set_output_overwrite_query(output_overwrite, session_id, node_id):
+    """Execute SQLite-specific UPDATE for llm_calls output"""
+    execute(
+        "UPDATE llm_calls SET output=? WHERE session_id=? AND node_id=?",
+        (output_overwrite, session_id, node_id),
+    )
+
+
+def delete_llm_calls_query(session_id):
+    """Execute SQLite-specific DELETE for llm_calls"""
+    execute("DELETE FROM llm_calls WHERE session_id=?", (session_id,))
+
+
+def update_experiment_graph_topology_query(graph_json, session_id):
+    """Execute SQLite-specific UPDATE for experiments graph_topology"""
+    execute("UPDATE experiments SET graph_topology=? WHERE session_id=?", (graph_json, session_id))
+
+
+def update_experiment_timestamp_query(timestamp, session_id):
+    """Execute SQLite-specific UPDATE for experiments timestamp"""
+    execute("UPDATE experiments SET timestamp=? WHERE session_id=?", (timestamp, session_id))
+
+
+def update_experiment_name_query(run_name, session_id):
+    """Execute SQLite-specific UPDATE for experiments name"""
+    execute(
+        "UPDATE experiments SET name=? WHERE session_id=?",
+        (run_name, session_id),
+    )
+
+
+def update_experiment_result_query(result, session_id):
+    """Execute SQLite-specific UPDATE for experiments success"""
+    execute(
+        "UPDATE experiments SET success=? WHERE session_id=?",
+        (result, session_id),
+    )
+
+
+def update_experiment_notes_query(notes, session_id):
+    """Execute SQLite-specific UPDATE for experiments notes"""
+    execute(
+        "UPDATE experiments SET notes=? WHERE session_id=?",
+        (notes, session_id),
+    )
+
+
+def update_experiment_log_query(
+    updated_log, updated_success, color_preview_json, graph_json, session_id
+):
+    """Execute SQLite-specific UPDATE for experiments log, success, color_preview, and graph_topology"""
+    execute(
+        "UPDATE experiments SET log=?, success=?, color_preview=?, graph_topology=? WHERE session_id=?",
+        (updated_log, updated_success, color_preview_json, graph_json, session_id),
+    )
+
+
+# Attachment-related queries
+def check_attachment_exists_query(file_id):
+    """Check if attachment with given file_id exists."""
+    return query_one("SELECT file_id FROM attachments WHERE file_id=?", (file_id,))
+
+
+def get_attachment_by_content_hash_query(content_hash):
+    """Get attachment file path by content hash."""
+    return query_one("SELECT file_path FROM attachments WHERE content_hash=?", (content_hash,))
+
+
+def insert_attachment_query(file_id, content_hash, file_path):
+    """Insert new attachment record."""
+    execute(
+        "INSERT INTO attachments (file_id, content_hash, file_path) VALUES (?, ?, ?)",
+        (file_id, content_hash, file_path),
+    )
+
+
+def get_attachment_file_path_query(file_id):
+    """Get file path for attachment by file_id."""
+    return query_one("SELECT file_path FROM attachments WHERE file_id=?", (file_id,))
+
+
+# Subrun queries
+def get_subrun_by_parent_and_name_query(parent_session_id, name):
+    """Get subrun session_id by parent session and name."""
+    return query_one(
+        "SELECT session_id FROM experiments WHERE parent_session_id = ? AND name = ?",
+        (parent_session_id, name),
+    )
+
+
+def get_parent_session_id_query(session_id):
+    """Get parent session ID for a given session."""
+    return query_one("SELECT parent_session_id FROM experiments WHERE session_id=?", (session_id,))
+
+
+# LLM calls queries
+def get_llm_call_by_session_and_hash_query(session_id, input_hash):
+    """Get LLM call by session_id and input_hash."""
+    return query_one(
+        "SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=? AND input_hash=?",
+        (session_id, input_hash),
+    )
+
+
+def insert_llm_call_with_output_query(
+    session_id, input_pickle, input_hash, node_id, api_type, output_pickle
+):
+    """Insert new LLM call record with output in a single operation (upsert)."""
+    execute(
+        """
+        INSERT INTO llm_calls (session_id, input, input_hash, node_id, api_type, output)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT (session_id, node_id)
+        DO UPDATE SET output = excluded.output
+        """,
+        (session_id, input_pickle, input_hash, node_id, api_type, output_pickle),
+    )
+
+
+# Experiment list and graph queries
+def get_finished_runs_query():
+    """Get all finished runs ordered by timestamp."""
+    return query_all("SELECT session_id, timestamp FROM experiments ORDER BY timestamp DESC", ())
+
+
+def get_all_experiments_sorted_query():
+    """Get all experiments sorted by timestamp desc."""
+    return query_all(
+        "SELECT session_id, timestamp, color_preview, name, success, notes, log FROM experiments ORDER BY timestamp DESC",
+        (),
+    )
+
+
+def get_all_experiments_sorted_by_user_query(user_id=None):
+    """Get all experiments sorted by timestamp desc, optionally filtered by user_id."""
+    if user_id is None:
+        # Return all experiments if no user_id filter
+        return query_all(
+            "SELECT session_id, timestamp, color_preview, name, success, notes, log FROM experiments ORDER BY timestamp DESC",
+            (),
+        )
+    else:
+        # Filter by user_id
+        return query_all(
+            "SELECT session_id, timestamp, color_preview, name, success, notes, log FROM experiments WHERE user_id=? ORDER BY timestamp DESC",
+            (user_id,),
+        )
+
+
+def get_experiment_graph_topology_query(session_id):
+    """Get graph topology for an experiment."""
+    return query_one("SELECT graph_topology FROM experiments WHERE session_id=?", (session_id,))
+
+
+def get_experiment_color_preview_query(session_id):
+    """Get color preview for an experiment."""
+    return query_one("SELECT color_preview FROM experiments WHERE session_id=?", (session_id,))
+
+
+def get_experiment_environment_query(parent_session_id):
+    """Get experiment cwd, command, and environment."""
+    return query_one(
+        "SELECT cwd, command, environment FROM experiments WHERE session_id=?", (parent_session_id,)
+    )
+
+
+def update_experiment_color_preview_query(color_preview_json, session_id):
+    """Update experiment color preview."""
+    execute(
+        "UPDATE experiments SET color_preview=? WHERE session_id=?",
+        (color_preview_json, session_id),
+    )
+
+
+def get_experiment_exec_info_query(session_id):
+    """Get experiment execution info (cwd, command, environment)."""
+    return query_one(
+        "SELECT cwd, command, environment FROM experiments WHERE session_id=?", (session_id,)
+    )
+
+
+# Database cleanup queries
+def delete_all_experiments_query():
+    """Delete all records from experiments table."""
+    execute("DELETE FROM experiments")
+
+
+def delete_all_llm_calls_query():
+    """Delete all records from llm_calls table."""
+    execute("DELETE FROM llm_calls")
+
+
+def get_session_name_query(session_id):
+    """Get session name by session_id."""
+    return query_one("SELECT name FROM experiments WHERE session_id=?", (session_id,))

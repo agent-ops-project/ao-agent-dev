@@ -7,6 +7,7 @@ export class PythonServerClient {
     private client: any = undefined;
     private messageQueue: string[] = [];
     private onMessageCallback?: (msg: any) => void;
+    private messageCallbacks: ((msg: any) => void)[] = [];
     private userId?: string;
     private serverHost: string;
     private serverPort: number;
@@ -23,7 +24,8 @@ export class PythonServerClient {
         this.serverUrl = config.get('pythonServerUrl');
         this.useWebSocket = !!(this.serverUrl && typeof this.serverUrl === 'string' && this.serverUrl.startsWith('ws'));
 
-        this.connect();
+        // Don't auto-connect - let the extension control when to connect
+        // after setting user_id
     }
 
     public static getInstance(): PythonServerClient {
@@ -34,35 +36,36 @@ export class PythonServerClient {
         this.userId = userId;
     }
 
-    private connect() {
-        if (this.reconnecting) {
-            console.log('[PythonServerClient] Reconnection already in progress, skipping duplicate attempt');
-            return;
-        }
-
-        if (this.useWebSocket && this.serverUrl) {
-            this.connectWebSocket(this.serverUrl);
-            return;
-        }
-
-        console.log(`[PythonServerClient] Connecting to ${this.serverHost}:${this.serverPort}`);
-        this.client = new net.Socket();
-        this.client.connect(this.serverPort, this.serverHost, async () => {
-            // Get current user_id if authenticated
-            let userId = this.userId;
-
-            // Try to get from authentication if not already set
-            if (!userId) {
-                try {
-                    const session = await vscode.authentication.getSession('google', [], { createIfNone: false });
-                    if (session) {
-                        userId = session.account.id;
-                    }
-                } catch (e) {
-                    // User not authenticated, continue without user_id
+    public async ensureConnected() {
+        if (!this.client) {
+            // Check for authentication before connecting
+            try {
+                const vscode = await import('vscode');
+                const session = await vscode.authentication.getSession('google', [], { createIfNone: false });
+                if (session) {
+                    this.userId = session.account.id;
                 }
+            } catch (error) {
+                // Authentication check failed, continue without user_id
+                console.error('Failed to check authentication before connection:', error);
             }
+            this.connect();
+        }
+    }
 
+    private connect() {
+        // Clean up existing client before reconnecting
+        if (this.client) {
+            this.client.removeAllListeners();
+            this.client.destroy();
+        }
+        
+        // Create a new socket for each connection attempt
+        this.client = new net.Socket();
+        
+        this.client.connect(5959, '127.0.0.1', () => {
+            this.reconnecting = false;
+            
             const handshake: any = {
                 type: "hello",
                 role: "ui",
@@ -70,8 +73,8 @@ export class PythonServerClient {
             };
 
             // Add user_id to handshake if authenticated
-            if (userId) {
-                handshake.user_id = userId;
+            if (this.userId) {
+                handshake.user_id = this.userId;
             }
 
             this.client.write(JSON.stringify(handshake) + "\n");
@@ -86,94 +89,25 @@ export class PythonServerClient {
             while ((idx = buffer.indexOf('\n')) !== -1) {
                 const line = buffer.slice(0, idx);
                 buffer = buffer.slice(idx + 1);
-                try {
-                    const msg = JSON.parse(line);
-                    this.onMessageCallback?.(msg);
-                } catch (e) {
-                    console.error('Failed to parse message from backend', e);
-                }
+                const msg = JSON.parse(line);
+                // Call all registered callbacks
+                this.messageCallbacks.forEach(callback => callback(msg));
             }
         });
 
         this.client.on('close', () => {
-            console.log('[PythonServerClient] TCP connection closed, will retry in 2s');
-            this.scheduleReconnect();
-        });
-
-        this.client.on('error', (err: any) => {
-            console.error('[PythonServerClient] TCP connection error:', err?.message || err);
-            this.scheduleReconnect();
-        });
-    }
-
-    private connectWebSocket(url: string) {
-        // lazy-require 'ws' to keep environment flexible
-        let WS: any = null;
-        try {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            WS = require('ws');
-        } catch (e) {
-            console.error('[PythonServerClient] WebSocket library "ws" not installed. Install with `npm install ws`');
-            // fallback to TCP connect
-            this.useWebSocket = false;
-            this.connect();
-            return;
-        }
-
-        console.log(`[PythonServerClient] Connecting to WebSocket ${url}`);
-        this.client = new WS(url);
-
-        this.client.on('open', async () => {
-            console.log('[PythonServerClient] WebSocket connected');
             this.reconnecting = false;
+            // Clear any pending reconnect
             if (this.reconnectTimer) {
                 clearTimeout(this.reconnectTimer);
-                this.reconnectTimer = undefined;
             }
-
-            let userId = this.userId;
-            if (!userId) {
-                try {
-                    const session = await vscode.authentication.getSession('google', [], { createIfNone: false });
-                    if (session) userId = session.account.id;
-                } catch (e) {}
-            }
-
-            const handshake: any = { type: 'hello', role: 'ui', script: 'vscode-extension' };
-            if (userId) handshake.user_id = userId;
-
-            this.client.send(JSON.stringify(handshake));
-            this.messageQueue.forEach(msg => this.client.send(msg));
-            this.messageQueue = [];
+            // Use ensureConnected for reconnections to check auth first
+            this.reconnectTimer = setTimeout(() => this.ensureConnected(), 2000);
         });
 
-        this.client.on('message', (data: any) => {
-            try {
-                const text = data.toString();
-                // accept multiple newline-delimited messages in one frame
-                const parts = text.split('\n').filter(Boolean);
-                for (const part of parts) {
-                    try {
-                        const msg = JSON.parse(part);
-                        this.onMessageCallback?.(msg);
-                    } catch (err) {
-                        // ignore non-JSON messages (logs, HTML, etc.) but keep a short warning
-                        try { console.warn('[PythonServerClient] Ignored non-JSON WS message:', part.slice(0,200)); } catch {};
-                    }
-                }
-            } catch (e) {
-                console.error('Failed to handle WS message', e);
-            }
-        });
-
-        this.client.on('close', () => {
-            console.log('[PythonServerClient] WebSocket closed, will retry in 2s');
-            this.scheduleReconnect();
-        });
-        
-        this.client.on('error', (err: any) => {
-            console.error('[PythonServerClient] WebSocket error:', err?.message || err);
-            this.scheduleReconnect();
+        this.client.on('error', () => {
+            // Don't call connect() again here since 'close' will also fire
+            // This prevents double reconnection attempts
         });
     }
 
@@ -219,7 +153,32 @@ export class PythonServerClient {
     }
 
     public onMessage(cb: (msg: any) => void) {
-        this.onMessageCallback = cb;
+        this.messageCallbacks.push(cb);
+    }
+
+    public removeMessageListener(cb: (msg: any) => void) {
+        const index = this.messageCallbacks.indexOf(cb);
+        if (index > -1) {
+            this.messageCallbacks.splice(index, 1);
+        }
+    }
+
+    public dispose() {
+        // Clear reconnect timeout
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = undefined;
+        }
+
+        // Clean up socket
+        if (this.client) {
+            this.client.removeAllListeners();
+            this.client.destroy();
+        }
+
+        // Clear callbacks
+        this.messageCallbacks = [];
+        this.messageQueue = [];
     }
 
     private scheduleReconnect() {

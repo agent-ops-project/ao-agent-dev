@@ -1,13 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { WorkflowRunDetailsPanel } from '../../../shared_components/components/experiment/WorkflowRunDetailsPanel';
-import { GraphView } from '../../../shared_components/components/graph/GraphView';
+import React, { useEffect, useState } from 'react';
 import { ExperimentsView } from '../../../shared_components/components/experiment/ExperimentsView';
+import { GraphView } from '../../../shared_components/components/graph/GraphView';
+import { WorkflowRunDetailsPanel } from '../../../shared_components/components/experiment/WorkflowRunDetailsPanel';
 import { LoginScreen } from './LoginScreen';
 import { GraphNode, GraphEdge, GraphData, ProcessInfo } from '../../../shared_components/types';
-import { sendReady, sendGetGraph, sendMessage } from '../../../shared_components/utils/messaging';
 import { MessageSender } from '../../../shared_components/types/MessageSender';
 import { useIsVsCodeDarkTheme } from '../../../shared_components/utils/themeUtils';
-import { useLocalStorage } from '../../../shared_components/hooks/useLocalStorage';
 
 
 // Add global type augmentation for window.vscode
@@ -20,35 +18,35 @@ declare global {
 }
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useLocalStorage<"experiments" | "experiment-graph">("activeTab", "experiments");
-  const [processes, setProcesses] = useLocalStorage<ProcessInfo[]>("experiments", []);
-  const [selectedExperiment, setSelectedExperiment] = useLocalStorage<ProcessInfo | null>("selectedExperiment", null);
-  const [allGraphs, setAllGraphs] = useLocalStorage<Record<string, GraphData>>("graphs", {});
+  const [processes, setProcesses] = useState<ProcessInfo[]>([]);
+  const [databaseMode, setDatabaseMode] = useState<'Local' | 'Remote'>('Local');
+  const [user, setUser] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'experiments' | 'experiment-graph'>('experiments');
+  const [selectedExperiment, setSelectedExperiment] = useState<ProcessInfo | null>(null);
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
-  const [user, setUser] = useState<{ displayName: string; email: string; avatarUrl: string } | null>(null);
+  const [allGraphs, setAllGraphs] = useState<Record<string, GraphData>>({});
   const isDarkTheme = useIsVsCodeDarkTheme();
 
-  // Create MessageSender for VS Code environment
-  const messageSender: MessageSender = {
-    send: (message: any) => {
-      if (window.vscode) {
-        window.vscode.postMessage(message);
-      }
-    }
-  };
-  // Listen for event to open detail panel
-  useEffect(() => {
-    const handler = () => setShowDetailsPanel(true);
-    window.addEventListener('open-details-panel', handler);
-    return () => window.removeEventListener('open-details-panel', handler);
-  }, []);
-
   // Listen for backend messages and update state
-  useEffect(() => {   
+  useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
       switch (message.type) {
         case "session_id":
+          // Handle initial connection message with database mode
+          if (message.database_mode) {
+            const mode = message.database_mode === 'local' ? 'Local' : 'Remote';
+            setDatabaseMode(mode);
+            console.log(`Synchronized database mode to: ${mode}`);
+          }
+          break;
+        case "database_mode_changed":
+          // Handle database mode change broadcast from server
+          if (message.database_mode) {
+            const mode = message.database_mode === 'local' ? 'Local' : 'Remote';
+            setDatabaseMode(mode);
+            console.log(`Database mode changed by another UI to: ${mode}`);
+          }
           break;
         case "authStateChanged":
           // Update user state from auth provider
@@ -74,22 +72,16 @@ export const App: React.FC = () => {
           console.log('Config update received:', message.detail);
           window.dispatchEvent(new CustomEvent('configUpdate', { detail: message.detail }));
           break;
-        case "graph_update": {
-          const sid = message.session_id;
-          const payload = message.payload;         
-          setAllGraphs((prev) => ({
-            ...prev,
-            [sid]: payload,
-          }));
+        case "graph_update":
+          // Graph updates are now handled by individual graph tabs
           break;
-        }
         case "color_preview_update": {
           const sid = message.session_id;
           const color_preview = message.color_preview;
           console.log(`Color preview update for ${sid}:`, color_preview);
           setProcesses((prev) => {
-            const updated = prev.map(process => 
-              process.session_id === sid 
+            const updated = prev.map(process =>
+              process.session_id === sid
                 ? { ...process, color_preview }
                 : process
             );
@@ -99,90 +91,90 @@ export const App: React.FC = () => {
           break;
         }
         case "updateNode":
-          if (message.payload) {
-            const { nodeId, field, value, session_id } = message.payload;
-            handleNodeUpdate(nodeId, field, value, session_id);
-          }
+          // Node updates are now handled by individual graph tabs
           break;
         case "experiment_list":
           setProcesses(message.experiments || []);
-          localStorage.setItem(
-            "experiments",
-            JSON.stringify(message.experiments || [])
-          );
-          // No longer automatically loading all graphs - only load when user clicks
-          // Clear any cached graphs for experiments that are no longer in the list
-          const currentSessionIds = new Set((message.experiments || []).map((exp: ProcessInfo) => exp.session_id));
-          setAllGraphs((prev) => {
-            const newGraphs: Record<string, GraphData> = {};
-            Object.keys(prev).forEach(sessionId => {
-              if (currentSessionIds.has(sessionId)) {
-                newGraphs[sessionId] = prev[sessionId];
-              }
-            });
-            return newGraphs;
-          });
           break;
       }
     };
     window.addEventListener('message', handleMessage);
-    sendReady();
+    // Send ready message to VS Code extension
+    if (window.vscode) {
+      window.vscode.postMessage({ type: 'ready' });
+    }
     return () => {
       window.removeEventListener('message', handleMessage);
     };
   }, []);
 
-  const handleNodeUpdate = (
-    nodeId: string,
-    field: string,
-    value: string,
-    sessionId?: string,
-    attachments?: any
-  ) => {
-    if (sessionId && window.vscode) {
+
+  const handleExperimentCardClick = (process: ProcessInfo) => {
+    // Instead of switching tabs in the sidebar, open a new graph tab
+    if (window.vscode) {
+      window.vscode.postMessage({
+        type: 'openGraphTab',
+        payload: {
+          experiment: process
+        }
+      });
+    }
+  };
+
+  const handleDatabaseModeChange = (mode: 'Local' | 'Remote') => {
+    // Update local state immediately for responsive UI
+    setDatabaseMode(mode);
+    
+    // Send message to VS Code extension to relay to server
+    if (window.vscode) {
+      window.vscode.postMessage({
+        type: 'setDatabaseMode',
+        mode: mode.toLowerCase()
+      });
+    }
+  };
+
+  const handleNodeUpdate = (nodeId: string, field: string, value: string, sessionId: string, attachments?: any) => {
+    if (window.vscode) {
       const baseMsg = {
         session_id: sessionId,
         node_id: nodeId,
         value,
         ...(attachments && { attachments }),
       };
+
       if (field === "input") {
         window.vscode.postMessage({ type: "edit_input", ...baseMsg });
       } else if (field === "output") {
         window.vscode.postMessage({ type: "edit_output", ...baseMsg });
       } else {
         window.vscode.postMessage({
-          type: "updateNode",
-          session_id: sessionId,
-          nodeId,
+          type: "update_node",
+          ...baseMsg,
           field,
-          value,
-          ...(attachments && { attachments }),
         });
       }
     }
   };
 
-  const handleExperimentCardClick = (process: ProcessInfo) => {
-    setSelectedExperiment(process);
-    setActiveTab('experiment-graph');
-    localStorage.setItem("selectedExperiment", JSON.stringify(process));
-    localStorage.setItem("activeTab", 'experiment-graph');
-    sendGetGraph(process.session_id);
+  // Message sender for the Graph components
+  const messageSender: MessageSender = {
+    send: (message: any) => {
+      if (window.vscode) {
+        window.vscode.postMessage(message);
+      }
+    },
   };
 
   // Use experiments in the order sent by server (already sorted by name ascending)
-  // Only show experiments if user is logged in
-  const sortedProcesses = user ? processes : [];
+  // Server already filters by user_id, so no client-side filtering needed
+  const sortedProcesses = processes;
   
+  // const similarExperiments = sortedProcesses.filter(p => p.status === 'similar');
+  const similarExperiments = sortedProcesses[0];
   const runningExperiments = sortedProcesses.filter(p => p.status === 'running');
   const finishedExperiments = sortedProcesses.filter(p => p.status === 'finished');
 
-  useEffect(() => {
-    if (selectedExperiment && !allGraphs[selectedExperiment.session_id]) {
-      sendGetGraph(selectedExperiment.session_id);
-    }
-  }, [selectedExperiment, allGraphs]);
 
   // Show login screen if user is not authenticated
   if (!user) {
@@ -260,6 +252,7 @@ export const App: React.FC = () => {
       >
         {activeTab === "experiments" ? (
           <ExperimentsView
+            similarProcesses={similarExperiments ? [similarExperiments] : []}
             runningProcesses={runningExperiments}
             finishedProcesses={finishedExperiments}
             onCardClick={handleExperimentCardClick}
@@ -275,6 +268,9 @@ export const App: React.FC = () => {
                 window.vscode.postMessage({ type: 'signOut' });
               }
             }}
+            showHeader={true}
+            onModeChange={handleDatabaseModeChange}
+            currentMode={databaseMode}
           />
         ) : activeTab === "experiment-graph" && selectedExperiment && !showDetailsPanel ? (
           <GraphView
@@ -299,8 +295,8 @@ export const App: React.FC = () => {
           />
         ) : activeTab === "experiment-graph" && selectedExperiment && showDetailsPanel ? (
           <WorkflowRunDetailsPanel
-            runName={selectedExperiment.title || ''}
-            result={selectedExperiment.success || ''}
+            runName={selectedExperiment.run_name || ''}
+            result={selectedExperiment.result || ''}
             notes={selectedExperiment.notes || ''}
             log={selectedExperiment.log || ''}
             onOpenInTab={() => {}}

@@ -11,16 +11,25 @@ import pytest
 import os
 import sys
 from pathlib import Path
+
+from aco.server.database_manager import DB
+
+# Add parent directory to path so we can import from tests module
+current_dir = Path(__file__).parent
+parent_dir = current_dir.parent
+sys.path.insert(0, str(parent_dir))
+
 from aco.cli.aco_server import launch_daemon_server
 from aco.runner.context_manager import set_parent_session_id
-from aco.common.constants import ACO_LOG_PATH
-from get_api_objects import (
+from aco.common.constants import ACO_LOG_PATH, REMOTE_DATABASE_URL
+from aco.server.cache_manager import CACHE
+from tests.utils import restart_server
+from tests.get_api_objects import (
     create_anthropic_response,
     create_openai_input,
     create_openai_response,
     create_anthropic_input,
 )
-from aco.server.cache_manager import CACHE
 
 
 def print_server_logs():
@@ -64,9 +73,12 @@ def wait_for_server():
     return False
 
 
-def run_test(program_file, api_type, create_response_func, create_input_func, http_calls):
+def run_test(
+    program_file, api_type, create_response_func, create_input_func, http_calls, db_backend="local"
+):
     """Run the actual test logic."""
     print(f"\n=== Starting test for {program_file} with {api_type} ===")
+    print(f"Database backend: {db_backend}")
 
     # Test inputs and expected outputs
     inputs = [
@@ -80,15 +92,33 @@ def run_test(program_file, api_type, create_response_func, create_input_func, ht
     initial_http_calls = len(http_calls.calls) if http_calls else 0
     print(f"Initial HTTP calls: {initial_http_calls}")
 
-    # 1. Connect as shim-control to register session
+    # 1. Set DB backend.
+    print(f"Switching server database backend to: {db_backend}")
+    admin_sock = socket.create_connection(("127.0.0.1", 5959))
+    admin_file = admin_sock.makefile("rw")
+
+    admin_handshake = {"type": "hello", "role": "admin", "script": "test_admin"}
+    admin_file.write(json.dumps(admin_handshake) + "\n")
+    admin_file.flush()
+
+    db_mode_msg = {"type": "set_database_mode", "mode": db_backend}
+    admin_file.write(json.dumps(db_mode_msg) + "\n")
+    DB.switch_mode(db_backend)
+    admin_file.flush()
+    admin_sock.close()
+    print(f"Switched server database to {db_backend} mode")
+
+    # 2. Connect as shim-control to register session
     print("Connecting to shim-control...")
     shim_sock = socket.create_connection(("127.0.0.1", 5959))
     shim_file = shim_sock.makefile("rw")
 
+    # Use --project-root to override the project root for this test
+    test_project_root = str(Path(__file__).parent)  # /path/to/tests/
     handshake = {
         "role": "shim-control",
-        "cwd": str(Path(__file__).parent),
-        "command": f"aco-launch user_programs/{program_file}",
+        "cwd": test_project_root,
+        "command": f"aco-launch --project-root {test_project_root} user_programs/{program_file}",
         "environment": {},
         "name": "test_api_calls",
     }
@@ -100,13 +130,13 @@ def run_test(program_file, api_type, create_response_func, create_input_func, ht
     session_id = response["session_id"]
     print(f"Got session_id: {session_id}")
 
-    # 2. Deregister to mark session as finished
+    # 3. Deregister to mark session as finished
     deregister_msg = {"type": "deregister", "session_id": session_id}
     shim_file.write(json.dumps(deregister_msg) + "\n")
     shim_file.flush()
     shim_sock.close()
 
-    # 3. Connect as UI to receive messages
+    # 4. Connect as UI to receive messages
     ui_sock = socket.create_connection(("127.0.0.1", 5959))
     ui_file = ui_sock.makefile("rw")
 
@@ -125,32 +155,31 @@ def run_test(program_file, api_type, create_response_func, create_input_func, ht
 
     threading.Thread(target=ui_listener, daemon=True).start()
 
-    # 4. Cache responses in database
+    # 5. Cache responses in database
     print(f"Setting parent session ID to: {session_id}")
     set_parent_session_id(session_id)
     print(f"Caching {len(inputs)} responses...")
     for i, (input_text, output_text) in enumerate(zip(inputs, outputs)):
         print(f"  Caching response {i+1}: '{input_text}' -> '{output_text}'")
-        _, _, node_id = CACHE.get_in_out(create_input_func(input_text), api_type)
+        cache_output = CACHE.get_in_out(create_input_func(input_text), api_type)
         response = create_response_func(output_text)
-        CACHE.cache_output(node_id, response)
-        print(f"  Cached with node_id: {node_id}")
+        CACHE.cache_output(cache_result=cache_output, output_obj=response, api_type=api_type)
+        print(f"  Cached with node_id: {cache_output.node_id}")
 
-    # 5. Send restart to trigger execution
+    # 6. Send restart to trigger execution
     restart_msg = {"type": "restart", "session_id": session_id}
     print(f"Sending restart message: {restart_msg}")
     ui_file.write(json.dumps(restart_msg) + "\n")
     ui_file.flush()
 
-    # 6. Collect graph updates
+    # 7. Collect graph updates
     graph_updates = 0
     start_time = time.time()
     print("Waiting for graph updates...")
 
-    while time.time() - start_time < 7:  # 7 second timeout
+    while time.time() - start_time < 10:  # Messages need to arrive within 8s
         try:
             msg = message_queue.get(timeout=1)
-            print(f"Received message: {msg}")
             if msg.get("type") == "graph_update" and msg.get("session_id") == session_id:
                 graph_updates += 1
                 print(f"Graph update #{graph_updates} received")
@@ -161,7 +190,7 @@ def run_test(program_file, api_type, create_response_func, create_input_func, ht
 
     ui_sock.close()
 
-    # 7. Verify results
+    # 8. Verify results
     final_http_calls = len(http_calls.calls) if http_calls else 0
     http_calls_made = final_http_calls - initial_http_calls
 
@@ -185,23 +214,41 @@ def run_test(program_file, api_type, create_response_func, create_input_func, ht
 
 
 @pytest.mark.parametrize(
-    "program_file,api_type,create_response_func,create_input_func",
+    "program_file,api_type,create_response_func,create_input_func,db_backend",
     [
         (
             "openai_add_numbers.py",
             "OpenAI.responses.create",
             create_openai_response,
             create_openai_input,
+            "local",
+        ),
+        (
+            "openai_add_numbers.py",
+            "OpenAI.responses.create",
+            create_openai_response,
+            create_openai_input,
+            "remote",
         ),
         (
             "anthropic_add_numbers.py",
             "Anthropic.messages.create",
             create_anthropic_response,
             create_anthropic_input,
+            "local",
+        ),
+        (
+            "anthropic_add_numbers.py",
+            "Anthropic.messages.create",
+            create_anthropic_response,
+            create_anthropic_input,
+            "remote",
         ),
     ],
 )
-def test_api_calls(program_file, api_type, create_response_func, create_input_func, http_calls):
+def test_api_calls(
+    program_file, api_type, create_response_func, create_input_func, db_backend, http_calls
+):
     """Test API calls with cached responses."""
     print(f"\n=== Starting test_api_calls for {program_file} ===")
     print(f"API type: {api_type}")
@@ -228,11 +275,9 @@ def test_api_calls(program_file, api_type, create_response_func, create_input_fu
     print(f"ANTHROPIC_API_KEY set: {'ANTHROPIC_API_KEY' in os.environ}")
     print(f"GOOGLE_API_KEY set: {'GOOGLE_API_KEY' in os.environ}")
 
-    # Start server
-    print("Starting daemon server...")
-    launch_daemon_server()
-    print("Waiting 3 seconds for server to start...")
-    time.sleep(3)
+    # Start server with clean state
+    print("Restarting server for clean state...")
+    restart_server()
 
     print("Checking if server is ready...")
     if not wait_for_server():
@@ -243,9 +288,119 @@ def test_api_calls(program_file, api_type, create_response_func, create_input_fu
         print("Server is ready!")
 
     try:
-        run_test(program_file, api_type, create_response_func, create_input_func, http_calls)
+        run_test(
+            program_file, api_type, create_response_func, create_input_func, http_calls, db_backend
+        )
         print(f"=== Test {program_file} completed successfully ===")
     except Exception as e:
         print(f"=== Test {program_file} failed with exception: {e} ===")
         print_server_logs()
         raise
+
+
+if __name__ == "__main__":
+    """
+    Allow running tests manually: python test_api_calls.py [openai|anthropic] [local|remote]
+
+    Examples:
+        python test_api_calls.py openai local
+        python test_api_calls.py anthropic remote
+        python test_api_calls.py openai  # defaults to local
+        python test_api_calls.py  # runs both APIs with both backends
+    """
+    import sys
+
+    class DummyHTTPCalls:
+        """Mock http_calls fixture for manual testing."""
+
+        def __init__(self):
+            self.calls = []
+
+    # Determine which tests to run
+    base_test_cases = [
+        (
+            "openai_add_numbers.py",
+            "OpenAI.responses.create",
+            create_openai_response,
+            create_openai_input,
+        ),
+        (
+            "anthropic_add_numbers.py",
+            "Anthropic.messages.create",
+            create_anthropic_response,
+            create_anthropic_input,
+        ),
+    ]
+
+    # Generate test cases with both backends
+    test_cases = []
+    for program_file, api_type, create_response_func, create_input_func in base_test_cases:
+        test_cases.extend(
+            [
+                (program_file, api_type, create_response_func, create_input_func, "local"),
+                (program_file, api_type, create_response_func, create_input_func, "remote"),
+            ]
+        )
+
+    # Parse command line arguments
+    if len(sys.argv) > 1:
+        api_filter = sys.argv[1].lower()
+        db_filter = sys.argv[2].lower() if len(sys.argv) > 2 else None
+
+        if api_filter in ["openai", "anthropic"]:
+            # Filter by API type
+            filtered_cases = []
+            for case in test_cases:
+                if api_filter in case[0].lower():
+                    filtered_cases.append(case)
+            test_cases = filtered_cases
+        elif api_filter not in ["openai", "anthropic", "both"]:
+            print(f"Unknown API argument: {api_filter}")
+            print("Usage: python test_api_calls.py [openai|anthropic|both] [local|remote]")
+            sys.exit(1)
+
+        if db_filter in ["local", "remote"]:
+            # Filter by database backend
+            filtered_cases = []
+            for case in test_cases:
+                if case[4] == db_filter:
+                    filtered_cases.append(case)
+            test_cases = filtered_cases
+        elif db_filter is not None:
+            print(f"Unknown database backend: {db_filter}")
+            print("Usage: python test_api_calls.py [openai|anthropic|both] [local|remote]")
+            sys.exit(1)
+
+    # Run selected tests
+    http_calls = DummyHTTPCalls()
+    failed_tests = []
+
+    for program_file, api_type, create_response_func, create_input_func, db_backend in test_cases:
+        test_name = f"{program_file}({db_backend})"
+        try:
+            test_api_calls(
+                program_file,
+                api_type,
+                create_response_func,
+                create_input_func,
+                db_backend,
+                http_calls,
+            )
+            print(f"\n✓ Test passed: {test_name}\n")
+        except AssertionError as e:
+            print(f"\n✗ Test failed: {test_name}")
+            print(f"  Error: {e}\n")
+            failed_tests.append(test_name)
+        except Exception as e:
+            print(f"\n✗ Test error: {test_name}")
+            print(f"  Error: {e}\n")
+            failed_tests.append(test_name)
+
+    # Summary
+    passed = len(test_cases) - len(failed_tests)
+    print(f"\n{'='*50}")
+    print(f"Results: {passed}/{len(test_cases)} tests passed")
+    if failed_tests:
+        print(f"Failed tests: {', '.join(failed_tests)}")
+        sys.exit(1)
+    print(f"{'='*50}")

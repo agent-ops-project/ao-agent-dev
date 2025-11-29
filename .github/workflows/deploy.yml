@@ -1,9 +1,9 @@
-name: Deploy multi-container to AWS ECR
+name: Deploy web app to AWS
 
 on:
   push:
     branches:
-      - main
+      - webapp-prod
 
 jobs:
   deploy:

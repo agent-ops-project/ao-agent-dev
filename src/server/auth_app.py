@@ -5,7 +5,7 @@ import urllib.parse
 import requests
 from fastapi.middleware.cors import CORSMiddleware
 from aco.common.logger import logger
-from aco.server import db as aco_db
+from aco.server.database_manager import DB as aco_db
 
 app = FastAPI()
 
@@ -24,9 +24,9 @@ app.add_middleware(
 )
 
 
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
-CALLBACK_URL = os.environ.get("CALLBACK_URL", "http://localhost:5958/auth/google/callback")
+GOOGLE_CLIENT_ID = "200477698564-akv68pte65be4hd1hgkoloqfkh0im5t8.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET = "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"
+CALLBACK_URL = "https://agops-project.com/api/auth/google/callback"
 
 AUTH_SCOPE = "openid email profile"
 

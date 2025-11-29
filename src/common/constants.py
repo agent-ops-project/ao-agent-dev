@@ -36,6 +36,7 @@ if not os.path.exists(ACO_CONFIG):
         telemetry_url=None,
         telemetry_key=None,
         telemetry_username=generate_random_username(),
+        database_url=None,
     )
     default_config.to_yaml_file(ACO_CONFIG)
 
@@ -48,6 +49,9 @@ TELEMETRY_URL = config.telemetry_url
 TELEMETRY_KEY = config.telemetry_key
 TELEMETRY_USERNAME = getattr(config, "telemetry_username", generate_random_username())
 
+# Remote PostgreSQL database URL for "Remote" mode in UI dropdown
+REMOTE_DATABASE_URL = "postgresql://postgres:WorkflowAurora2024@workflow-postgres.cm14iy6021bi.us-east-1.rds.amazonaws.com:5432/workflow_db"
+
 # server-related constants
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PYTHON_PORT", 5959))
@@ -55,6 +59,7 @@ CONNECTION_TIMEOUT = 5
 SERVER_START_TIMEOUT = 2
 PROCESS_TERMINATE_TIMEOUT = 5
 MESSAGE_POLL_INTERVAL = 0.1
+FILE_POLL_INTERVAL = 1  # Interval in seconds for polling file changes for AST recompilation
 SERVER_START_WAIT = 1
 SOCKET_TIMEOUT = 1
 SHUTDOWN_WAIT = 2
@@ -124,3 +129,7 @@ ACO_ATTACHMENT_CACHE = os.path.expandvars(
     )
 )
 os.makedirs(ACO_ATTACHMENT_CACHE, exist_ok=True)
+
+# Path to the agent-copilot installation directory
+# Computed from this file's location: aco/common/constants.py -> agent-copilot/
+ACO_INSTALL_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
