@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Save repository root directory
+REPO_ROOT=$(pwd)
+
 # Save SSH key to a temporary file (absolute path)
 if [ -z "${EC2_SSH_KEY:-}" ]; then
   echo "Error: EC2_SSH_KEY is empty"
@@ -18,6 +21,13 @@ if [ -z "${GOOGLE_CLIENT_ID:-}" ] || [ -z "${GOOGLE_CLIENT_SECRET:-}" ] || [ -z 
   rm -f "$KEYFILE" || true
   exit 1
 fi
+
+# Debug: show current directory and files (before changing directories)
+echo "Repository root directory: $(pwd)"
+echo "Files in repository:"
+ls -la
+echo "Files in docker directory:"
+ls -la docker/ || echo "No docker directory found"
 
 WORKDIR=~/workflow-extension
 mkdir -p "$WORKDIR"
@@ -102,19 +112,20 @@ FRONTEND_ORIGIN=${FRONTEND_ORIGIN}
 ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
 ENV
 
-# Debug: show current directory and files
-echo "Current directory: $(pwd)"
-echo "Files in current directory:"
-ls -la
-echo "Files in docker directory:"
-ls -la docker/
-
 # Move files to a temp location so scp gets them
 TMPDIR=$(mktemp -d)
 cp docker-compose.prod.yml .env "$TMPDIR/"
 
-# Copy nginx config from repository (GitHub Actions runs from repo root)
-cp docker/host-nginx-agops-project.conf "$TMPDIR/"
+# Copy nginx config from repository root
+if [ -f "$REPO_ROOT/docker/host-nginx-agops-project.conf" ]; then
+    cp "$REPO_ROOT/docker/host-nginx-agops-project.conf" "$TMPDIR/"
+    echo "✅ Copied nginx config from repository"
+else
+    echo "❌ nginx config not found at $REPO_ROOT/docker/host-nginx-agops-project.conf"
+    echo "Available files in $REPO_ROOT/docker/:"
+    ls -la "$REPO_ROOT/docker/" || echo "Docker directory not found"
+    exit 1
+fi
 
 # Copy files to EC2
 scp -o StrictHostKeyChecking=no -i "$KEYFILE" "$TMPDIR/docker-compose.prod.yml" "$TMPDIR/.env" "$TMPDIR/host-nginx-agops-project.conf" ${EC2_USER}@${EC2_HOST}:~/workflow-extension/
