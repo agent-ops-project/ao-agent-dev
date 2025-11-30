@@ -34,6 +34,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    volumes:
+      - letsencrypt:/etc/letsencrypt
     restart: unless-stopped
     networks:
       - app-network
@@ -79,6 +81,9 @@ services:
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  letsencrypt:
 YML
 
 # Create .env with expanded values
