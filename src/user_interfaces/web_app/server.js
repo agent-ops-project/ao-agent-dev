@@ -21,43 +21,17 @@ const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (ws, req) => {
   console.log("Frontend connected via WebSocket");
 
-  // Extract user_id from URL query parameters (primary method) or cookies (fallback)
+  // Extract user_id from URL query parameters
   let userId = null;
-  
-  // Try extracting from query parameters first
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
-    const userIdFromQuery = url.searchParams.get('user_id');
-    if (userIdFromQuery) {
-      userId = userIdFromQuery;
+    userId = url.searchParams.get('user_id');
+    if (userId) {
       console.log(`🔗 Found user_id in query: ${userId}`);
     }
   } catch (e) {
     console.warn("Failed to parse URL for user_id query parameter", e);
   }
-  
-  // Fallback: Extract user_id from cookies if not found in query
-  if (!userId) {
-    try {
-      const cookieHeader = req.headers.cookie || "";
-      console.log("🍪 WebSocket upgrade cookie header:", cookieHeader || "(empty)");
-      cookieHeader.split(";").forEach((c) => {
-        const parts = c.split("=");
-        if (parts.length >= 2) {
-          const key = parts[0].trim();
-          const val = parts.slice(1).join("=").trim();
-          console.log(`🍪 Parsed: ${key}=${val}`);
-          if (key === "user_id") {
-            userId = val;
-            console.log(`✅ Found user_id in cookie: ${userId}`);
-          }
-        }
-      });
-    } catch (e) {
-      console.warn("Failed to parse cookies for user_id", e);
-    }
-  }
-  console.log(`👤 Final extracted userId: ${userId}`);
 
   // connect to Python socket server
   const client = net.createConnection({ host: HOST, port: PORT }, () => {

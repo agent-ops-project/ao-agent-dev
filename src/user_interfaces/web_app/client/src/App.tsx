@@ -146,17 +146,9 @@ function App() {
 
     socket.onopen = () => {
       console.log("Connected to backend");
-      // Send auth message with user_id if we have a user
-      // This is a fallback in case the cookie wasn't passed through the handshake
-      if (user && user.id) {
-        console.log("Sending auth message with user_id:", user.id);
-        socket.send(JSON.stringify({ type: "auth", user_id: user.id }));
-      }
       // Request the experiment list after connecting
-      // Small delay to ensure auth message is processed first
-      setTimeout(() => {
-        socket.send(JSON.stringify({ type: "get_all_experiments" }));
-      }, 100);
+      // user_id is now passed in the handshake via query parameter
+      socket.send(JSON.stringify({ type: "get_all_experiments" }));
     };
 
     socket.onmessage = (event: MessageEvent) => {
