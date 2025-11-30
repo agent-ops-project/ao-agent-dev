@@ -170,7 +170,7 @@ def google_callback_get(request: Request):
         raise HTTPException(status_code=400, detail="Missing code")
 
     # Process the code, set cookie, then redirect back to frontend
-    frontend = os.environ.get("FRONTEND_ORIGIN", "http://agops-project.com")
+    frontend = os.environ.get("FRONTEND_ORIGIN", "https://agops-project.com")
     response = RedirectResponse(url=frontend)
     _process_code_and_upsert(code, response)
     return response
