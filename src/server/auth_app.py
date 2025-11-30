@@ -115,8 +115,10 @@ def _process_code_and_upsert(code: str, response: Response, redirect_uri: str = 
             "user_id",
             str(uid),
             httponly=True,
-            samesite="lax",
+            samesite="none" if secure_flag else "lax",  # Use 'none' for cross-site if secure
             secure=secure_flag,
+            path="/",  # Make cookie available on all paths
+            # domain=".localhost" if "localhost" in str(request.url) else None,  # Optional: set domain for localhost
         )
     except Exception:
         # If conversion fails, ignore cookie set

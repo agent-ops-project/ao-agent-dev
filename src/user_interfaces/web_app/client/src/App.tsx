@@ -143,7 +143,13 @@ function App() {
 
     socket.onopen = () => {
       console.log("Connected to backend");
-      // No need to send separate auth message - user_id is already in handshake
+      // Send auth message with user_id if we have a user
+      if (user && user.id) {
+        console.log("Sending auth message with user_id:", user.id);
+        socket.send(JSON.stringify({ type: "auth", user_id: user.id }));
+      } else {
+        console.log("No user authenticated, skipping auth message");
+      }
       // Request the experiment list after connecting
       socket.send(JSON.stringify({ type: "get_all_experiments" }));
     };
