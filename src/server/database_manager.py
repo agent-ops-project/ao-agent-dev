@@ -265,10 +265,10 @@ class DatabaseManager:
         backend = self._get_backend_module()
         return backend.get_finished_runs_query()
 
-    def get_all_experiments_sorted_query(self):
-        """Get all experiments sorted by timestamp desc."""
-        backend = self._get_backend_module()
-        return backend.get_all_experiments_sorted_query()
+    # def get_all_experiments_sorted_query(self):
+    #     """Get all experiments sorted by timestamp desc."""
+    #     backend = self._get_backend_module()
+    #     return backend.get_all_experiments_sorted_query()
 
     def get_all_experiments_sorted_by_user_query(self, user_id):
         """Get all experiments sorted by timestamp desc, optionally filtered by user_id."""

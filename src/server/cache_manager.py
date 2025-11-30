@@ -198,10 +198,7 @@ class CacheManager:
 
     def get_all_experiments_sorted(self, user_id):
         """Get all experiments sorted by name (alphabetical), optionally filtered by user_id"""
-        if user_id is None:
-            return DB.get_all_experiments_sorted_query()
-        else:
-            return DB.get_all_experiments_sorted_by_user_query(user_id)
+        return DB.get_all_experiments_sorted_by_user_query(user_id)
 
     def get_graph(self, session_id):
         return DB.get_experiment_graph_topology_query(session_id)
