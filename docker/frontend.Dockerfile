@@ -12,22 +12,10 @@ RUN npm install && npm run build
 
 FROM nginx:alpine
 
-# Install certbot for SSL certificates
-RUN apk add --no-cache certbot
-
 # Copy built frontend
 COPY --from=build /app/web_app/client/dist /usr/share/nginx/html
 
-# Copy nginx SSL configuration
-COPY docker/nginx.conf /docker-entrypoint.d/nginx-ssl.conf
+# Only expose port 80 - let host nginx handle SSL
+EXPOSE 80
 
-# Copy startup script
-COPY docker/start-nginx.sh /start-nginx.sh
-RUN chmod +x /start-nginx.sh
-
-# Create necessary directories
-RUN mkdir -p /var/www/certbot /etc/letsencrypt
-
-EXPOSE 80 443
-
-CMD ["/start-nginx.sh"]
+CMD ["nginx", "-g", "daemon off;"]
