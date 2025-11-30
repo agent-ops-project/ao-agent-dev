@@ -115,10 +115,12 @@ def _process_code_and_upsert(code: str, response: Response, redirect_uri: str = 
         # For localhost development, set domain to allow cookie sharing across ports
         # For production, don't set domain (defaults to current domain which works with proxy)
         domain = None
-        if "localhost" in str(request.url):
+        # Check redirect_uri or CALLBACK_URL to determine environment
+        check_url = redirect_uri if redirect_uri else CALLBACK_URL
+        if "localhost" in check_url:
             domain = "localhost"  # This makes cookie available to all localhost ports
         
-        print(f"Setting cookie: uid={uid}, domain={domain}, secure={secure_flag}, request_url={request.url}")
+        print(f"Setting cookie: uid={uid}, domain={domain}, secure={secure_flag}, redirect_uri={check_url}")
         
         response.set_cookie(
             "user_id",
