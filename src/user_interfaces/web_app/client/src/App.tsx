@@ -32,7 +32,7 @@ function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [user, setUser] = useState<any | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
-  const API_BASE = import.meta.env.VITE_API_BASE || "";
+  const API_BASE = import.meta.env.VITE_API_BASE || "https://agops-project.com/api";
   const [experiments, setExperiments] = useState<ProcessInfo[]>([]);
   const [selectedExperiment, setSelectedExperiment] = useState<ProcessInfo | null>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
