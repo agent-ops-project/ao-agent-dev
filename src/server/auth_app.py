@@ -161,11 +161,15 @@ def auth_logout(response: Response):
 def google_callback_get(request: Request):
     # Handle browser redirect from Google (query param ?code=...)
     code = request.query_params.get("code")
+    print(f"Auth callback received: code={code[:20] if code else None}...")
     if not code:
         raise HTTPException(status_code=400, detail="Missing code")
 
     # Process the code, set cookie, then redirect back to frontend
     frontend = os.environ.get("FRONTEND_ORIGIN", "https://agops-project.com")
+    print(f"Creating redirect response to: {frontend}")
     response = RedirectResponse(url=frontend)
-    _process_code_and_upsert(code, response)
+    print(f"About to process code and set cookie...")
+    user, token = _process_code_and_upsert(code, response)
+    print(f"Cookie processing complete for user: {user.get('id') if user else None}")
     return response

@@ -25,19 +25,23 @@ wss.on("connection", (ws, req) => {
   let userId = null;
   try {
     const cookieHeader = req.headers.cookie || "";
+    console.log("🍪 WebSocket upgrade cookie header:", cookieHeader || "(empty)");
     cookieHeader.split(";").forEach((c) => {
       const parts = c.split("=");
       if (parts.length >= 2) {
         const key = parts[0].trim();
         const val = parts.slice(1).join("=").trim();
+        console.log(`🍪 Parsed: ${key}=${val}`);
         if (key === "user_id") {
           userId = val;
+          console.log(`✅ Found user_id: ${userId}`);
         }
       }
     });
   } catch (e) {
     console.warn("Failed to parse cookies for user_id", e);
   }
+  console.log(`👤 Final extracted userId: ${userId}`);
 
   // connect to Python socket server
   const client = net.createConnection({ host: HOST, port: PORT }, () => {
