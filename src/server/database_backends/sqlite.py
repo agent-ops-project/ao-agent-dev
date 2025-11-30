@@ -456,8 +456,6 @@ def get_session_name_query(session_id):
 
 
 def insert_lesson_embedding_query(session_id: str, node_id: str, embedding_json: str):
-    embedding_obj = json.loads(embedding_json)
-
     # Insert into lessons_embeddings
     execute(
         """

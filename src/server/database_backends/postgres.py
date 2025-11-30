@@ -148,6 +148,8 @@ def _init_db(conn):
     )
 
     # Create attachments table
+    # HACK: Remove `FOREIGN KEY (session_id) REFERENCES experiments (session_id)`
+    # to allow inserts in wrong order for perf.
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS attachments (
@@ -156,8 +158,7 @@ def _init_db(conn):
             line_no INTEGER,
             content_hash TEXT,
             file_path TEXT,
-            taint TEXT,
-            FOREIGN KEY (session_id) REFERENCES experiments (session_id)
+            taint TEXT
         )
     """
     )
@@ -518,6 +519,11 @@ def delete_all_llm_calls_query():
 def get_session_name_query(session_id):
     """Get session name by session_id."""
     return query_one("SELECT name FROM experiments WHERE session_id=%s", (session_id,))
+
+
+def insert_lesson_embedding_query(session_id: str, node_id: str, embedding_json: str):
+    # TODO(Mahit)
+    return
 
 
 def nearest_neighbors_query(target_embedding_json: str, top_k: int):

@@ -115,12 +115,15 @@ def run_test(
 
     # Use --project-root to override the project root for this test
     test_project_root = str(Path(__file__).parent)  # /path/to/tests/
+    import time
+    test_name = f"test_api_calls_{api_type.replace('.', '_')}_{db_backend}_{int(time.time())}"
+    print(f"Test experiment name: {test_name}")
     handshake = {
-        "role": "shim-control",
+        "role": "shim-control", 
         "cwd": test_project_root,
         "command": f"aco-launch --project-root {test_project_root} user_programs/{program_file}",
         "environment": {},
-        "name": "test_api_calls",
+        "name": test_name,
     }
     print(f"Sending handshake: {handshake}")
     shim_file.write(json.dumps(handshake) + "\n")
@@ -157,7 +160,9 @@ def run_test(
 
     # 5. Cache responses in database
     print(f"Setting parent session ID to: {session_id}")
+    print(f"Client DB mode before set_parent_session_id: {DB.get_current_mode()}")
     set_parent_session_id(session_id)
+    print(f"Successfully set parent session ID")
     print(f"Caching {len(inputs)} responses...")
     for i, (input_text, output_text) in enumerate(zip(inputs, outputs)):
         print(f"  Caching response {i+1}: '{input_text}' -> '{output_text}'")
