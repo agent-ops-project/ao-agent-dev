@@ -111,26 +111,29 @@ def _process_code_and_upsert(code: str, response: Response, redirect_uri: str = 
     try:
         uid = user['id'] if 'id' in user else user[0]
         secure_flag = os.environ.get("USE_SECURE_COOKIES", "false").lower() == "true"
+        
         # For localhost development, set domain to allow cookie sharing across ports
+        # For production, don't set domain (defaults to current domain which works with proxy)
         domain = None
         if "localhost" in str(request.url):
             domain = "localhost"  # This makes cookie available to all localhost ports
-        elif "agops-project.com" in str(request.url):
-            # For production, set cookie for the main domain (works for all subdomains)
-            domain = ".agops-project.com"
+        
+        print(f"Setting cookie: uid={uid}, domain={domain}, secure={secure_flag}, request_url={request.url}")
         
         response.set_cookie(
             "user_id",
             str(uid),
             httponly=True,
-            samesite="lax",  # Use 'lax' for same-site requests (more secure)
-            secure=secure_flag,
+            samesite="lax",  # Use 'lax' for same-site requests
+            secure=secure_flag,  # True in production (HTTPS), False in dev (HTTP)
             path="/",  # Make cookie available on all paths
-            domain=domain,  # Set domain for proper scope
+            domain=domain,  # Only set for localhost, let it default in production
         )
-    except Exception:
-        # If conversion fails, ignore cookie set
-        pass
+        print(f"Cookie set successfully for user_id={uid}")
+    except Exception as e:
+        print(f"Failed to set cookie: {e}")
+        import traceback
+        traceback.print_exc()
 
     return user, access_token
 
