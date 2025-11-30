@@ -30,7 +30,7 @@ description = "A development tool for LLM call visualization and debugging"
 readme = "docs/PKG_README.md"
 requires-python = ">=3.10"
 
-dependencies = ["pyyaml", "dill", "forbiddenfruit", "supabase", "debugpy", "psutil", "psycopg2-binary", vectorlite_py]
+dependencies = ["pyyaml", "dill", "forbiddenfruit", "supabase", "debugpy", "psutil", "psycopg2-binary", "vectorlite_py"]
 
 [project.optional-dependencies]
 dev = [
@@ -43,7 +43,7 @@ dev = [
     "openai-agents",
     "google-genai",
     "hydra-core",
-    vectorlite_py
+    "vectorlite_py"
 ]
 
 examples = [

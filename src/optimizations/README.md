@@ -2,6 +2,10 @@
 
 ## Install vectorlite SQLite extension:
 
+> [!NOTE]
+> This is automatically done. The dependency is installed upon `pip install -e .` and the extension is installed in `_init_db()` in `sqlite.py`
+
+
 1. `pip install vectorlite-py`
 
 2. Locate .so file:
