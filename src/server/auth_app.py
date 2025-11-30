@@ -111,6 +111,11 @@ def _process_code_and_upsert(code: str, response: Response, redirect_uri: str = 
     try:
         uid = user['id'] if 'id' in user else user[0]
         secure_flag = os.environ.get("USE_SECURE_COOKIES", "false").lower() == "true"
+        # For localhost development, set domain to allow cookie sharing across ports
+        domain = None
+        if "localhost" in str(request.url):
+            domain = "localhost"  # This makes cookie available to all localhost ports
+        
         response.set_cookie(
             "user_id",
             str(uid),
@@ -118,7 +123,7 @@ def _process_code_and_upsert(code: str, response: Response, redirect_uri: str = 
             samesite="none" if secure_flag else "lax",  # Use 'none' for cross-site if secure
             secure=secure_flag,
             path="/",  # Make cookie available on all paths
-            # domain=".localhost" if "localhost" in str(request.url) else None,  # Optional: set domain for localhost
+            domain=domain,  # Set domain for cross-port access on localhost
         )
     except Exception:
         # If conversion fails, ignore cookie set
