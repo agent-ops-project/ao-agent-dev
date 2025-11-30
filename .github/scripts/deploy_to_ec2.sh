@@ -102,11 +102,18 @@ FRONTEND_ORIGIN=${FRONTEND_ORIGIN}
 ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
 ENV
 
+# Debug: show current directory and files
+echo "Current directory: $(pwd)"
+echo "Files in current directory:"
+ls -la
+echo "Files in docker directory:"
+ls -la docker/
+
 # Move files to a temp location so scp gets them
 TMPDIR=$(mktemp -d)
 cp docker-compose.prod.yml .env "$TMPDIR/"
 
-# Copy nginx config from repository
+# Copy nginx config from repository (GitHub Actions runs from repo root)
 cp docker/host-nginx-agops-project.conf "$TMPDIR/"
 
 # Copy files to EC2
