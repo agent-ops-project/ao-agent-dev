@@ -153,7 +153,7 @@ def _init_db(conn):
             input BYTEA,
             input_hash TEXT,
             input_overwrite BYTEA,
-            output TEXT,
+            output BYTEA,
             color TEXT,
             label TEXT,
             api_type TEXT,
@@ -250,16 +250,12 @@ def deserialize_input(input_blob, api_type=None):
     return dill.loads(bytes(input_blob))
 
 
-def deserialize(output_json, api_type=None):
-    """Deserialize output JSON back to response object"""
-    if output_json is None:
+def deserialize(output_blob, api_type=None):
+    """Deserialize output blob back to response object"""
+    if output_blob is None:
         return None
-    # Handle the case where dill pickled data was stored as TEXT
-    # When binary data is stored as TEXT in PostgreSQL, we need to convert it back to bytes
-    if isinstance(output_json, str):
-        # Convert string back to bytes for dill.loads()
-        output_json = output_json.encode("latin1")
-    return dill.loads(output_json)
+    # Postgres now stores output as BYTEA (bytes) directly, same as input
+    return dill.loads(bytes(output_blob))
 
 
 def store_taint_info(session_id, file_path, line_no, taint_nodes):
@@ -551,3 +547,74 @@ def delete_all_llm_calls_query():
 def get_session_name_query(session_id):
     """Get session name by session_id."""
     return query_one("SELECT name FROM experiments WHERE session_id=%s", (session_id,))
+
+
+def get_llm_call_input_api_type_query(session_id, node_id):
+    """Get input and api_type from llm_calls by session_id and node_id."""
+    return query_one(
+        "SELECT input, api_type FROM llm_calls WHERE session_id=%s AND node_id=%s",
+        (session_id, node_id),
+    )
+
+
+def get_llm_call_output_api_type_query(session_id, node_id):
+    """Get output and api_type from llm_calls by session_id and node_id."""
+    return query_one(
+        "SELECT output, api_type FROM llm_calls WHERE session_id=%s AND node_id=%s",
+        (session_id, node_id),
+    )
+
+
+def get_experiment_log_success_graph_query(session_id):
+    """Get log, success, and graph_topology from experiments by session_id."""
+    return query_one(
+        "SELECT log, success, graph_topology FROM experiments WHERE session_id=%s",
+        (session_id,),
+    )
+
+
+def upsert_user(google_id, email, name, picture):
+    """
+    Upsert user - insert if not exists, update if exists.
+    
+    Args:
+        google_id: Google OAuth ID
+        email: User email
+        name: User name
+        picture: User profile picture URL
+        
+    Returns:
+        The user record after upsert
+    """
+    # Check if user exists
+    existing = query_one("SELECT * FROM users WHERE google_id = %s", (google_id,))
+    
+    if existing:
+        # Update existing user
+        execute(
+            "UPDATE users SET name = %s, picture = %s, updated_at = CURRENT_TIMESTAMP WHERE google_id = %s",
+            (name, picture, google_id),
+        )
+    else:
+        # Insert new user
+        execute(
+            "INSERT INTO users (google_id, email, name, picture, created_at, updated_at) "
+            "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (google_id, email, name, picture),
+        )
+    
+    # Return the user record
+    return query_one("SELECT * FROM users WHERE google_id = %s", (google_id,))
+
+
+def get_user_by_id_query(user_id):
+    """
+    Get user by their ID.
+    
+    Args:
+        user_id: The user's ID
+        
+    Returns:
+        The user record or None if not found
+    """
+    return query_one("SELECT * FROM users WHERE id = %s", (user_id,))

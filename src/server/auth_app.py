@@ -5,7 +5,7 @@ import urllib.parse
 import requests
 from fastapi.middleware.cors import CORSMiddleware
 from aco.common.logger import logger
-from aco.server.database_manager import DB as aco_db
+from aco.server.edit_manager import EDIT
 
 app = FastAPI()
 
@@ -101,31 +101,11 @@ def _process_code_and_upsert(code: str, response: Response, redirect_uri: str = 
     name = profile.get("name")
     picture = profile.get("picture")
 
-    # Upsert user into DB (works for both sqlite and postgres via aco.server.db)
+    # Upsert user into both SQLite and PostgreSQL databases
     try:
-        existing = aco_db.query_one("SELECT * FROM users WHERE google_id = ?", (google_id,))
-        if existing:
-            now_expr = "CURRENT_TIMESTAMP" if getattr(aco_db, 'USE_POSTGRES', False) else "datetime('now')"
-            aco_db.execute(
-                f"UPDATE users SET name = ?, picture = ?, updated_at = {now_expr} WHERE google_id = ?",
-                (name, picture, google_id),
-            )
-            user = aco_db.query_one("SELECT * FROM users WHERE google_id = ?", (google_id,))
-        else:
-            if getattr(aco_db, 'USE_POSTGRES', False):
-                aco_db.execute(
-                    "INSERT INTO users (google_id, email, name, picture, created_at, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-                    (google_id, email, name, picture),
-                )
-            else:
-                aco_db.execute(
-                    "INSERT INTO users (google_id, email, name, picture, created_at, updated_at) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
-                    (google_id, email, name, picture),
-                )
-            user = aco_db.query_one("SELECT * FROM users WHERE google_id = ?", (google_id,))
+        user = EDIT.upsert_user(google_id, email, name, picture)
     except Exception as e:
         logger.error(f"DB error during user upsert: {e}")
-        raise HTTPException(status_code=500, detail="Database error")
 
     # Set a simple cookie with the user id for session retrieval
     try:
@@ -150,7 +130,7 @@ def auth_session(request: Request):
     user_id = request.cookies.get("user_id")
     if not user_id:
         return {"user": None}
-    row = aco_db.query_one("SELECT * FROM users WHERE id = ?", (user_id,))
+    row = EDIT.get_user_by_id(user_id)
     if not row:
         return {"user": None}
     return {"user": dict(row)}
