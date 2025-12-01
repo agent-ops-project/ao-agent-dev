@@ -57,6 +57,10 @@ def get_conn():
 
 def _init_db(conn):
     c = conn.cursor()
+    
+    # Note: Users are only managed in PostgreSQL for remote authentication
+    # Local SQLite runs are single-user and don't need user management
+    
     # Create experiments table
     c.execute(
         """
@@ -88,7 +92,7 @@ def _init_db(conn):
             input BLOB,
             input_hash TEXT,
             input_overwrite BLOB,
-            output TEXT,
+            output BLOB,
             color TEXT,
             label TEXT,
             api_type TEXT,
@@ -163,13 +167,12 @@ def deserialize_input(input_blob, api_type):
     return dill.loads(input_blob)
 
 
-def deserialize(output_json, api_type):
-    """Deserialize output JSON back to response object"""
-    if output_json is None:
+def deserialize(output_blob, api_type):
+    """Deserialize output blob back to response object"""
+    if output_blob is None:
         return None
-    # This would need to be implemented based on api_type
-    # For now, just return the JSON string
-    return output_json
+    # SQLite now stores output as BLOB (bytes), same as input
+    return dill.loads(output_blob)
 
 
 def store_taint_info(session_id, file_path, line_no, taint_nodes):
@@ -219,6 +222,7 @@ def add_experiment_query(
     default_success,
     default_note,
     default_log,
+    user_id,  # Ignored in SQLite - kept for API compatibility
 ):
     """Execute SQLite-specific INSERT for experiments table"""
     execute(
@@ -380,6 +384,15 @@ def get_all_experiments_sorted_query():
     )
 
 
+def get_all_experiments_sorted_by_user_query(user_id=None):
+    """Get all experiments sorted by timestamp desc. SQLite ignores user_id filtering (single-user)."""
+    # SQLite is single-user, so we always return all experiments regardless of user_id
+    return query_all(
+        "SELECT session_id, timestamp, color_preview, name, success, notes, log FROM experiments ORDER BY timestamp DESC",
+        (),
+    )
+
+
 def get_experiment_graph_topology_query(session_id):
     """Get graph topology for an experiment."""
     return query_one("SELECT graph_topology FROM experiments WHERE session_id=?", (session_id,))
@@ -426,3 +439,31 @@ def delete_all_llm_calls_query():
 def get_session_name_query(session_id):
     """Get session name by session_id."""
     return query_one("SELECT name FROM experiments WHERE session_id=?", (session_id,))
+
+
+def get_llm_call_input_api_type_query(session_id, node_id):
+    """Get input and api_type from llm_calls by session_id and node_id."""
+    return query_one(
+        "SELECT input, api_type FROM llm_calls WHERE session_id=? AND node_id=?",
+        (session_id, node_id),
+    )
+
+
+def get_llm_call_output_api_type_query(session_id, node_id):
+    """Get output and api_type from llm_calls by session_id and node_id."""
+    return query_one(
+        "SELECT output, api_type FROM llm_calls WHERE session_id=? AND node_id=?",
+        (session_id, node_id),
+    )
+
+
+def get_experiment_log_success_graph_query(session_id):
+    """Get log, success, and graph_topology from experiments by session_id."""
+    return query_one(
+        "SELECT log, success, graph_topology FROM experiments WHERE session_id=?",
+        (session_id,),
+    )
+
+
+# Note: User management functions removed - SQLite is single-user
+# Users are only managed in PostgreSQL for remote authentication

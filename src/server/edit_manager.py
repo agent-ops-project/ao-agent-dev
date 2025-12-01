@@ -21,10 +21,7 @@ class EditManager:
 
     def set_input_overwrite(self, session_id, node_id, new_input):
         # Overwrite input for node.
-        row = DB.query_one(
-            "SELECT input, api_type FROM llm_calls WHERE session_id=? AND node_id=?",
-            (session_id, node_id),
-        )
+        row = DB.get_llm_call_input_api_type_query(session_id, node_id)
 
         input_overwrite = dill.loads(row["input"])
         input_overwrite["input"] = new_input
@@ -35,10 +32,7 @@ class EditManager:
 
     def set_output_overwrite(self, session_id, node_id, new_output):
         # Overwrite output for node.
-        row = DB.query_one(
-            "SELECT output, api_type FROM llm_calls WHERE session_id=? AND node_id=?",
-            (session_id, node_id),
-        )
+        row = DB.get_llm_call_output_api_type_query(session_id, node_id)
 
         if not row:
             logger.error(
@@ -63,7 +57,7 @@ class EditManager:
         DB.update_experiment_graph_topology_query(default_graph, session_id)
 
     def add_experiment(
-        self, session_id, name, timestamp, cwd, command, environment, parent_session_id=None
+        self, session_id, name, timestamp, cwd, command, environment, parent_session_id=None, user_id=None
     ):
         # Initial values.
         default_graph = json.dumps({"nodes": [], "edges": []})
@@ -83,6 +77,7 @@ class EditManager:
             DEFAULT_SUCCESS,
             DEFAULT_NOTE,
             DEFAULT_LOG,
+            user_id,
         )
 
     def update_graph_topology(self, session_id, graph_dict):
@@ -117,9 +112,7 @@ class EditManager:
 
     def add_log(self, session_id, success, new_entry):
         # Write success and new_entry to DB under certain conditions.
-        row = DB.query_one(
-            "SELECT log, success, graph_topology FROM experiments WHERE session_id=?", (session_id,)
-        )
+        row = DB.get_experiment_log_success_graph_query(session_id)
 
         existing_log = row["log"]
         existing_success = row["success"]
@@ -152,6 +145,35 @@ class EditManager:
         DB.update_experiment_log_query(updated_log, updated_success, color_preview_json, graph_json, session_id)
 
         return updated_graph
+
+    def upsert_user(self, google_id, email, name, picture):
+        """
+        Upsert user only in PostgreSQL (remote auth service).
+        
+        Users are only managed remotely. SQLite is single-user.
+        
+        Args:
+            google_id: Google OAuth ID
+            email: User email
+            name: User name
+            picture: User profile picture URL
+            
+        Returns:
+            The user record after upsert
+        """
+        return DB.upsert_user_postgres_only(google_id, email, name, picture)
+
+    def get_user_by_id(self, user_id):
+        """
+        Get user by their ID from PostgreSQL only.
+        
+        Args:
+            user_id: The user's ID
+            
+        Returns:
+            The user record or None if not found
+        """
+        return DB.get_user_by_id_postgres_only(user_id)
 
 
 EDIT = EditManager()

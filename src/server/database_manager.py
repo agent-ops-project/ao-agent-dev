@@ -149,6 +149,7 @@ class DatabaseManager:
         default_success,
         default_note,
         default_log,
+        user_id,
     ):
         """Add experiment to database using backend-specific SQL syntax."""
         backend = self._get_backend_module()
@@ -164,6 +165,7 @@ class DatabaseManager:
             default_success,
             default_note,
             default_log,
+            user_id,
         )
 
     def set_input_overwrite_query(self, input_overwrite, session_id, node_id):
@@ -263,10 +265,15 @@ class DatabaseManager:
         backend = self._get_backend_module()
         return backend.get_finished_runs_query()
 
-    def get_all_experiments_sorted_query(self):
-        """Get all experiments sorted by timestamp desc."""
+    # def get_all_experiments_sorted_query(self):
+    #     """Get all experiments sorted by timestamp desc."""
+    #     backend = self._get_backend_module()
+    #     return backend.get_all_experiments_sorted_query()
+
+    def get_all_experiments_sorted_by_user_query(self, user_id):
+        """Get all experiments sorted by timestamp desc, optionally filtered by user_id."""
         backend = self._get_backend_module()
-        return backend.get_all_experiments_sorted_query()
+        return backend.get_all_experiments_sorted_by_user_query(user_id)
 
     def get_experiment_graph_topology_query(self, session_id):
         """Get graph topology for an experiment."""
@@ -308,6 +315,81 @@ class DatabaseManager:
         """Get session name by session_id."""
         backend = self._get_backend_module()
         return backend.get_session_name_query(session_id)
+
+    def get_llm_call_input_api_type_query(self, session_id, node_id):
+        """Get input and api_type from llm_calls by session_id and node_id."""
+        backend = self._get_backend_module()
+        return backend.get_llm_call_input_api_type_query(session_id, node_id)
+
+    def get_llm_call_output_api_type_query(self, session_id, node_id):
+        """Get output and api_type from llm_calls by session_id and node_id."""
+        backend = self._get_backend_module()
+        return backend.get_llm_call_output_api_type_query(session_id, node_id)
+
+    def get_experiment_log_success_graph_query(self, session_id):
+        """Get log, success, and graph_topology from experiments by session_id."""
+        backend = self._get_backend_module()
+        return backend.get_experiment_log_success_graph_query(session_id)
+
+    def upsert_user_postgres_only(self, google_id, email, name, picture):
+        """
+        Upsert user only in PostgreSQL database.
+        
+        Users are only managed remotely via the auth service.
+        SQLite is single-user and doesn't need user management.
+        
+        Args:
+            google_id: Google OAuth ID
+            email: User email
+            name: User name
+            picture: User profile picture URL
+            
+        Returns:
+            User record from PostgreSQL
+        """
+        from aco.common.constants import REMOTE_DATABASE_URL
+        
+        if not REMOTE_DATABASE_URL:
+            raise Exception("PostgreSQL not available - users can only be managed remotely")
+        
+        try:
+            if self._postgres_module is None:
+                from aco.server.database_backends import postgres
+                self._postgres_module = postgres
+            
+            user_record = self._postgres_module.upsert_user(google_id, email, name, picture)
+            logger.debug(f"User {email} upserted in PostgreSQL database")
+            return user_record
+            
+        except Exception as e:
+            logger.error(f"Failed to upsert user in PostgreSQL: {e}")
+            raise
+
+    def get_user_by_id_postgres_only(self, user_id):
+        """
+        Get user by their ID from PostgreSQL only.
+        
+        Args:
+            user_id: The user's ID
+            
+        Returns:
+            The user record or None if not found
+        """
+        from aco.common.constants import REMOTE_DATABASE_URL
+        
+        if not REMOTE_DATABASE_URL:
+            raise Exception("PostgreSQL not available - users can only be queried remotely")
+        
+        try:
+            if self._postgres_module is None:
+                from aco.server.database_backends import postgres
+                self._postgres_module = postgres
+            
+            return self._postgres_module.get_user_by_id_query(user_id)
+            
+        except Exception as e:
+            logger.error(f"Failed to get user from PostgreSQL: {e}")
+            raise
 
 
 # Create singleton instance following the established pattern

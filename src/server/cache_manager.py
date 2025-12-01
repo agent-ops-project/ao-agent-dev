@@ -196,9 +196,9 @@ class CacheManager:
     def get_finished_runs(self):
         return DB.get_finished_runs_query()
 
-    def get_all_experiments_sorted(self):
-        """Get all experiments sorted by name (alphabetical)"""
-        return DB.get_all_experiments_sorted_query()
+    def get_all_experiments_sorted(self, user_id):
+        """Get all experiments sorted by name (alphabetical), optionally filtered by user_id"""
+        return DB.get_all_experiments_sorted_by_user_query(user_id)
 
     def get_graph(self, session_id):
         return DB.get_experiment_graph_topology_query(session_id)
