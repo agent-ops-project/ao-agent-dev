@@ -56,6 +56,7 @@ class DevelopServer:
         self.optimization_process = None  # Child process for optimization server
         self.optimization_conn = None  # Connection from optimization server
         self.similar_sessions = {}  # session_id -> list of similar session_ids
+        self.current_user_id = None  # Store the current authenticated user_id
 
     # ============================================================
     # File Watcher Management
@@ -207,42 +208,48 @@ class DevelopServer:
             )
 
     def broadcast_experiment_list_to_uis(self, conn=None, target_session=None) -> None:
-        """Only broadcast to one UI (conn) or, if conn is None, to all.
+        """
+        Broadcast experiment list to one or all UI connections.
         
         Args:
-            conn: Specific connection to send to
-            target_session: If provided, include similarity info for this session
+            conn: Specific connection to send to (if None, broadcast to all)
+            target_session: If provided, mark similar sessions with status "similar"
         """
-        # Get all experiments from database (already sorted by name ASC)
-        db_experiments = CACHE.get_all_experiments_sorted()
-
-        # Create a map of session_id to session for quick lookup
+        # Get all experiments for the current user (single-user model)
+        db_experiments = CACHE.get_all_experiments_sorted(self.current_user_id)
+        
+        # Build the experiment list with statuses
         session_map = {session.session_id: session for session in self.sessions.values()}
-
         experiment_list = []
         similar_session_ids = self.similar_sessions.get(target_session, []) if target_session else []
         
         for row in db_experiments:
             session_id = row["session_id"]
             session = session_map.get(session_id)
-
-            # Determine status: similar, running, or finished
+            
+            # Determine status: similar > running > finished
             if session_id in similar_session_ids:
                 status = "similar"
             elif session and session.status == "running":
                 status = "running"
             else:
                 status = "finished"
-
-            # Get data from DB entries.
+            
+            # Get data from DB
             timestamp = row["timestamp"]
             # Format timestamp for display (MM/DD HH:MM)
-            timestamp = timestamp.strftime("%m/%d %H:%M")
-            run_name = row["name"]
-            success = row["success"]
-            notes = row["notes"]
-            log = row["log"]
-
+            if hasattr(timestamp, 'strftime'):
+                timestamp = timestamp.strftime("%m/%d %H:%M")
+            else:
+                # If it's already a string, try to parse and reformat
+                try:
+                    from datetime import datetime
+                    dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+                    timestamp = dt.strftime("%m/%d %H:%M")
+                except:
+                    # If parsing fails, use as-is
+                    pass
+            
             # Parse color_preview from database
             color_preview = []
             if row["color_preview"]:
@@ -250,29 +257,40 @@ class DevelopServer:
                     color_preview = json.loads(row["color_preview"])
                 except:
                     color_preview = []
-
-            experiment_list.append(
-                {
-                    "session_id": session_id,
-                    "status": status,
-                    "timestamp": timestamp,
-                    "color_preview": color_preview,
-                    "run_name": run_name,
-                    "result": success,
-                    "notes": notes,
-                    "log": log,
-                }
-            )
-
+            
+            experiment_list.append({
+                "session_id": session_id,
+                "status": status,
+                "timestamp": timestamp,
+                "color_preview": color_preview,
+                "run_name": row["name"],
+                "result": row["success"],
+                "notes": row["notes"],
+                "log": row["log"],
+            })
+        
+        # Create message with target_session info
         msg = {
-            "type": "experiment_list", 
+            "type": "experiment_list",
             "experiments": experiment_list,
-            "target_session": target_session  # Include which session triggered similarity search
+            "target_session": target_session  # Include for UI state tracking
         }
+        
+        # Send to specific connection or broadcast to all
         if conn:
-            send_json(conn, msg)
+            try:
+                send_json(conn, msg)
+                logger.debug(f"Sent experiment list with {len(experiment_list)} experiments to single UI")
+            except Exception as e:
+                logger.error(f"Error sending experiment list to UI: {e}")
         else:
-            self.broadcast_to_all_uis(msg)
+            # Broadcast to all UI connections
+            for ui_conn in list(self.ui_connections):
+                try:
+                    send_json(ui_conn, msg)
+                except Exception as e:
+                    logger.error(f"Error broadcasting to UI: {e}")
+                    self.ui_connections.discard(ui_conn)
 
     def print_graph(self, session_id):
         # Debug utility.
@@ -536,6 +554,22 @@ class DevelopServer:
         """Handle request to refresh the experiment list (e.g., when VS Code window regains focus)."""
         self.broadcast_experiment_list_to_uis(conn)
 
+    def handle_auth(self, msg: dict, conn: socket.socket) -> None:
+        """Handle auth messages from UI clients: attach user_id to connection and store current user."""
+        try:
+            user_id = msg.get("user_id")
+            # Store the current authenticated user_id on the server
+            self.current_user_id = user_id
+            info = self.conn_info.get(conn)
+            if info is None:
+                self.conn_info[conn] = {"role": "ui", "session_id": None, "user_id": user_id}
+            else:
+                info["user_id"] = user_id
+            # Send filtered list to this connection
+            self.broadcast_experiment_list_to_uis(conn)
+        except Exception as e:
+            logger.error(f"Error handling auth message: {e}")
+
     def handle_add_subrun(self, msg: dict, conn: socket.socket) -> None:
         # If rerun, use previous session_id. Else, assign new one.
         prev_session_id = msg.get("prev_session_id")
@@ -550,6 +584,11 @@ class DevelopServer:
             timestamp = datetime.now()
             name = msg.get("name")
             parent_session_id = msg.get("parent_session_id")
+            # Determine user_id: prefer explicit msg value, else use current_user_id
+            user_id = msg.get("user_id")
+            if user_id is None:
+                user_id = self.current_user_id
+
             EDIT.add_experiment(
                 session_id,
                 name,
@@ -558,6 +597,7 @@ class DevelopServer:
                 command,
                 environment,
                 parent_session_id,
+                user_id,
             )
         # Insert session if not present.
         with self.lock:
@@ -778,7 +818,9 @@ class DevelopServer:
         log_server_message(msg, self.session_graphs)
 
         msg_type = msg.get("type")
-        if msg_type == "shutdown":
+        if msg_type == "auth":
+            self.handle_auth(msg, conn)
+        elif msg_type == "shutdown":
             self.handle_shutdown()
         elif msg_type == "restart":
             self.handle_restart_message(msg)
@@ -805,7 +847,6 @@ class DevelopServer:
         elif msg_type == "add_subrun":
             self.handle_add_subrun(msg, conn)
         elif msg_type == "get_graph":
-            # TODO: Trigger sim search here.
             self.handle_get_graph(msg, conn)
         elif msg_type == "erase":
             self.handle_erase(msg)
@@ -824,140 +865,197 @@ class DevelopServer:
         else:
             logger.error(f"[DevelopServer] Unknown message type. Message:\n{msg}")
 
+
+    # ============================================================
+    # Set up new connection.
+    # ============================================================
+
+    def _setup_shim_control(self, conn: socket.socket, handshake: dict) -> str:
+        """Setup shim-control connection and return session_id."""
+        # If rerun, use previous session_id. Else, assign new one.
+        prev_session_id = handshake.get("prev_session_id")
+        if prev_session_id is not None:
+            session_id = prev_session_id
+        else:
+            session_id = str(uuid.uuid4())
+            # Insert new experiment into DB.
+            cwd = handshake.get("cwd")
+            command = handshake.get("command")
+            environment = handshake.get("environment")
+            timestamp = datetime.now()
+            name = handshake.get("name")
+            EDIT.add_experiment(
+                session_id,
+                name,
+                timestamp,
+                cwd,
+                command,
+                environment,
+                None,
+                self.current_user_id,
+            )
+        
+        # Insert session if not present.
+        with self.lock:
+            if session_id not in self.sessions:
+                self.sessions[session_id] = Session(session_id)
+            session = self.sessions[session_id]
+        with session.lock:
+            session.shim_conn = conn
+        session.status = "running"
+        self.broadcast_experiment_list_to_uis()
+        self.conn_info[conn] = {"role": "shim-control", "session_id": session_id}
+        send_json(conn, {"type": "session_id", "session_id": session_id})
+
+        # Extract module mapping for file watcher
+        module_to_file = handshake.get("module_to_file", {})
+        if module_to_file:
+            logger.info(
+                f"[DevelopServer] Received {len(module_to_file)} modules from shim-control"
+            )
+            # Update server's module mapping
+            self.module_to_file.update(module_to_file)
+            # Restart file watcher with updated mapping
+            self.stop_file_watcher()
+            self.start_file_watcher()
+        else:
+            logger.warning(f"[DevelopServer] No module mapping received from shim-control")
+
+        # Log shim-control registration to telemetry
+        log_shim_control_registration(handshake, session_id)
+        return session_id
+
+    def _setup_shim_runner(self, conn: socket.socket, handshake: dict) -> None:
+        """Setup shim-runner connection."""
+        # Send acknowledgment to shim-runner that experiment is ready
+        send_json(conn, {"type": "ready", "database_mode": DB.get_current_mode()})
+
+    def _setup_ui(self, conn: socket.socket, handshake: dict) -> None:
+        """Setup UI connection."""
+        # Always reload finished runs from the DB before sending experiment list
+        self.load_finished_runs()
+        self.ui_connections.add(conn)
+        # Read user_id from handshake (populated by web proxy from cookie)
+        user_id = handshake.get("user_id") if isinstance(handshake, dict) else None
+        # Store the current authenticated user_id on the server
+        if user_id is not None:
+            self.current_user_id = user_id
+        # Send session_id and config_path to this UI connection (None for UI)
+        self.conn_info[conn] = {"role": "ui", "session_id": None, "user_id": user_id}
+        send_json(
+            conn,
+            {
+                "type": "session_id",
+                "session_id": None,
+                "config_path": ACO_CONFIG,
+                "database_mode": DB.get_current_mode(),
+            },
+        )
+        # NOTE(ferdi): Experiment list will be sent when UI requests it.
+
+    def _setup_optimization(self, conn: socket.socket, handshake: dict) -> None:
+        """Setup optimization server connection."""
+        # Track optimization server connection
+        self.optimization_conn = conn
+        self.conn_info[conn] = {"role": "optimization", "session_id": None}
+        send_json(conn, {"type": "session_id", "session_id": None})
+        logger.info("[DevelopServer] Optimization server connected")
+
+    def _handle_handshake(self, conn: socket.socket, file_obj) -> tuple[str, str]:
+        """Parse handshake and route to role-specific setup."""
+        try:
+            handshake_line = file_obj.readline()
+            logger.debug(f"handshake line: {handshake_line}")
+            if not handshake_line:
+                return None, None
+            
+            handshake = json.loads(handshake_line.strip())
+            role = handshake.get("role")
+            
+            if role == "shim-control":
+                session_id = self._setup_shim_control(conn, handshake)
+                return role, session_id
+            elif role == "shim-runner":
+                self._setup_shim_runner(conn, handshake)
+                return role, None
+            elif role == "ui":
+                self._setup_ui(conn, handshake)
+                return role, None
+            elif role == "optimization":
+                self._setup_optimization(conn, handshake)
+                return role, None
+            else:
+                logger.warning(f"[DevelopServer] Unknown role: {role}")
+                return None, None
+                
+        except Exception as e:
+            logger.error(f"[DevelopServer] Error during handshake: {e}")
+            return None, None
+
+    def _run_message_loop(self, conn: socket.socket, file_obj, session_id: str) -> None:
+        """Run the main message processing loop."""
+        try:
+            for line in file_obj:
+                try:
+                    msg = json.loads(line.strip())
+                except Exception as e:
+                    logger.error(f"[DevelopServer] Error parsing JSON: {e}")
+                    continue
+
+                # Print message type.
+                msg_type = msg.get("type", "unknown")
+                logger.debug(f"[DevelopServer] Received message type: {msg_type} {time.time()}")
+
+                if "session_id" not in msg:
+                    msg["session_id"] = session_id
+
+                self.process_message(msg, conn)
+
+        except (ConnectionResetError, OSError) as e:
+            logger.info(f"[DevelopServer] Connection closed: {e}")
+
+    def _cleanup_connection(self, conn: socket.socket, role: str) -> None:
+        """Clean up connection resources based on role."""
+        info = self.conn_info.pop(conn, None)
+        
+        # Only mark session finished for shim-control disconnects
+        if info and role == "shim-control":
+            session = self.sessions.get(info["session_id"])
+            if session:
+                with session.lock:
+                    session.shim_conn = None
+                session.status = "finished"
+                self.broadcast_experiment_list_to_uis()
+        elif info and role == "ui":
+            # Remove from global UI connections list
+            self.ui_connections.discard(conn)
+        elif info and role == "optimization":
+            # Clear optimization connection
+            if self.optimization_conn == conn:
+                self.optimization_conn = None
+                logger.info("[DevelopServer] Optimization server disconnected")
+        
+        try:
+            conn.close()
+        except Exception as e:
+            logger.error(f"[DevelopServer] Error closing connection: {e}")
+
     def handle_client(self, conn: socket.socket) -> None:
         """Handle a new client connection in a separate thread."""
         file_obj = conn.makefile(mode="r")
-        session: Optional[Session] = None
         role = None
-
+        
         try:
-            # Expect handshake first
-            handshake_line = file_obj.readline()
-            if not handshake_line:
-                return
-            handshake = json.loads(handshake_line.strip())
-            role = handshake.get("role")
-            session_id = None
-            # Only assign session_id for shim-control.
-            if role == "shim-control":
-                # If rerun, use previous session_id. Else, assign new one.
-                prev_session_id = handshake.get("prev_session_id")
-                if prev_session_id is not None:
-                    session_id = prev_session_id
-                else:
-                    session_id = str(uuid.uuid4())
-                    # Insert new experiment into DB.
-                    cwd = handshake.get("cwd")
-                    command = handshake.get("command")
-                    environment = handshake.get("environment")
-                    timestamp = datetime.now()
-                    name = handshake.get("name")
-                    EDIT.add_experiment(
-                        session_id,
-                        name,
-                        timestamp,
-                        cwd,
-                        command,
-                        environment,
-                    )
-                # Insert session if not present.
-                with self.lock:
-                    if session_id not in self.sessions:
-                        self.sessions[session_id] = Session(session_id)
-                    session = self.sessions[session_id]
-                with session.lock:
-                    session.shim_conn = conn
-                session.status = "running"
-                self.broadcast_experiment_list_to_uis()
-                self.conn_info[conn] = {"role": role, "session_id": session_id}
-                send_json(conn, {"type": "session_id", "session_id": session_id})
-
-                # Extract module mapping for file watcher
-                module_to_file = handshake.get("module_to_file", {})
-                if module_to_file:
-                    logger.info(
-                        f"[DevelopServer] Received {len(module_to_file)} modules from shim-control"
-                    )
-                    # Update server's module mapping
-                    self.module_to_file.update(module_to_file)
-                    # Restart file watcher with updated mapping
-                    self.stop_file_watcher()
-                    self.start_file_watcher()
-                else:
-                    logger.warning(f"[DevelopServer] No module mapping received from shim-control")
-
-                # Log shim-control registration to telemetry
-                log_shim_control_registration(handshake, session_id)
-            elif role == "shim-runner":
-                # Send acknowledgment to shim-runner that experiment is ready
-                send_json(conn, {"type": "ready", "database_mode": DB.get_current_mode()})
-            elif role == "ui":
-                # Always reload finished runs from the DB before sending experiment list
-                self.load_finished_runs()
-                self.ui_connections.add(conn)
-                # Send session_id and config_path to this UI connection (None for UI)
-                self.conn_info[conn] = {"role": role, "session_id": None}
-                send_json(
-                    conn,
-                    {
-                        "type": "session_id",
-                        "session_id": None,
-                        "config_path": ACO_CONFIG,
-                        "database_mode": DB.get_current_mode(),
-                    },
-                )
-                # Send experiment_list only to this UI connection
-                self.broadcast_experiment_list_to_uis(conn)
-            elif role == "optimization":
-                # Track optimization server connection
-                self.optimization_conn = conn
-                self.conn_info[conn] = {"role": role, "session_id": None}
-                send_json(conn, {"type": "session_id", "session_id": None})
-                logger.info("[DevelopServer] Optimization server connected")
-
-            # Main message loop
-            try:
-                for line in file_obj:
-                    try:
-                        msg = json.loads(line.strip())
-                    except Exception as e:
-                        logger.error(f"[DevelopServer] Error parsing JSON: {e}")
-                        continue
-
-                    # Print message type.
-                    msg_type = msg.get("type", "unknown")
-                    logger.debug(f"[DevelopServer] Received message type: {msg_type} {time.time()}")
-
-                    if "session_id" not in msg:
-                        msg["session_id"] = session_id
-
-                    self.process_message(msg, conn)
-
-            except (ConnectionResetError, OSError) as e:
-                logger.info(f"[DevelopServer] Connection closed: {e}")
+            # Handle handshake and role-specific setup
+            role, session_id = self._handle_handshake(conn, file_obj)
+            
+            if role:
+                # Run main message processing loop
+                self._run_message_loop(conn, file_obj, session_id)
         finally:
-            # Clean up connection
-            info = self.conn_info.pop(conn, None)
-            # Only mark session finished for shim-control disconnects
-            if info and role == "shim-control":
-                session = self.sessions.get(info["session_id"])
-                if session:
-                    with session.lock:
-                        session.shim_conn = None
-                    session.status = "finished"
-                    self.broadcast_experiment_list_to_uis()
-            elif info and role == "ui":
-                # Remove from global UI connections list
-                self.ui_connections.discard(conn)
-            elif info and role == "optimization":
-                # Clear optimization connection
-                if self.optimization_conn == conn:
-                    self.optimization_conn = None
-                    logger.info("[DevelopServer] Optimization server disconnected")
-            try:
-                conn.close()
-            except Exception as e:
-                logger.error(f"[DevelopServer] Error closing connection: {e}")
+            # Clean up connection resources
+            if role:
+                self._cleanup_connection(conn, role)
 
     def run_server(self) -> None:
         """Main server loop: accept clients and spawn handler threads."""

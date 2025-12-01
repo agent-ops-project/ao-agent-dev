@@ -13,6 +13,7 @@ export class GraphTabProvider implements vscode.WebviewPanelSerializer {
     constructor(private readonly _extensionUri: vscode.Uri) {
         // Initialize Python client
         this._pythonClient = PythonServerClient.getInstance();
+        this._pythonClient.ensureConnected(); // async but don't await in constructor
     }
 
 
@@ -83,6 +84,7 @@ export class GraphTabProvider implements vscode.WebviewPanelSerializer {
                     // Ensure Python client is available
                     if (!this._pythonClient) {
                         this._pythonClient = PythonServerClient.getInstance();
+                        this._pythonClient.ensureConnected(); // async but don't await
                     }
                     // Request graph data
                     if (this._pythonClient) {

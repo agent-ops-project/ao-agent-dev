@@ -64,3 +64,28 @@ To distinguish between standard Python-compiled `.pyc` files and our taint-track
 As the first line of every rewritten module, we put `__ACO_AST_REWRITTEN__ = True`. The file watcher's `_needs_recompilation()` method uses `is_pyc_rewritten(pyc_path)` to check if existing `.pyc` files contain this marker. If a `.pyc` file exists but lacks the marker (indicating standard Python compilation), it forces recompilation with our AST transformer.
 
 Also see [here](/src/runner/README.md) on how the whole taint propagation process fits together.
+
+## Maintainance of EC2 server
+
+### List running process
+
+```
+[ec2-user@ip-172-31-42-109 ~]$ docker ps -a
+```
+
+Should be 3. (auth (proxy), develop_server (backend), frontend (frontend)). E.g.:
+
+```
+CONTAINER ID   IMAGE                                                                             COMMAND                  CREATED        STATUS        PORTS                                                           NAMES
+a0b7e5115b81   853766430252.dkr.ecr.us-east-1.amazonaws.com/workflow-extension-proxy:latest      "docker-entrypoint.s…"   38 hours ago   Up 38 hours   0.0.0.0:4000->4000/tcp, :::4000->4000/tcp                       workflow-proxy
+6913553c4efb   853766430252.dkr.ecr.us-east-1.amazonaws.com/workflow-extension-frontend:latest   "/docker-entrypoint.…"   38 hours ago   Up 38 hours   0.0.0.0:3000->80/tcp, :::3000->80/tcp                           workflow-frontend
+0ee59b1ccb71   853766430252.dkr.ecr.us-east-1.amazonaws.com/workflow-extension-backend:latest    "sh -c 'uvicorn src.…"   38 hours ago   Up 38 hours   0.0.0.0:5958-5959->5958-5959/tcp, :::5958-5959->5958-5959/tcp   workflow-backend
+```
+
+### Server logs:
+
+```
+docker logs XXX
+```
+
+`XXX`: `workflow-backend` for develop_server, `workflow-proxy` for auth server. `workflow-frontend` is not interesting, should do Right click -> Inspect -> Console

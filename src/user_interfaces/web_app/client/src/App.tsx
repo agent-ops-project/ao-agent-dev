@@ -30,6 +30,9 @@ interface WSMessage {
 
 function App() {
   const [authenticated, setAuthenticated] = useState(false);
+  const [user, setUser] = useState<any | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const API_BASE = import.meta.env.VITE_API_BASE || "https://agops-project.com/api";
   const [experiments, setExperiments] = useState<ProcessInfo[]>([]);
   const [selectedExperiment, setSelectedExperiment] = useState<ProcessInfo | null>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
@@ -124,20 +127,29 @@ function App() {
 
   useEffect(() => {
     if (!authenticated) return;
+    
     // Permitir definir la URL del WebSocket por variable de entorno
-    const wsUrl = import.meta.env.VITE_APP_WS_URL || (() => {
+    const baseWsUrl = import.meta.env.VITE_APP_WS_URL || (() => {
       const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsHost = window.location.hostname === "localhost"
         ? "localhost:4000"
         : window.location.host;
       return `${wsProtocol}//${wsHost}/ws`;
     })();
+    
+    // Include user_id in WebSocket URL if available for cleaner handshake authentication
+    const wsUrl = user && user.id ? `${baseWsUrl}?user_id=${encodeURIComponent(user.id)}` : baseWsUrl;
 
     const socket = new WebSocket(wsUrl);
     setWs(socket);
     wsRef.current = socket; // Keep ref in sync
 
-    socket.onopen = () => console.log("Connected to backend");
+    socket.onopen = () => {
+      console.log("Connected to backend");
+      // Request the experiment list after connecting
+      // user_id is now passed in the handshake via query parameter
+      socket.send(JSON.stringify({ type: "get_all_experiments" }));
+    };
 
     socket.onmessage = (event: MessageEvent) => {
       // WebSocket can fragment large messages across multiple frames
@@ -212,7 +224,52 @@ function App() {
     };
 
     return () => socket.close();
-  }, [authenticated]);
+  }, [authenticated, user]);
+
+  // On app mount check session (useful after OAuth redirect)
+  // Fetch session and set user+authenticated state
+  const checkSession = async () => {
+    console.log('🔍 checkSession starting, API_BASE:', API_BASE);
+    setCheckingSession(true);
+    try {
+      const sessionUrl = `${API_BASE}/auth/session`;
+      console.log('📡 Fetching session from:', sessionUrl);
+      const resp = await fetch(sessionUrl, { credentials: 'include' });
+      console.log('📡 Session response status:', resp.status, 'ok:', resp.ok);
+      
+      if (!resp.ok) {
+        console.log('❌ Response not OK, setting authenticated=false');
+        setAuthenticated(false);
+        setUser(null);
+        return;
+      }
+      
+      const data = await resp.json();
+      console.log('📋 Session data received:', data);
+      console.log('📋 Has user?', !!(data && data.user));
+      
+      if (data && data.user) {
+        console.log('✅ Setting authenticated=true, user:', data.user);
+        setAuthenticated(true);
+        setUser(data.user);
+      } else {
+        console.log('❌ No user in data, setting authenticated=false');
+        setAuthenticated(false);
+        setUser(null);
+      }
+    } catch (err) {
+      console.error('❌ Failed to check session', err);
+      setAuthenticated(false);
+      setUser(null);
+    } finally {
+      console.log('🏁 checkSession finished, calling setCheckingSession(false)');
+      setCheckingSession(false);
+    }
+  };
+
+  useEffect(() => {
+    checkSession();
+  }, []);
 
   const handleNodeUpdate = (
     nodeId: string,
@@ -282,8 +339,27 @@ function App() {
   const running = sortedExperiments.filter((e) => e.status === "running");
   const finished = sortedExperiments.filter((e) => e.status === "finished");
 
+  if (checkingSession) {
+    // while we verify session do not show the login screen to avoid flicker
+    return (
+      <div className={`app-container ${isDarkTheme ? 'dark' : ''}`}>
+        <div style={{ padding: 24 }}>
+          Checking authentication...
+        </div>
+      </div>
+    );
+  }
+
   if (!authenticated) {
-    return <LoginScreen onSuccess={() => setAuthenticated(true)} />;
+    return (
+      <LoginScreen
+        onSuccess={async () => {
+          setAuthenticated(true);
+          // after successful login try to load session user
+          await checkSession();
+        }}
+      />
+    );
   }
 
   return (
@@ -295,6 +371,17 @@ function App() {
           finishedProcesses={finished}
           onCardClick={handleExperimentClick}
           isDarkTheme={isDarkTheme}
+          user={{
+            displayName: user?.name || user?.displayName,
+            avatarUrl: user?.picture || user?.avatarUrl,
+            email: user?.email,
+          }}
+          onLogout={() => {
+            fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
+              .catch((err) => console.warn('Logout request failed', err));
+            setAuthenticated(false);
+            setUser(null);
+          }}
           showHeader={true}
           onModeChange={handleDatabaseModeChange}
           currentMode={databaseMode}
