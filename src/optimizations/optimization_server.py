@@ -322,7 +322,7 @@ class OptimizationClient:
 def main():
     """Main entry point for the optimization server."""
     logger.info("[OptimizationServer] Starting optimization server process...")
-    logger.info(f"[OptimizationServer] Logs will be written to ~/.aco/optimization_server.log")
+    logger.info(f"[OptimizationServer] Logs will be written to ~/.cache/agent-copilot/logs/opt_server.log")
     client = OptimizationClient()
     try:
         client.run()

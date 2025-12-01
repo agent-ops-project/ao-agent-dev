@@ -978,6 +978,12 @@ class DevelopServer:
         send_json(conn, {"type": "session_id", "session_id": None})
         logger.info("[DevelopServer] Optimization server connected")
 
+    def _setup_admin(self, conn: socket.socket, handshake: dict) -> None:
+        """Setup admin connection for server control commands."""
+        # Admin connections are used for server control (stop, clear, etc.)
+        self.conn_info[conn] = {"role": "admin", "session_id": None}
+        # No acknowledgment needed for admin connections
+
     def _handle_handshake(self, conn: socket.socket, file_obj) -> tuple[str, str]:
         """Parse handshake and route to role-specific setup."""
         try:
@@ -1000,6 +1006,9 @@ class DevelopServer:
                 return role, None
             elif role == "optimization":
                 self._setup_optimization(conn, handshake)
+                return role, None
+            elif role == "admin":
+                self._setup_admin(conn, handshake)
                 return role, None
             else:
                 logger.warning(f"[DevelopServer] Unknown role: {role}")
@@ -1051,6 +1060,9 @@ class DevelopServer:
             if self.optimization_conn == conn:
                 self.optimization_conn = None
                 logger.info("[DevelopServer] Optimization server disconnected")
+        elif info and role == "admin":
+            # Admin connections are short-lived
+            pass
         
         try:
             conn.close()
