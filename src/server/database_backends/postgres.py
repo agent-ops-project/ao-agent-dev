@@ -552,6 +552,17 @@ def insert_lesson_embedding_query(session_id: str, node_id: str, embedding_json:
     return
 
 
+def get_lesson_embedding_query(session_id: str, node_id: str):
+    """
+    Fetch the embedding row for a specific (session_id, node_id).
+    
+    Returns a sqlite3.Row with columns: session_id, node_id, embedding
+    or None if not found.
+    """
+    # TODO(Mahit)
+    return None
+
+
 def nearest_neighbors_query(target_embedding_json: str, top_k: int, user_id: int):
     """
     Find the k nearest neighbors to the target embedding using vector search.

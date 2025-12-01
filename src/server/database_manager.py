@@ -366,6 +366,7 @@ class DatabaseManager:
         if not hasattr(backend, "nearest_neighbors_query"):
             raise NotImplementedError("nearest_neighbors_query not implemented for this backend")
         return backend.nearest_neighbors_query(target_embedding_json, top_k)
+    
     def get_llm_call_input_api_type_query(self, session_id, node_id):
         """Get input and api_type from llm_calls by session_id and node_id."""
         backend = self._get_backend_module()
