@@ -1,38 +1,11 @@
 import json
 from typing import Any, Dict, List, Tuple
-from aco.runner.monkey_patching.api_parsers.openai_api_parser import (
-    func_kwargs_to_json_str_openai,
-    api_obj_to_json_str_openai,
-    json_str_to_api_obj_openai,
-    json_str_to_original_inp_dict_openai,
-    get_model_openai,
-)
-from aco.runner.monkey_patching.api_parsers.anthropic_api_parser import (
-    func_kwargs_to_json_str_anthropic,
-    api_obj_to_json_str_anthropic,
-    json_str_to_api_obj_anthropic,
-    json_str_to_original_inp_dict_anthropic,
-    get_model_anthropic,
-)
-from aco.runner.monkey_patching.api_parsers.google_api_parser import (
-    func_kwargs_to_json_str_google,
-    api_obj_to_json_str_google,
-    json_str_to_api_obj_google,
-    get_model_google,
-)
 from aco.runner.monkey_patching.api_parsers.mcp_api_parser import (
     func_kwargs_to_json_str_mcp,
     api_obj_to_json_str_mcp,
     json_str_to_api_obj_mcp,
     json_str_to_original_inp_dict_mcp,
     get_model_mcp,
-)
-from aco.runner.monkey_patching.api_parsers.together_api_parser import (
-    func_kwargs_to_json_str_together,
-    api_obj_to_json_str_together,
-    json_str_to_api_obj_together,
-    json_str_to_original_inp_dict_together,
-    get_model_together,
 )
 from aco.runner.monkey_patching.api_parsers.httpx_api_parser import (
     func_kwargs_to_json_str_httpx,
@@ -41,105 +14,74 @@ from aco.runner.monkey_patching.api_parsers.httpx_api_parser import (
     json_str_to_original_inp_dict_httpx,
     get_model_httpx,
 )
+from aco.runner.monkey_patching.api_parsers.requests_api_parser import (
+    func_kwargs_to_json_str_requests,
+    api_obj_to_json_str_requests,
+    json_str_to_api_obj_requests,
+    json_str_to_original_inp_dict_requests,
+    get_model_requests,
+)
 
 
 def json_str_to_original_inp_dict(json_str: str, input_dict: dict, api_type: str) -> dict:
-    if api_type in ["requests.Session.send", "httpx.Client.send", "httpx.AsyncClient.send"]:
+    if api_type == "requests.Session.send":
+        return json_str_to_original_inp_dict_requests(json_str, input_dict)
+    elif api_type in ["httpx.Client.send", "httpx.AsyncClient.send"]:
         return json_str_to_original_inp_dict_httpx(json_str, input_dict)
     elif api_type == "MCP.ClientSession.send_request":
         return json_str_to_original_inp_dict_mcp(json_str, input_dict)
-    elif api_type in ["OpenAI.SyncAPIClient.post", "AsyncOpenAI.AsyncAPIClient.post"]:
-        return json_str_to_original_inp_dict_openai(json_str, input_dict)
-    elif api_type in ["Anthropic.SyncAPIClient.post", "AsyncAnthropic.AsyncAPIClient.post"]:
-        return json_str_to_original_inp_dict_anthropic(json_str, input_dict)
-    elif api_type == "together.abstract.api_requestor.APIRequestor.request_raw":
-        return json_str_to_original_inp_dict_together(json_str, input_dict)
     else:
         return json.loads(json_str)
 
 
 def func_kwargs_to_json_str(input_dict: Dict[str, Any], api_type: str) -> Tuple[str, List[str]]:
-    if api_type in ["requests.Session.send", "httpx.Client.send", "httpx.AsyncClient.send"]:
+    if api_type == "requests.Session.send":
+        return func_kwargs_to_json_str_requests(input_dict)
+    elif api_type in ["httpx.Client.send", "httpx.AsyncClient.send"]:
         return func_kwargs_to_json_str_httpx(input_dict)
-    elif api_type in ["OpenAI.SyncAPIClient.post", "AsyncOpenAI.AsyncAPIClient.post"]:
-        return func_kwargs_to_json_str_openai(input_dict)
-    elif api_type in ["Anthropic.SyncAPIClient.post", "AsyncAnthropic.AsyncAPIClient.post"]:
-        return func_kwargs_to_json_str_anthropic(input_dict)
-    elif api_type in [
-        "google.genai.models._api_client.request",
-        "google.genai.models._api_client.request_streamed",
-    ]:
-        return func_kwargs_to_json_str_google(input_dict)
     elif api_type == "MCP.ClientSession.send_request":
         return func_kwargs_to_json_str_mcp(input_dict)
-    elif api_type == "together.abstract.api_requestor.APIRequestor.request_raw":
-        return func_kwargs_to_json_str_together(input_dict)
     else:
         raise ValueError(f"Unknown API type {api_type}")
 
 
 def api_obj_to_response_ok(response_obj: Any, api_type: str) -> bool:
-    if api_type in ["requests.Session.send", "httpx.Client.send", "httpx.AsyncClient.send"]:
+    if api_type == "requests.Session.send":
         return response_obj.ok
+    elif api_type in ["httpx.Client.send", "httpx.AsyncClient.send"]:
+        return response_obj.is_success
     else:
         return True
 
 
 def api_obj_to_json_str(response_obj: Any, api_type: str) -> str:
-    if api_type in ["requests.Session.send", "httpx.Client.send", "httpx.AsyncClient.send"]:
+    if api_type == "requests.Session.send":
+        return api_obj_to_json_str_requests(response_obj)
+    elif api_type in ["httpx.Client.send", "httpx.AsyncClient.send"]:
         return api_obj_to_json_str_httpx(response_obj)
-    elif api_type in ["OpenAI.SyncAPIClient.post", "AsyncOpenAI.AsyncAPIClient.post"]:
-        return api_obj_to_json_str_openai(response_obj)
-    elif api_type in ["Anthropic.SyncAPIClient.post", "AsyncAnthropic.AsyncAPIClient.post"]:
-        return api_obj_to_json_str_anthropic(response_obj)
-    elif api_type in [
-        "google.genai.models._api_client.request",
-        "google.genai.models._api_client.request_streamed",
-    ]:
-        return api_obj_to_json_str_google(response_obj)
     elif api_type == "MCP.ClientSession.send_request":
         return api_obj_to_json_str_mcp(response_obj)
-    elif api_type == "together.abstract.api_requestor.APIRequestor.request_raw":
-        return api_obj_to_json_str_together(response_obj)
     else:
         raise ValueError(f"Unknown API type {api_type}")
 
 
 def json_str_to_api_obj(new_output_text: str, api_type: str) -> Any:
-    if api_type in ["requests.Session.send", "httpx.Client.send", "httpx.AsyncClient.send"]:
+    if api_type == "requests.Session.send":
+        return json_str_to_api_obj_requests(new_output_text)
+    elif api_type in ["httpx.Client.send", "httpx.AsyncClient.send"]:
         return json_str_to_api_obj_httpx(new_output_text)
-    elif api_type in ["OpenAI.SyncAPIClient.post", "AsyncOpenAI.AsyncAPIClient.post"]:
-        return json_str_to_api_obj_openai(new_output_text)
-    elif api_type in ["Anthropic.SyncAPIClient.post", "AsyncAnthropic.AsyncAPIClient.post"]:
-        return json_str_to_api_obj_anthropic(new_output_text)
-    elif api_type in [
-        "google.genai.models._api_client.request",
-        "google.genai.models._api_client.request_streamed",
-    ]:
-        return json_str_to_api_obj_google(new_output_text)
     elif api_type == "MCP.ClientSession.send_request":
         return json_str_to_api_obj_mcp(new_output_text)
-    elif api_type == "together.abstract.api_requestor.APIRequestor.request_raw":
-        return json_str_to_api_obj_together(new_output_text)
     else:
         raise ValueError(f"Unknown API type {api_type}")
 
 
 def get_model_name(input_dict: Dict[str, Any], api_type: str) -> str:
-    if api_type in ["requests.Session.send", "httpx.Client.send", "httpx.AsyncClient.send"]:
+    if api_type == "requests.Session.send":
+        return get_model_requests(input_dict)
+    elif api_type in ["httpx.Client.send", "httpx.AsyncClient.send"]:
         return get_model_httpx(input_dict)
-    elif api_type in ["OpenAI.SyncAPIClient.post", "AsyncOpenAI.AsyncAPIClient.post"]:
-        return get_model_openai(input_dict)
-    elif api_type in ["Anthropic.SyncAPIClient.post", "AsyncAnthropic.AsyncAPIClient.post"]:
-        return get_model_anthropic(input_dict)
-    elif api_type in [
-        "google.genai.models._api_client.request",
-        "google.genai.models._api_client.request_streamed",
-    ]:
-        return get_model_google(input_dict)
     elif api_type == "MCP.ClientSession.send_request":
         return get_model_mcp(input_dict)
-    elif api_type == "together.abstract.api_requestor.APIRequestor.request_raw":
-        return get_model_together(input_dict)
     else:
         raise ValueError(f"Unknown API type {api_type}")

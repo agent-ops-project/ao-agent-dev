@@ -3,24 +3,21 @@ from typing import Any, Dict
 from aco.common.logger import logger
 
 
-def json_str_to_original_inp_dict_httpx(json_str: str, input_dict: dict) -> dict:
-    # For httpx, modify the body parameter
-    input_dict["body"] = json.loads(json_str)
+def json_str_to_original_inp_dict_requests(json_str: str, input_dict: dict) -> dict:
+    # For requests, modify the request body
+    input_dict["request"].body = json_str.encode("utf-8")
     return input_dict
 
 
-def func_kwargs_to_json_str_httpx(input_dict: Dict[str, Any]):
-    # For httpx, extract content from request object
-    json_str = input_dict["request"].content.decode("utf-8")
+def func_kwargs_to_json_str_requests(input_dict: Dict[str, Any]):
+    # For requests, extract body from request object
+    json_str = input_dict["request"].body.decode("utf-8")
     return json_str, []
 
 
-def api_obj_to_json_str_httpx(obj: Any) -> str:
+def api_obj_to_json_str_requests(obj: Any) -> str:
     import dill
     import base64
-    from httpx import Response
-
-    obj: Response
 
     out_dict = {}
     encoding = obj.encoding or "utf-8"
@@ -31,11 +28,10 @@ def api_obj_to_json_str_httpx(obj: Any) -> str:
     return json.dumps(out_dict)
 
 
-def json_str_to_api_obj_httpx(new_output_text: str) -> None:
+def json_str_to_api_obj_requests(new_output_text: str) -> None:
     import dill
     import base64
     from json import JSONDecodeError
-    from httpx._decoders import TextDecoder
 
     out_dict = json.loads(new_output_text)
     encoding = out_dict["_encoding"] or "utf-8"
@@ -49,17 +45,19 @@ def json_str_to_api_obj_httpx(new_output_text: str) -> None:
         logger.error(f"Error json loading modified output: {e}")
         return obj
 
-    # For httpx.Response, update the content and text using the TextDecoder
+    # For requests.Response, update the content and text attributes
     obj._content = out_dict["content"].encode(encoding)
-    decoder = TextDecoder(encoding=encoding or "utf-8")
-    obj._text = "".join([decoder.decode(obj._content), decoder.flush()])
+    # requests.Response doesn't have a decoder like httpx, it computes _text on access
+    # So we just need to clear the cached _text to force recomputation
+    if hasattr(obj, "_content_consumed"):
+        obj._content_consumed = False
     return obj
 
 
-def get_model_httpx(input_dict: Dict[str, Any]) -> str:
+def get_model_requests(input_dict: Dict[str, Any]) -> str:
     try:
-        # For httpx, extract content from request object
-        json_str = input_dict["request"].content.decode("utf-8")
+        # For requests, extract body from request object
+        json_str = input_dict["request"].body.decode("utf-8")
         return json.loads(json_str)["model"]
     except KeyError:
         # Fallback: try to extract model name from URL path
