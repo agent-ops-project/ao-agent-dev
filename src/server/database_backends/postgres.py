@@ -1,6 +1,7 @@
 """
 PostgreSQL database backend for workflow experiments.
 """
+
 import json
 import dill
 import psycopg2
@@ -22,7 +23,7 @@ _pool_lock = threading.Lock()
 def _init_pool():
     """Initialize the connection pool if not already created"""
     global _connection_pool
-    
+
     with _pool_lock:
         if _connection_pool is None:
             database_url = REMOTE_DATABASE_URL
@@ -30,10 +31,10 @@ def _init_pool():
                 raise ValueError(
                     "REMOTE_DATABASE_URL is required for Postgres connection (check config.yaml)"
                 )
-            
+
             # Parse the connection string
             result = urlparse(database_url)
-            
+
             # Create connection pool (1 min, 4 max connections to support concurrent access)
             _connection_pool = psycopg2.pool.ThreadedConnectionPool(
                 minconn=1,
@@ -45,7 +46,7 @@ def _init_pool():
                 database=result.path[1:],  # Remove leading '/'
                 connect_timeout=30,
             )
-            
+
             # Initialize database schema using a connection from the pool
             conn = _connection_pool.getconn()
             try:
@@ -58,17 +59,17 @@ def _init_pool():
 def get_conn():
     """Get a connection from the pool"""
     _init_pool()
-        
+
     # Check if pool exists before trying to get connection
     if not _connection_pool:
         raise RuntimeError("Connection pool is not available")
-    
+
     try:
         conn = _connection_pool.getconn()
     except Exception as e:
         logger.error(f"Failed to get connection from pool: {e}")
         raise
-    
+
     return conn
 
 
@@ -103,6 +104,21 @@ def _init_db(conn):
     """Initialize database schema (create tables if not exist)"""
     c = conn.cursor()
     
+    # Create users table
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            google_id VARCHAR(255) NOT NULL UNIQUE,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            name VARCHAR(255) NOT NULL,
+            picture TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """
+    )
+    
     # Create experiments table
     c.execute(
         """
@@ -120,12 +136,13 @@ def _init_db(conn):
             success TEXT CHECK (success IN ('', 'Satisfactory', 'Failed')),
             notes TEXT,
             log TEXT,
+            user_id INTEGER,
             FOREIGN KEY (parent_session_id) REFERENCES experiments (session_id),
             UNIQUE (parent_session_id, name)
         )
     """
     )
-    
+
     # Create llm_calls table
     # HACK: Renove foreign key constrain bc parallel inserts experiment and llm calls.
     c.execute(
@@ -136,7 +153,7 @@ def _init_db(conn):
             input BYTEA,
             input_hash TEXT,
             input_overwrite BYTEA,
-            output TEXT,
+            output BYTEA,
             color TEXT,
             label TEXT,
             api_type TEXT,
@@ -145,7 +162,7 @@ def _init_db(conn):
         )
     """
     )
-    
+
     # Create attachments table
     c.execute(
         """
@@ -160,7 +177,6 @@ def _init_db(conn):
         )
     """
     )
-    
     # Create indexes
     c.execute(
         """
@@ -177,13 +193,12 @@ def _init_db(conn):
         CREATE INDEX IF NOT EXISTS experiments_timestamp_idx ON experiments(timestamp DESC)
     """
     )
-    
     conn.commit()
     logger.debug("Database schema initialized")
 
 
 def query_one(sql, params=()):
-    """Execute a query and return one result"""        
+    """Execute a query and return one result"""
     conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -198,7 +213,7 @@ def query_one(sql, params=()):
 
 
 def query_all(sql, params=()):
-    """Execute a query and return all results"""        
+    """Execute a query and return all results"""
     conn = get_conn()
     try:
         c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -213,13 +228,13 @@ def query_all(sql, params=()):
 
 
 def execute(sql, params=()):
-    """Execute SQL statement"""        
+    """Execute SQL statement"""
     conn = get_conn()
     try:
         c = conn.cursor()
         c.execute(sql, params)
         conn.commit()
-        return c.lastrowid if hasattr(c, 'lastrowid') else None
+        return c.lastrowid if hasattr(c, "lastrowid") else None
     except Exception as e:
         conn.rollback()
         raise
@@ -235,16 +250,12 @@ def deserialize_input(input_blob, api_type=None):
     return dill.loads(bytes(input_blob))
 
 
-def deserialize(output_json, api_type=None):
-    """Deserialize output JSON back to response object"""
-    if output_json is None:
+def deserialize(output_blob, api_type=None):
+    """Deserialize output blob back to response object"""
+    if output_blob is None:
         return None
-    # Handle the case where dill pickled data was stored as TEXT
-    # When binary data is stored as TEXT in PostgreSQL, we need to convert it back to bytes
-    if isinstance(output_json, str):
-        # Convert string back to bytes for dill.loads()
-        output_json = output_json.encode('latin1')
-    return dill.loads(output_json)
+    # Postgres now stores output as BYTEA (bytes) directly, same as input
+    return dill.loads(bytes(output_blob))
 
 
 def store_taint_info(session_id, file_path, line_no, taint_nodes):
@@ -288,11 +299,24 @@ def get_taint_info(file_path, line_no):
     return None, []
 
 
-def add_experiment_query(session_id, parent_session_id, name, default_graph, timestamp, cwd, command, env_json, default_success, default_note, default_log):
+def add_experiment_query(
+    session_id,
+    parent_session_id,
+    name,
+    default_graph,
+    timestamp,
+    cwd,
+    command,
+    env_json,
+    default_success,
+    default_note,
+    default_log,
+    user_id,
+):
     """Execute PostgreSQL-specific INSERT for experiments table"""
     execute(
-        """INSERT INTO experiments (session_id, parent_session_id, name, graph_topology, timestamp, cwd, command, environment, success, notes, log) 
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """INSERT INTO experiments (session_id, parent_session_id, name, graph_topology, timestamp, cwd, command, environment, success, notes, log, user_id) 
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            ON CONFLICT (session_id) DO UPDATE SET
                parent_session_id = EXCLUDED.parent_session_id,
                name = EXCLUDED.name,
@@ -303,7 +327,8 @@ def add_experiment_query(session_id, parent_session_id, name, default_graph, tim
                environment = EXCLUDED.environment,
                success = EXCLUDED.success,
                notes = EXCLUDED.notes,
-               log = EXCLUDED.log""",
+               log = EXCLUDED.log,
+               user_id = EXCLUDED.user_id""",
         (
             session_id,
             parent_session_id,
@@ -316,6 +341,7 @@ def add_experiment_query(session_id, parent_session_id, name, default_graph, tim
             default_success,
             default_note,
             default_log,
+            user_id,
         ),
     )
 
@@ -372,7 +398,9 @@ def update_experiment_notes_query(notes, session_id):
     )
 
 
-def update_experiment_log_query(updated_log, updated_success, color_preview_json, graph_json, session_id):
+def update_experiment_log_query(
+    updated_log, updated_success, color_preview_json, graph_json, session_id
+):
     """Execute PostgreSQL-specific UPDATE for experiments log, success, color_preview, and graph_topology"""
     execute(
         "UPDATE experiments SET log=%s, success=%s, color_preview=%s, graph_topology=%s WHERE session_id=%s",
@@ -393,7 +421,10 @@ def get_attachment_by_content_hash_query(content_hash):
 
 def insert_attachment_query(file_id, content_hash, file_path):
     """Insert new attachment record."""
-    execute("INSERT INTO attachments (file_id, content_hash, file_path) VALUES (%s, %s, %s)", (file_id, content_hash, file_path))
+    execute(
+        "INSERT INTO attachments (file_id, content_hash, file_path) VALUES (%s, %s, %s)",
+        (file_id, content_hash, file_path),
+    )
 
 
 def get_attachment_file_path_query(file_id):
@@ -404,7 +435,10 @@ def get_attachment_file_path_query(file_id):
 # Subrun queries
 def get_subrun_by_parent_and_name_query(parent_session_id, name):
     """Get subrun session_id by parent session and name."""
-    return query_one("SELECT session_id FROM experiments WHERE parent_session_id = %s AND name = %s", (parent_session_id, name))
+    return query_one(
+        "SELECT session_id FROM experiments WHERE parent_session_id = %s AND name = %s",
+        (parent_session_id, name),
+    )
 
 
 def get_parent_session_id_query(session_id):
@@ -415,17 +449,25 @@ def get_parent_session_id_query(session_id):
 # LLM calls queries
 def get_llm_call_by_session_and_hash_query(session_id, input_hash):
     """Get LLM call by session_id and input_hash."""
-    return query_one("SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=%s AND input_hash=%s", (session_id, input_hash))
+    return query_one(
+        "SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=%s AND input_hash=%s",
+        (session_id, input_hash),
+    )
 
 
-def insert_llm_call_query(session_id, input_pickle, input_hash, node_id, api_type):
-    """Insert new LLM call record."""
-    execute("INSERT INTO llm_calls (session_id, input, input_hash, node_id, api_type) VALUES (%s, %s, %s, %s, %s)", (session_id, input_pickle, input_hash, node_id, api_type))
-
-
-def update_llm_call_output_query(output_pickle, session_id, node_id):
-    """Update LLM call output."""
-    execute("UPDATE llm_calls SET output=%s WHERE session_id=%s AND node_id=%s", (output_pickle, session_id, node_id))
+def insert_llm_call_with_output_query(
+    session_id, input_pickle, input_hash, node_id, api_type, output_pickle
+):
+    """Insert new LLM call record with output in a single operation (upsert)."""
+    execute(
+        """
+        INSERT INTO llm_calls (session_id, input, input_hash, node_id, api_type, output)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (session_id, node_id)
+        DO UPDATE SET output = excluded.output
+        """,
+        (session_id, input_pickle, input_hash, node_id, api_type, output_pickle),
+    )
 
 
 # Experiment list and graph queries
@@ -434,9 +476,22 @@ def get_finished_runs_query():
     return query_all("SELECT session_id, timestamp FROM experiments ORDER BY timestamp DESC", ())
 
 
-def get_all_experiments_sorted_query():
-    """Get all experiments sorted by timestamp desc."""
-    return query_all("SELECT session_id, timestamp, color_preview, name, success, notes, log FROM experiments ORDER BY timestamp DESC", ())
+# def get_all_experiments_sorted_query():
+#     """Get all experiments sorted by timestamp desc."""
+#     return query_all(
+#         "SELECT session_id, timestamp, color_preview, name, success, notes, log FROM experiments ORDER BY timestamp DESC",
+#         (),
+#     )
+
+
+def get_all_experiments_sorted_by_user_query(user_id=None):
+    assert user_id is not None, "user id None"
+    """Get all experiments sorted by timestamp desc, optionally filtered by user_id."""
+    # Filter by user_id
+    return query_all(
+        "SELECT session_id, timestamp, color_preview, name, success, notes, log FROM experiments WHERE user_id=%s ORDER BY timestamp DESC",
+        (user_id,),
+    )
 
 
 def get_experiment_graph_topology_query(session_id):
@@ -451,17 +506,25 @@ def get_experiment_color_preview_query(session_id):
 
 def get_experiment_environment_query(parent_session_id):
     """Get experiment cwd, command, and environment."""
-    return query_one("SELECT cwd, command, environment FROM experiments WHERE session_id=%s", (parent_session_id,))
+    return query_one(
+        "SELECT cwd, command, environment FROM experiments WHERE session_id=%s",
+        (parent_session_id,),
+    )
 
 
 def update_experiment_color_preview_query(color_preview_json, session_id):
     """Update experiment color preview."""
-    execute("UPDATE experiments SET color_preview=%s WHERE session_id=%s", (color_preview_json, session_id))
+    execute(
+        "UPDATE experiments SET color_preview=%s WHERE session_id=%s",
+        (color_preview_json, session_id),
+    )
 
 
 def get_experiment_exec_info_query(session_id):
     """Get experiment execution info (cwd, command, environment)."""
-    return query_one("SELECT cwd, command, environment FROM experiments WHERE session_id=%s", (session_id,))
+    return query_one(
+        "SELECT cwd, command, environment FROM experiments WHERE session_id=%s", (session_id,)
+    )
 
 
 # Database cleanup queries
@@ -478,3 +541,74 @@ def delete_all_llm_calls_query():
 def get_session_name_query(session_id):
     """Get session name by session_id."""
     return query_one("SELECT name FROM experiments WHERE session_id=%s", (session_id,))
+
+
+def get_llm_call_input_api_type_query(session_id, node_id):
+    """Get input and api_type from llm_calls by session_id and node_id."""
+    return query_one(
+        "SELECT input, api_type FROM llm_calls WHERE session_id=%s AND node_id=%s",
+        (session_id, node_id),
+    )
+
+
+def get_llm_call_output_api_type_query(session_id, node_id):
+    """Get output and api_type from llm_calls by session_id and node_id."""
+    return query_one(
+        "SELECT output, api_type FROM llm_calls WHERE session_id=%s AND node_id=%s",
+        (session_id, node_id),
+    )
+
+
+def get_experiment_log_success_graph_query(session_id):
+    """Get log, success, and graph_topology from experiments by session_id."""
+    return query_one(
+        "SELECT log, success, graph_topology FROM experiments WHERE session_id=%s",
+        (session_id,),
+    )
+
+
+def upsert_user(google_id, email, name, picture):
+    """
+    Upsert user - insert if not exists, update if exists.
+    
+    Args:
+        google_id: Google OAuth ID
+        email: User email
+        name: User name
+        picture: User profile picture URL
+        
+    Returns:
+        The user record after upsert
+    """
+    # Check if user exists
+    existing = query_one("SELECT * FROM users WHERE google_id = %s", (google_id,))
+    
+    if existing:
+        # Update existing user
+        execute(
+            "UPDATE users SET name = %s, picture = %s, updated_at = CURRENT_TIMESTAMP WHERE google_id = %s",
+            (name, picture, google_id),
+        )
+    else:
+        # Insert new user
+        execute(
+            "INSERT INTO users (google_id, email, name, picture, created_at, updated_at) "
+            "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (google_id, email, name, picture),
+        )
+    
+    # Return the user record
+    return query_one("SELECT * FROM users WHERE google_id = %s", (google_id,))
+
+
+def get_user_by_id_query(user_id):
+    """
+    Get user by their ID.
+    
+    Args:
+        user_id: The user's ID
+        
+    Returns:
+        The user record or None if not found
+    """
+    return query_one("SELECT * FROM users WHERE id = %s", (user_id,))

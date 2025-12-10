@@ -77,7 +77,13 @@ export class ConfigManager {
 
   private loadConfig(): Config {
     if (!this.configPath) {
-      throw new Error('Config path not set');
+      // Return sensible defaults if no path provided
+      return {
+        collectTelemetry: false,
+        telemetryUrl: null,
+        telemetryKey: null,
+        userId: 'default_user'
+      };
     }
 
     try {
@@ -89,13 +95,20 @@ export class ConfigManager {
           telemetryKey: configData?.telemetry_key || null,
           userId: configData?.telemetry_username || 'default_user'
         };
+      } else {
+        console.warn(`Config file not found at: ${this.configPath} — using defaults`);
       }
     } catch (error) {
       console.warn('Failed to read config from path:', this.configPath, error);
     }
 
-    // This shouldn't happen since Python server ensures config exists
-    throw new Error(`Config file not found at: ${this.configPath}`);
+    // Return default config instead of throwing so extension remains stable
+    return {
+      collectTelemetry: false,
+      telemetryUrl: null,
+      telemetryKey: null,
+      userId: 'default_user'
+    };
   }
 
   private notifyListeners(config: Config): void {

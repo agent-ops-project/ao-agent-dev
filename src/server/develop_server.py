@@ -11,7 +11,7 @@ import multiprocessing
 from datetime import datetime
 from typing import Optional, Dict
 
-from common.utils import MODULE2FILE
+from aco.common.utils import MODULE2FILE
 from aco.server.edit_manager import EDIT
 from aco.server.cache_manager import CACHE
 from aco.server.database_manager import DB
@@ -53,6 +53,7 @@ class DevelopServer:
         self.rerun_sessions = set()  # Track sessions being rerun to avoid clearing llm_calls
         self.module_to_file = module_to_file or MODULE2FILE  # Module mapping for file watcher
         self.file_watcher_process = None  # Child process for file watching
+        self.current_user_id = None  # Store the current authenticated user_id
 
     # ============================================================
     # File Watcher Management
@@ -144,55 +145,81 @@ class DevelopServer:
 
     def broadcast_experiment_list_to_uis(self, conn=None) -> None:
         """Only broadcast to one UI (conn) or, if conn is None, to all."""
-        # Get all experiments from database (already sorted by name ASC)
-        db_experiments = CACHE.get_all_experiments_sorted()
+        # If a specific conn is provided, send experiments filtered by that conn's user
+        def build_and_send(target_conn, db_rows):
+            session_map = {session.session_id: session for session in self.sessions.values()}
+            experiment_list = []
+            for row in db_rows:
+                session_id = row["session_id"]
+                session = session_map.get(session_id)
 
-        # Create a map of session_id to session for quick lookup
-        session_map = {session.session_id: session for session in self.sessions.values()}
+                # Get status from in-memory session, or default to "finished"
+                status = session.status if session else "finished"
 
-        experiment_list = []
-        for row in db_experiments:
-            session_id = row["session_id"]
-            session = session_map.get(session_id)
+                # Get data from DB entries.
+                timestamp = row["timestamp"]
+                # Format timestamp for display (MM/DD HH:MM)
+                if hasattr(timestamp, 'strftime'):
+                    timestamp = timestamp.strftime("%m/%d %H:%M")
+                else:
+                    # If it's already a string, try to parse and reformat
+                    try:
+                        from datetime import datetime
+                        dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+                        timestamp = dt.strftime("%m/%d %H:%M")
+                    except:
+                        # If parsing fails, use as-is
+                        pass
+                
+                run_name = row["name"]
+                success = row["success"]
+                notes = row["notes"]
+                log = row["log"]
 
-            # Get status from in-memory session, or default to "finished"
-            status = session.status if session else "finished"
+                # Parse color_preview from database
+                color_preview = []
+                if row["color_preview"]:
+                    try:
+                        color_preview = json.loads(row["color_preview"])
+                    except:
+                        color_preview = []
 
-            # Get data from DB entries.
-            timestamp = row["timestamp"]
-            # Format timestamp for display (MM/DD HH:MM)
-            timestamp = timestamp.strftime("%m/%d %H:%M")
-            run_name = row["name"]
-            success = row["success"]
-            notes = row["notes"]
-            log = row["log"]
+                experiment_list.append(
+                    {
+                        "session_id": session_id,
+                        "status": status,
+                        "timestamp": timestamp,
+                        "color_preview": color_preview,
+                        "run_name": run_name,
+                        "result": success,
+                        "notes": notes,
+                        "log": log,
+                    }
+                )
 
-            # Parse color_preview from database
-            color_preview = []
-            if row["color_preview"]:
-                try:
-                    color_preview = json.loads(row["color_preview"])
-                except:
-                    color_preview = []
-
-            experiment_list.append(
-                {
-                    "session_id": session_id,
-                    "status": status,
-                    "timestamp": timestamp,
-                    "color_preview": color_preview,
-                    "run_name": run_name,
-                    "result": success,
-                    "notes": notes,
-                    "log": log,
-                }
-            )
-
-        msg = {"type": "experiment_list", "experiments": experiment_list}
+            msg = {"type": "experiment_list", "experiments": experiment_list}
+            try:
+                send_json(target_conn, msg)
+                logger.debug(f"exp len {len(experiment_list)}")
+            except Exception as e:
+                logger.error(f"Error sending experiment list to UI: {e}")
         if conn:
-            send_json(conn, msg)
-        else:
-            self.broadcast_to_all_uis(msg)
+            user_id = None
+            info = self.conn_info.get(conn)
+            if info:
+                user_id = info.get("user_id")
+            db_experiments = CACHE.get_all_experiments_sorted(user_id)
+            build_and_send(conn, db_experiments)
+            return
+
+        # Broadcast to all UIs, but filter per UI by their user_id
+        for ui_conn in list(self.ui_connections):
+            user_id = None
+            info = self.conn_info.get(ui_conn)
+            if info:
+                user_id = info.get("user_id")
+            db_experiments = CACHE.get_all_experiments_sorted(user_id)
+            build_and_send(ui_conn, db_experiments)
 
     def print_graph(self, session_id):
         # Debug utility.
@@ -424,6 +451,22 @@ class DevelopServer:
         """Handle request to refresh the experiment list (e.g., when VS Code window regains focus)."""
         self.broadcast_experiment_list_to_uis(conn)
 
+    def handle_auth(self, msg: dict, conn: socket.socket) -> None:
+        """Handle auth messages from UI clients: attach user_id to connection and store current user."""
+        try:
+            user_id = msg.get("user_id")
+            # Store the current authenticated user_id on the server
+            self.current_user_id = user_id
+            info = self.conn_info.get(conn)
+            if info is None:
+                self.conn_info[conn] = {"role": "ui", "session_id": None, "user_id": user_id}
+            else:
+                info["user_id"] = user_id
+            # Send filtered list to this connection
+            self.broadcast_experiment_list_to_uis(conn)
+        except Exception as e:
+            logger.error(f"Error handling auth message: {e}")
+
     def handle_add_subrun(self, msg: dict, conn: socket.socket) -> None:
         # If rerun, use previous session_id. Else, assign new one.
         prev_session_id = msg.get("prev_session_id")
@@ -438,6 +481,11 @@ class DevelopServer:
             timestamp = datetime.now()
             name = msg.get("name")
             parent_session_id = msg.get("parent_session_id")
+            # Determine user_id: prefer explicit msg value, else use current_user_id
+            user_id = msg.get("user_id")
+            if user_id is None:
+                user_id = self.current_user_id
+
             EDIT.add_experiment(
                 session_id,
                 name,
@@ -446,6 +494,7 @@ class DevelopServer:
                 command,
                 environment,
                 parent_session_id,
+                user_id,
             )
         # Insert session if not present.
         with self.lock:
@@ -622,7 +671,9 @@ class DevelopServer:
         log_server_message(msg, self.session_graphs)
 
         msg_type = msg.get("type")
-        if msg_type == "shutdown":
+        if msg_type == "auth":
+            self.handle_auth(msg, conn)
+        elif msg_type == "shutdown":
             self.handle_shutdown()
         elif msg_type == "restart":
             self.handle_restart_message(msg)
@@ -666,10 +717,10 @@ class DevelopServer:
         file_obj = conn.makefile(mode="r")
         session: Optional[Session] = None
         role = None
-
         try:
             # Expect handshake first
             handshake_line = file_obj.readline()
+            logger.debug(f"handshake line: {handshake_line}")
             if not handshake_line:
                 return
             handshake = json.loads(handshake_line.strip())
@@ -696,6 +747,8 @@ class DevelopServer:
                         cwd,
                         command,
                         environment,
+                        None,
+                        self.current_user_id,
                     )
                 # Insert session if not present.
                 with self.lock:
@@ -732,8 +785,13 @@ class DevelopServer:
                 # Always reload finished runs from the DB before sending experiment list
                 self.load_finished_runs()
                 self.ui_connections.add(conn)
+                # Read user_id from handshake (populated by web proxy from cookie)
+                user_id = handshake.get("user_id") if isinstance(handshake, dict) else None
+                # Store the current authenticated user_id on the server
+                if user_id is not None:
+                    self.current_user_id = user_id
                 # Send session_id and config_path to this UI connection (None for UI)
-                self.conn_info[conn] = {"role": role, "session_id": None}
+                self.conn_info[conn] = {"role": role, "session_id": None, "user_id": user_id}
                 send_json(
                     conn,
                     {
@@ -743,8 +801,7 @@ class DevelopServer:
                         "database_mode": DB.get_current_mode(),
                     },
                 )
-                # Send experiment_list only to this UI connection
-                self.broadcast_experiment_list_to_uis(conn)
+                # Experiment list will be sent when UI explicitly requests it
 
             # Main message loop
             try:
