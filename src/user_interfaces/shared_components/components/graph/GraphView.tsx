@@ -275,6 +275,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
           overflowY: "auto",
           overflowX: "hidden",
           position: "relative",
+          marginRight: isMetadataPanelOpen && showMetadataButton ? '350px' : '0',
+          transition: 'margin-right 0.3s ease',
         }}
       >
         <div style={mainLayoutStyle}>
@@ -286,6 +288,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
               width: "100%",
               height: "100%",
               paddingTop: "30px",
+              transform: isMetadataPanelOpen && showMetadataButton ? 'translateX(-175px)' : 'translateX(0)',
+              transition: 'transform 0.3s ease',
             }}
           >
             <ReactFlowProvider>
@@ -344,6 +348,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
           backgroundColor: isDarkTheme ? "#1e1e1e" : "#f5f5f5",
           borderLeft: `1px solid ${isDarkTheme ? '#3c3c3c' : '#e0e0e0'}`,
           minWidth: "52px",
+          height: "100%"
         }}
       >
           {/* Metadata Panel Toggle Button */}
