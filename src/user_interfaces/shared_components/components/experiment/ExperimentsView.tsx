@@ -577,9 +577,9 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({
         />
       </div>
 
-      {renderExperimentSection(filteredRunning, 'Running', 'running')}
-      {renderExperimentSection(filteredSimilar, 'Similar', 'similar', filteredRunning.length > 0 ? 32 : 0)}
-      {renderExperimentSection(filteredFinished, 'Finished', 'finished', (filteredRunning.length > 0 || filteredSimilar.length > 0) ? 32 : 0)}
+      {renderExperimentSection(filteredRunning, 'Running', 'running', 0)}
+      {renderExperimentSection(filteredSimilar, 'Similar', 'similar', 32)}
+      {renderExperimentSection(filteredFinished, 'Finished', 'finished', 32)}
 
       {/* Footer (always present) */}
       <div style={footerStyle}>
