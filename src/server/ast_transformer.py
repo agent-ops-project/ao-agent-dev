@@ -978,4 +978,4 @@ def exec_func(func, args, kwargs, user_py_files=None):
     _update_bound_self_taint(bound_self, args, kwargs)
     _taint_bound_self_if_mutated(bound_self, bound_hash_before, bound_hash_after, all_origins)
 
-    return taint_wrap(result, taint_origin=all_origins)
+    return taint_wrap(result, taint_origin=all_origins, inplace=True)

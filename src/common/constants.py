@@ -1,7 +1,6 @@
 import re
 import os
-from aco.common.config import Config
-from aco.common.config import derive_project_root, generate_random_username
+from aco.common.config import Config, derive_project_root, generate_random_username
 
 
 # default home directory for configs and temporary/cached files

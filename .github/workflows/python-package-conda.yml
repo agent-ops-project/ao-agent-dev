@@ -92,6 +92,7 @@ jobs:
     - name: Test deep research with pytest
       env:
         ACO_DB_PATH: ~/.cache/agent-copilot/tests/deep-research
+        ACO_LOG_PATH: ~/.cache/agent-copilot/tests/deep-research
         PYTHON_PORT: 5960
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -101,11 +102,16 @@ jobs:
         SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
         JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
         TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+        MIROFLOW_USE_SANDBOX_MODE: "true"
       run: |
         export PATH="$HOME/miniconda/bin:$PATH"
         source $HOME/miniconda/bin/activate aco
         # Run only test_deepresearch
         pytest -v -s tests/test_caching.py::test_deepresearch
+
+    - name: Print server log
+      if: always()
+      run: cat ~/.cache/agent-copilot/tests/deep-research/server.log
 
     - name: Clean up test database
       if: always()

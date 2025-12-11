@@ -11,7 +11,7 @@ def json_str_to_original_inp_dict_requests(json_str: str, input_dict: dict) -> d
 
 def func_kwargs_to_json_str_requests(input_dict: Dict[str, Any]):
     # For requests, extract body from request object
-    json_str = input_dict["request"].body.decode("utf-8")
+    json_str = json.dumps(json.loads(input_dict["request"].body.decode("utf-8")), sort_keys=True)
     return json_str, []
 
 

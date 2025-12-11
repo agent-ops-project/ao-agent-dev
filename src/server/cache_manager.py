@@ -113,7 +113,7 @@ class CacheManager:
             "attachments": attachments,
             "model": model,
         }
-        input_pickle = json.dumps(cacheable_input)
+        input_pickle = json.dumps(cacheable_input, sort_keys=True)
         input_hash = hash_input(input_pickle)
 
         # Check if API call with same session_id & input has been made before.

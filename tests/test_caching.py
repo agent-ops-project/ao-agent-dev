@@ -50,6 +50,10 @@ async def run_test(script_path: str, project_root: str):
     # Give the server a moment to complete database mode switch and transaction
     time.sleep(0.2)
 
+    # [DEBUG] this waits for the file watcher to finish compiling all files.
+    # THIS NEEDS TO BE GONE!!!
+    time.sleep(66)
+
     # Start background thread to listen for server messages
     shim.listener_thread = threading.Thread(
         target=shim._listen_for_server_messages, args=(shim.server_conn,)
