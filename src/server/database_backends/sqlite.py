@@ -178,8 +178,6 @@ def store_taint_info(session_id, file_path, line_no, taint_nodes):
     content_hash = hash_input(f"{file_path}:{line_no}")
     taint_json = json.dumps(taint_nodes) if taint_nodes else "[]"
 
-    logger.debug(f"Storing taint info for {file_id}: {taint_json}")
-
     execute(
         """
         INSERT OR REPLACE INTO attachments (file_id, session_id, line_no, content_hash, file_path, taint)

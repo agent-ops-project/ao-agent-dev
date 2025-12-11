@@ -122,8 +122,6 @@ def patch_builtin_open():
         # Only wrap text mode files that are user files
         # Don't wrap: binary files, system files, or library files
         if "b" not in mode and _should_wrap_file(file):
-            logger.debug(f"patched_open: Wrapping user file {file} with TaintFile, mode={mode}")
-
             # Get session ID from environment (set by the runner)
             import os
 

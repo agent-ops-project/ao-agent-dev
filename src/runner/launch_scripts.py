@@ -8,7 +8,6 @@ import runpy
 import socket
 import json
 import random
-import glob
 import builtins
 import warnings
 from aco.runner.ast_rewrite_hook import install_patch_hook, set_module_to_user_file

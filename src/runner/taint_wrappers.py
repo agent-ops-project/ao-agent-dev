@@ -369,7 +369,16 @@ def untaint_if_needed(val, _seen=None):
             val[i] = untaint_if_needed(item, _seen)
         return val
     elif isinstance(val, tuple):
-        return tuple(untaint_if_needed(item, _seen) for item in val)
+        # Untaint all items in the tuple
+        untainted_items = tuple(untaint_if_needed(item, _seen) for item in val)
+
+        # Check if this is a namedtuple - they have _fields attribute
+        if hasattr(val, "_fields"):
+            # Preserve the namedtuple type by reconstructing it
+            return type(val)(*untainted_items)
+
+        # Regular tuple
+        return untainted_items
     elif isinstance(val, set):
         items = [untaint_if_needed(item, _seen) for item in val]
         val.clear()
@@ -1854,12 +1863,6 @@ class TaintFile:
     def read(self, size=-1):
         """Read from the file and return tainted data."""
         from aco.common.logger import logger
-        import os
-
-        logger.info(
-            f"TaintFile.read called for {getattr(self._file, 'name', 'unknown')}, session_id={self._session_id}"
-        )
-        logger.info(f"Current environment session: {os.environ.get('AGENT_COPILOT_SESSION_ID')}")
 
         data = self._file.read(size)
         if isinstance(data, bytes):
@@ -1871,11 +1874,7 @@ class TaintFile:
         if hasattr(self._file, "name") and data:
             try:
                 # Check line 0 for now (we'd need to track all lines for full read)
-                logger.info(f"Checking for taint in read(): file={self._file.name}")
                 prev_session_id, taint_nodes = DB.get_taint_info(self._file.name, 0)
-                logger.info(
-                    f"Retrieved taint in read(): prev_session={prev_session_id}, nodes={taint_nodes}"
-                )
 
                 if prev_session_id and taint_nodes:
                     logger.info(
@@ -1895,7 +1894,6 @@ class TaintFile:
                 f"Skipping taint check - file has name: {hasattr(self._file, 'name')}, data length: {len(data) if data else 0}"
             )
 
-        logger.info(f"Returning TaintStr with default taint: {self._taint_origin}")
         return TaintStr(data, self._taint_origin)
 
     def readline(self, size=-1):
@@ -1947,19 +1945,12 @@ class TaintFile:
         If the data is tainted, the taint information is preserved
         and stored in the database for cross-session tracking.
         """
-        from aco.common.logger import logger
-
-        logger.debug(
-            f"TaintFile.write called for {getattr(self._file, 'name', 'unknown')}, session_id={self._session_id}"
-        )
-
         # Extract raw data if tainted
         raw_data = untaint_if_needed(data)
 
         # Store taint information in database if we have a session ID and file name
         if self._session_id and hasattr(self._file, "name"):
             taint_nodes = get_taint_origins(data)
-            logger.debug(f"Writing with taint nodes: {taint_nodes}")
             if taint_nodes:
                 # Store taint for the current line being written
                 try:
@@ -2218,19 +2209,26 @@ def taint_wrap(
             return obj
         return tainted_list
     if isinstance(obj, tuple):
-        return tuple(
-            [
-                taint_wrap(
-                    x,
-                    taint_origin=taint_origin,
-                    inplace=inplace,
-                    _seen=_seen,
-                    _depth=_depth + 1,
-                    _max_depth=_max_depth,
-                )
-                for x in obj
-            ]
-        )
+        # Wrap the items in the tuple
+        wrapped_items = [
+            taint_wrap(
+                x,
+                taint_origin=taint_origin,
+                inplace=inplace,
+                _seen=_seen,
+                _depth=_depth + 1,
+                _max_depth=_max_depth,
+            )
+            for x in obj
+        ]
+
+        # Check if this is a namedtuple - they have _fields attribute
+        if hasattr(obj, "_fields"):
+            # Preserve the namedtuple type by reconstructing it
+            return type(obj)(*wrapped_items)
+
+        # Regular tuple
+        return tuple(wrapped_items)
     if isinstance(obj, io.IOBase):
         return TaintFile(obj, taint_origin=taint_origin)
 

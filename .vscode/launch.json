@@ -25,7 +25,7 @@
       "name": "aco-config",
       "type": "debugpy",
       "request": "launch",
-      "module": "cli.aco_config",
+      "module": "aco.cli.aco_config",
       "console": "integratedTerminal",
       "justMyCode": false
     },
@@ -33,7 +33,7 @@
       "name": "aco-server",
       "type": "debugpy",
       "request": "launch",
-      "module": "cli.aco_server",
+      "module": "aco.cli.aco_server",
       "args": ["restart"],
       "console": "integratedTerminal",
       "justMyCode": false
@@ -42,7 +42,7 @@
       "name": "aco-launch",
       "type": "debugpy",
       "request": "launch",
-      "module": "cli.aco_launch",
+      "module": "aco.cli.aco_launch",
       // "args": ["./example_workflows/debug_examples/anthropic_async_add_numbers.py"],
       // "args": ["./example_workflows/debug_examples/anthropic_add_numbers.py"],
       // "args": ["./example_workflows/debug_examples/langchain_async_agent.py"],
