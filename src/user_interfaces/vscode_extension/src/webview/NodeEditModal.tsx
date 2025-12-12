@@ -10,26 +10,39 @@ interface NodeEditModalProps {
   onSave: (nodeId: string, field: string, value: string) => void;
 }
 
-export const NodeEditModal: React.FC<NodeEditModalProps> = ({ 
-  nodeId, 
-  field, 
-  label, 
-  value: initialValue, 
-  onClose, 
-  onSave 
+export const NodeEditModal: React.FC<NodeEditModalProps> = ({
+  nodeId,
+  field,
+  label,
+  value: initialValue,
+  onClose,
+  onSave
 }) => {
-  const [currentValue, setCurrentValue] = useState(initialValue);
+  // Parse the initial value to extract to_show field
+  const getDisplayValue = (jsonStr: string): string => {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (parsed && typeof parsed === 'object' && 'to_show' in parsed) {
+        return JSON.stringify(parsed.to_show, null, 2);
+      }
+    } catch (e) {
+      // If parsing fails, return original string
+    }
+    return jsonStr;
+  };
+
+  const [currentValue, setCurrentValue] = useState(getDisplayValue(initialValue));
   const [hasChanges, setHasChanges] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isDarkTheme = useIsVsCodeDarkTheme();
 
   useEffect(() => {
-    setCurrentValue(initialValue);
+    setCurrentValue(getDisplayValue(initialValue));
     setHasChanges(false);
   }, [initialValue]);
 
   useEffect(() => {
-    setHasChanges(currentValue !== initialValue);
+    setHasChanges(currentValue !== getDisplayValue(initialValue));
   }, [currentValue, initialValue]);
 
   useEffect(() => {
@@ -58,13 +71,32 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
   }, [hasChanges, currentValue]);
 
   const handleSave = () => {
-    onSave(nodeId, field, currentValue);
+    // Reconstruct the full JSON structure with both raw and to_show fields
+    let valueToSave = currentValue;
+    try {
+      const originalParsed = JSON.parse(initialValue);
+      if (originalParsed && typeof originalParsed === 'object' && 'to_show' in originalParsed) {
+        // Parse the edited to_show value
+        const editedToShow = JSON.parse(currentValue);
+        // Reconstruct with updated to_show
+        const reconstructed = {
+          raw: editedToShow,  // Update raw to match to_show
+          to_show: editedToShow
+        };
+        valueToSave = JSON.stringify(reconstructed);
+      }
+    } catch (e) {
+      // If parsing fails, save as-is
+      valueToSave = currentValue;
+    }
+
+    onSave(nodeId, field, valueToSave);
     // Reset the hasChanges flag by updating the initial value reference
     setHasChanges(false);
   };
 
   const handleReset = () => {
-    setCurrentValue(initialValue);
+    setCurrentValue(getDisplayValue(initialValue));
   };
 
   return (
