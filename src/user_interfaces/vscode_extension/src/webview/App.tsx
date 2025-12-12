@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { ExperimentsView } from '../../../shared_components/components/experiment/ExperimentsView';
-import { ProcessInfo } from '../../../shared_components/types';
-import { sendReady } from '../../../shared_components/utils/messaging';
+import { GraphView } from '../../../shared_components/components/graph/GraphView';
+import { WorkflowRunDetailsPanel } from '../../../shared_components/components/experiment/WorkflowRunDetailsPanel';
+import { GraphNode, GraphEdge, GraphData, ProcessInfo } from '../../../shared_components/types';
+import { MessageSender } from '../../../shared_components/types/MessageSender';
 import { useIsVsCodeDarkTheme } from '../../../shared_components/utils/themeUtils';
 
 
@@ -17,6 +19,11 @@ declare global {
 export const App: React.FC = () => {
   const [processes, setProcesses] = useState<ProcessInfo[]>([]);
   const [databaseMode, setDatabaseMode] = useState<'Local' | 'Remote'>('Local');
+  const [user, setUser] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'experiments' | 'experiment-graph'>('experiments');
+  const [selectedExperiment, setSelectedExperiment] = useState<ProcessInfo | null>(null);
+  const [showDetailsPanel, setShowDetailsPanel] = useState(false);
+  const [allGraphs, setAllGraphs] = useState<Record<string, GraphData>>({});
   const isDarkTheme = useIsVsCodeDarkTheme();
 
   // Listen for backend messages and update state
@@ -29,7 +36,6 @@ export const App: React.FC = () => {
           if (message.database_mode) {
             const mode = message.database_mode === 'local' ? 'Local' : 'Remote';
             setDatabaseMode(mode);
-            console.log(`Synchronized database mode to: ${mode}`);
           }
           break;
         case "database_mode_changed":
@@ -37,7 +43,22 @@ export const App: React.FC = () => {
           if (message.database_mode) {
             const mode = message.database_mode === 'local' ? 'Local' : 'Remote';
             setDatabaseMode(mode);
-            console.log(`Database mode changed by another UI to: ${mode}`);
+          }
+          break;
+        case "authStateChanged":
+          // Update user state from auth provider
+          if (message.payload?.session) {
+            const account = message.payload.session.account;
+            const userAvatar = message.payload.userAvatar ||
+                              account.picture ||
+                              'https://www.gravatar.com/avatar/?d=mp&s=200';
+            setUser({
+              displayName: account.label,
+              email: account.label,
+              avatarUrl: userAvatar
+            });
+          } else {
+            setUser(null);
           }
           break;
         case "configUpdate":
@@ -67,12 +88,16 @@ export const App: React.FC = () => {
           // Node updates are now handled by individual graph tabs
           break;
         case "experiment_list":
+          console.log('[App] Received experiment_list:', message.experiments);
           setProcesses(message.experiments || []);
           break;
       }
     };
     window.addEventListener('message', handleMessage);
-    sendReady();
+    // Send ready message to VS Code extension
+    if (window.vscode) {
+      window.vscode.postMessage({ type: 'ready' });
+    }
     return () => {
       window.removeEventListener('message', handleMessage);
     };
@@ -94,7 +119,7 @@ export const App: React.FC = () => {
   const handleDatabaseModeChange = (mode: 'Local' | 'Remote') => {
     // Update local state immediately for responsive UI
     setDatabaseMode(mode);
-    
+
     // Send message to VS Code extension to relay to server
     if (window.vscode) {
       window.vscode.postMessage({
@@ -104,14 +129,46 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleNodeUpdate = (nodeId: string, field: string, value: string, sessionId: string, attachments?: any) => {
+    if (window.vscode) {
+      const baseMsg = {
+        session_id: sessionId,
+        node_id: nodeId,
+        value,
+        ...(attachments && { attachments }),
+      };
+
+      if (field === "input") {
+        window.vscode.postMessage({ type: "edit_input", ...baseMsg });
+      } else if (field === "output") {
+        window.vscode.postMessage({ type: "edit_output", ...baseMsg });
+      } else {
+        window.vscode.postMessage({
+          type: "update_node",
+          ...baseMsg,
+          field,
+        });
+      }
+    }
+  };
+
+  // Message sender for the Graph components
+  const messageSender: MessageSender = {
+    send: (message: any) => {
+      if (window.vscode) {
+        window.vscode.postMessage(message);
+      }
+    },
+  };
+
   // Use experiments in the order sent by server (already sorted by name ascending)
+  // Server already filters by user_id, so no client-side filtering needed
   const sortedProcesses = processes;
-  
+
   // const similarExperiments = sortedProcesses.filter(p => p.status === 'similar');
   const similarExperiments = sortedProcesses[0];
   const runningExperiments = sortedProcesses.filter(p => p.status === 'running');
   const finishedExperiments = sortedProcesses.filter(p => p.status === 'finished');
-
 
   return (
     <div
@@ -123,18 +180,110 @@ export const App: React.FC = () => {
         background: isDarkTheme ? "#252525" : "#F0F0F0",
       }}
     >
-      {/* The Experiments header and dropdown are now handled by ExperimentsView when showHeader=true */}
-      <div style={{ flex: 1, overflow: "hidden" }}>
-        <ExperimentsView
-          similarProcesses={similarExperiments ? [similarExperiments] : []}
-          runningProcesses={runningExperiments}
-          finishedProcesses={finishedExperiments}
-          onCardClick={handleExperimentCardClick}
-          isDarkTheme={isDarkTheme}
-          showHeader={true}
-          onModeChange={handleDatabaseModeChange}
-          currentMode={databaseMode}
-        />
+      <div
+        style={{
+          display: "flex",
+          borderBottom: "1px solid var(--vscode-editorWidget-border)",
+        }}
+      >
+        <button
+          onClick={() => setActiveTab("experiments")}
+          style={{
+            padding: "10px 20px",
+            border: "none",
+            backgroundColor:
+              activeTab === "experiments"
+                ? "var(--vscode-button-background)"
+                : "transparent",
+            color:
+              activeTab === "experiments"
+                ? "var(--vscode-button-foreground)"
+                : "var(--vscode-editor-foreground)",
+            cursor: "pointer",
+          }}
+        >
+          Experiments
+        </button>
+        {activeTab === "experiment-graph" && selectedExperiment && (
+          <button
+            onClick={() => setActiveTab("experiment-graph")}
+            style={{
+              padding: "10px 20px",
+              border: "none",
+              backgroundColor: "var(--vscode-button-background)",
+              color: "var(--vscode-button-foreground)",
+              cursor: "pointer",
+            }}
+          >
+            Experiment {selectedExperiment.session_id.substring(0, 8)}...
+          </button>
+        )}
+      </div>
+      <div
+        style={
+          showDetailsPanel
+            ? {
+                flex: 1,
+                overflow: "hidden",
+                background: isDarkTheme ? "#252525" : "#F0F0F0",
+              }
+            : { flex: 1, overflow: "hidden" }
+        }
+      >
+        {activeTab === "experiments" ? (
+          <ExperimentsView
+            similarProcesses={similarExperiments ? [similarExperiments] : []}
+            runningProcesses={runningExperiments}
+            finishedProcesses={finishedExperiments}
+            onCardClick={handleExperimentCardClick}
+            isDarkTheme={isDarkTheme}
+            user={user || undefined}
+            onLogin={() => {
+              if (window.vscode) {
+                window.vscode.postMessage({ type: 'signIn' });
+              }
+            }}
+            onLogout={() => {
+              if (window.vscode) {
+                window.vscode.postMessage({ type: 'signOut' });
+              }
+            }}
+            showHeader={true}
+            onModeChange={handleDatabaseModeChange}
+            currentMode={databaseMode}
+          />
+        ) : activeTab === "experiment-graph" && selectedExperiment && !showDetailsPanel ? (
+          <GraphView
+            nodes={allGraphs[selectedExperiment.session_id]?.nodes || []}
+            edges={allGraphs[selectedExperiment.session_id]?.edges || []}
+            onNodeUpdate={(nodeId, field, value) => {
+              const nodes = allGraphs[selectedExperiment.session_id]?.nodes || [];
+              const node = nodes.find((n: any) => n.id === nodeId);
+              const attachments = node?.attachments || undefined;
+              handleNodeUpdate(
+                nodeId,
+                field,
+                value,
+                selectedExperiment.session_id,
+                attachments
+              );
+            }}
+            session_id={selectedExperiment.session_id}
+            experiment={selectedExperiment}
+            messageSender={messageSender}
+            isDarkTheme={isDarkTheme}
+          />
+        ) : activeTab === "experiment-graph" && selectedExperiment && showDetailsPanel ? (
+          <WorkflowRunDetailsPanel
+            runName={selectedExperiment.run_name || ''}
+            result={selectedExperiment.result || ''}
+            notes={selectedExperiment.notes || ''}
+            log={selectedExperiment.log || ''}
+            onOpenInTab={() => {}}
+            onBack={() => setShowDetailsPanel(false)}
+            sessionId={selectedExperiment.session_id}
+          />
+        ) : null}
       </div>
     </div>
   );

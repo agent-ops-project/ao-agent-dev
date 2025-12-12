@@ -1,6 +1,6 @@
 from functools import wraps
 from aco.runner.monkey_patching.patching_utils import get_input_dict, send_graph_node_and_edges
-from aco.server.cache_manager import CACHE
+from aco.server.database_manager import DB
 from aco.common.logger import logger
 from aco.runner.taint_wrappers import get_taint_origins, taint_wrap
 
@@ -59,10 +59,10 @@ def patch_mcp_send_request(session_instance):
             return taint_wrap(result, taint_origins)
 
         # 4. Get result from cache or call tool.
-        cache_output = CACHE.get_in_out(input_dict, api_type)
+        cache_output = DB.get_in_out(input_dict, api_type)
         if cache_output.output is None:
             result = await original_function(**cache_output.input_dict)
-            CACHE.cache_output(cache_result=cache_output, output_obj=result, api_type=api_type)
+            DB.cache_output(cache_result=cache_output, output_obj=result, api_type=api_type)
         else:
             cache_output.output = input_dict["result_type"].model_validate(cache_output.output)
 

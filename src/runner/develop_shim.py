@@ -62,6 +62,7 @@ class DevelopShim:
         is_module_execution: bool,
         project_root: str,
         sample_id: Optional[str] = None,
+        user_id: Optional[str] = None,
     ):
         self.script_path = script_path
         self.script_args = script_args
@@ -79,6 +80,8 @@ class DevelopShim:
         # Server communication
         self.session_id: Optional[str] = None
         self.server_conn: Optional[socket.socket] = None
+        # Optional user id to attach to new experiments
+        self.user_id: Optional[str] = user_id
 
         # Threading
         self.listener_thread: Optional[threading.Thread] = None
@@ -289,6 +292,13 @@ class DevelopShim:
             ),  # Is set if rerun, otherwise None
             "module_to_file": MODULE2FILE,  # For file watcher
         }
+        # Include user_id on the handshake top-level if provided
+        if self.user_id is not None:
+            try:
+                # Ensure string type
+                handshake["user_id"] = str(self.user_id)
+            except Exception:
+                pass
         try:
             self.server_conn.sendall((json.dumps(handshake) + "\n").encode("utf-8"))
             # Read session_id from aco.server

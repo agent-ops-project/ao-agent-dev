@@ -93,8 +93,7 @@ ACO_CACHE = os.path.expandvars(
 os.makedirs(ACO_CACHE, exist_ok=True)
 
 
-# the path to the folder where the experiments database is
-# stored
+# the path to the folder where the experiments database is stored
 default_db_cache_path = os.path.join(ACO_HOME, "db")
 ACO_DB_PATH = os.path.expandvars(
     os.path.expanduser(

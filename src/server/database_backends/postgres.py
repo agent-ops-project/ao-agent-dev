@@ -100,9 +100,29 @@ def close_all_connections():
             logger.debug("Closed PostgreSQL connection pool")
 
 
+def clear_connections():
+    """Clear cached connections to force reconnection (alias for close_all_connections)."""
+    close_all_connections()
+
+
 def _init_db(conn):
     """Initialize database schema (create tables if not exist)"""
     c = conn.cursor()
+
+    # Create users table
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            google_id VARCHAR(255) NOT NULL UNIQUE,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            name VARCHAR(255) NOT NULL,
+            picture TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """
+    )
 
     # Create experiments table
     c.execute(
@@ -121,6 +141,7 @@ def _init_db(conn):
             success TEXT CHECK (success IN ('', 'Satisfactory', 'Failed')),
             notes TEXT,
             log TEXT,
+            user_id INTEGER,
             FOREIGN KEY (parent_session_id) REFERENCES experiments (session_id),
             UNIQUE (parent_session_id, name)
         )
@@ -161,7 +182,6 @@ def _init_db(conn):
         )
     """
     )
-
     # Create indexes
     c.execute(
         """
@@ -178,7 +198,6 @@ def _init_db(conn):
         CREATE INDEX IF NOT EXISTS experiments_timestamp_idx ON experiments(timestamp DESC)
     """
     )
-
     conn.commit()
     logger.debug("Database schema initialized")
 
@@ -226,26 +245,6 @@ def execute(sql, params=()):
         raise
     finally:
         return_conn(conn)
-
-
-def deserialize_input(input_blob, api_type=None):
-    """Deserialize input blob back to original dict"""
-    if input_blob is None:
-        return None
-    # Postgres stores as bytes directly
-    return dill.loads(bytes(input_blob))
-
-
-def deserialize(output_json, api_type=None):
-    """Deserialize output JSON back to response object"""
-    if output_json is None:
-        return None
-    # Handle the case where dill pickled data was stored as TEXT
-    # When binary data is stored as TEXT in PostgreSQL, we need to convert it back to bytes
-    if isinstance(output_json, str):
-        # Convert string back to bytes for dill.loads()
-        output_json = output_json.encode("latin1")
-    return dill.loads(output_json)
 
 
 def store_taint_info(session_id, file_path, line_no, taint_nodes):
@@ -299,11 +298,12 @@ def add_experiment_query(
     default_success,
     default_note,
     default_log,
+    user_id,
 ):
     """Execute PostgreSQL-specific INSERT for experiments table"""
     execute(
-        """INSERT INTO experiments (session_id, parent_session_id, name, graph_topology, timestamp, cwd, command, environment, success, notes, log) 
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """INSERT INTO experiments (session_id, parent_session_id, name, graph_topology, timestamp, cwd, command, environment, success, notes, log, user_id) 
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            ON CONFLICT (session_id) DO UPDATE SET
                parent_session_id = EXCLUDED.parent_session_id,
                name = EXCLUDED.name,
@@ -314,7 +314,8 @@ def add_experiment_query(
                environment = EXCLUDED.environment,
                success = EXCLUDED.success,
                notes = EXCLUDED.notes,
-               log = EXCLUDED.log""",
+               log = EXCLUDED.log,
+               user_id = EXCLUDED.user_id""",
         (
             session_id,
             parent_session_id,
@@ -327,6 +328,7 @@ def add_experiment_query(
             default_success,
             default_note,
             default_log,
+            user_id,
         ),
     )
 
@@ -461,11 +463,16 @@ def get_finished_runs_query():
     return query_all("SELECT session_id, timestamp FROM experiments ORDER BY timestamp DESC", ())
 
 
-def get_all_experiments_sorted_query():
-    """Get all experiments sorted by timestamp desc."""
+def get_all_experiments_sorted_by_user_query(user_id=None):
+    # If user_id is None, because user not logged in and UI requested experiment list, send nothing
+    if user_id is None:
+        return []
+
+    """Get all experiments sorted by timestamp desc, optionally filtered by user_id."""
+    # Filter by user_id
     return query_all(
-        "SELECT session_id, timestamp, color_preview, name, success, notes, log FROM experiments ORDER BY timestamp DESC",
-        (),
+        "SELECT session_id, timestamp, color_preview, name, success, notes, log FROM experiments WHERE user_id=%s ORDER BY timestamp DESC",
+        (user_id,),
     )
 
 
@@ -523,17 +530,72 @@ def get_session_name_query(session_id):
     return query_one("SELECT name FROM experiments WHERE session_id=%s", (session_id,))
 
 
-def query_one_llm_call_input(session_id, node_id):
-    """Get one llm-call input by session id and node id"""
+def get_llm_call_input_api_type_query(session_id, node_id):
+    """Get input and api_type from llm_calls by session_id and node_id."""
     return query_one(
         "SELECT input, api_type FROM llm_calls WHERE session_id=%s AND node_id=%s",
         (session_id, node_id),
     )
 
 
-def query_one_llm_call_output(session_id, node_id):
-    """Get one llm-call output by session id and node id"""
+def get_llm_call_output_api_type_query(session_id, node_id):
+    """Get output and api_type from llm_calls by session_id and node_id."""
     return query_one(
         "SELECT output, api_type FROM llm_calls WHERE session_id=%s AND node_id=%s",
         (session_id, node_id),
     )
+
+
+def get_experiment_log_success_graph_query(session_id):
+    """Get log, success, and graph_topology from experiments by session_id."""
+    return query_one(
+        "SELECT log, success, graph_topology FROM experiments WHERE session_id=%s",
+        (session_id,),
+    )
+
+
+def upsert_user(google_id, email, name, picture):
+    """
+    Upsert user - insert if not exists, update if exists.
+
+    Args:
+        google_id: Google OAuth ID
+        email: User email
+        name: User name
+        picture: User profile picture URL
+
+    Returns:
+        The user record after upsert
+    """
+    # Check if user exists
+    existing = query_one("SELECT * FROM users WHERE google_id = %s", (google_id,))
+
+    if existing:
+        # Update existing user
+        execute(
+            "UPDATE users SET name = %s, picture = %s, updated_at = CURRENT_TIMESTAMP WHERE google_id = %s",
+            (name, picture, google_id),
+        )
+    else:
+        # Insert new user
+        execute(
+            "INSERT INTO users (google_id, email, name, picture, created_at, updated_at) "
+            "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            (google_id, email, name, picture),
+        )
+
+    # Return the user record
+    return query_one("SELECT * FROM users WHERE google_id = %s", (google_id,))
+
+
+def get_user_by_id_query(user_id):
+    """
+    Get user by their ID.
+
+    Args:
+        user_id: The user's ID
+
+    Returns:
+        The user record or None if not found
+    """
+    return query_one("SELECT * FROM users WHERE id = %s", (user_id,))
