@@ -192,7 +192,7 @@ class DatabaseManager:
 
     def set_input_overwrite(self, session_id, node_id, new_input):
         # Overwrite input for node.
-        row = self.backend.query_one_llm_call_input(session_id, node_id)
+        row = self.backend.get_llm_call_input_api_type_query(session_id, node_id)
         input_overwrite = json.loads(row["input"])
         input_overwrite["input"] = new_input
         input_overwrite = json.dumps(input_overwrite)
@@ -200,7 +200,7 @@ class DatabaseManager:
 
     def set_output_overwrite(self, session_id, node_id, new_output: str):
         # Overwrite output for node.
-        row = DB.query_one_llm_call_output(session_id, node_id)
+        row = self.backend.get_llm_call_output_api_type_query(session_id, node_id)
 
         if not row:
             logger.error(

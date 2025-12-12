@@ -1,6 +1,5 @@
 import json
 from typing import Any, Dict
-from aco.common.logger import logger
 
 
 def json_str_to_original_inp_dict_requests(json_str: str, input_dict: dict) -> dict:
@@ -20,33 +19,24 @@ def api_obj_to_json_str_requests(obj: Any) -> str:
     import base64
 
     out_dict = {}
-    encoding = obj.encoding or "utf-8"
+    encoding = obj.encoding if hasattr(obj, "encoding") else "utf-8"
     out_bytes = dill.dumps(obj)
     out_dict["_obj_str"] = base64.b64encode(out_bytes).decode(encoding)
     out_dict["_encoding"] = encoding
-    out_dict["content"] = obj.content.decode(encoding)
+    out_dict["content"] = json.loads(obj.content.decode(encoding))
     return json.dumps(out_dict)
 
 
 def json_str_to_api_obj_requests(new_output_text: str) -> None:
     import dill
     import base64
-    from json import JSONDecodeError
 
     out_dict = json.loads(new_output_text)
-    encoding = out_dict["_encoding"] or "utf-8"
+    encoding = out_dict["_encoding"] if "_encoding" in out_dict else "utf-8"
     obj = dill.loads(base64.b64decode(out_dict["_obj_str"].encode(encoding)))
 
-    try:
-        out_dict = json.loads(new_output_text)
-        # check parsing of the modified content
-        json.loads(out_dict["content"])
-    except JSONDecodeError as e:
-        logger.error(f"Error json loading modified output: {e}")
-        return obj
-
     # For requests.Response, update the content and text attributes
-    obj._content = out_dict["content"].encode(encoding)
+    obj._content = json.dumps(out_dict["content"]).encode(encoding)
     # requests.Response doesn't have a decoder like httpx, it computes _text on access
     # So we just need to clear the cached _text to force recomputation
     if hasattr(obj, "_content_consumed"):

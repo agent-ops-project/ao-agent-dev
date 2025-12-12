@@ -1,11 +1,10 @@
 import json
 from typing import Any, Dict
-from aco.common.logger import logger
 
 
 def json_str_to_original_inp_dict_httpx(json_str: str, input_dict: dict) -> dict:
     # For httpx, modify the body parameter
-    input_dict["body"] = json.loads(json_str)
+    input_dict["request"]._content = json_str.encode("utf-8")
     return input_dict
 
 
@@ -23,35 +22,26 @@ def api_obj_to_json_str_httpx(obj: Any) -> str:
     obj: Response
 
     out_dict = {}
-    encoding = obj.encoding or "utf-8"
+    encoding = obj.encoding if hasattr(obj, "encoding") else "utf-8"
     out_bytes = dill.dumps(obj)
     out_dict["_obj_str"] = base64.b64encode(out_bytes).decode(encoding)
     out_dict["_encoding"] = encoding
-    out_dict["content"] = obj.content.decode(encoding)
+    out_dict["content"] = json.loads(obj.content.decode(encoding))
     return json.dumps(out_dict)
 
 
 def json_str_to_api_obj_httpx(new_output_text: str) -> None:
     import dill
     import base64
-    from json import JSONDecodeError
     from httpx._decoders import TextDecoder
 
     out_dict = json.loads(new_output_text)
-    encoding = out_dict["_encoding"] or "utf-8"
+    encoding = out_dict["_encoding"] if "_encoding" in out_dict else "utf-8"
     obj = dill.loads(base64.b64decode(out_dict["_obj_str"].encode(encoding)))
 
-    try:
-        out_dict = json.loads(new_output_text)
-        # check parsing of the modified content
-        json.loads(out_dict["content"])
-    except JSONDecodeError as e:
-        logger.error(f"Error json loading modified output: {e}")
-        return obj
-
     # For httpx.Response, update the content and text using the TextDecoder
-    obj._content = out_dict["content"].encode(encoding)
-    decoder = TextDecoder(encoding=encoding or "utf-8")
+    obj._content = json.dumps(out_dict["content"]).encode(encoding)
+    decoder = TextDecoder(encoding=encoding)
     obj._text = "".join([decoder.decode(obj._content), decoder.flush()])
     return obj
 

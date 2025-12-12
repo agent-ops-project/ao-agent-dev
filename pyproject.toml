@@ -39,7 +39,8 @@ dependencies = [
     "psutil",
     "psycopg2-binary",
     "python-dotenv",
-    "fastapi"
+    "fastapi",
+    "flatten-dict"
 ]
 
 [project.optional-dependencies]
