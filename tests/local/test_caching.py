@@ -22,8 +22,8 @@ sys.path.insert(0, str(parent_dir))
 from aco.cli.aco_server import launch_daemon_server
 from aco.runner.context_manager import set_parent_session_id
 from aco.common.constants import ACO_LOG_PATH, REMOTE_DATABASE_URL
-from tests.utils import restart_server
-from tests.get_api_objects import (
+from ..utils import restart_server
+from ..get_api_objects import (
     create_anthropic_response,
     create_openai_input,
     create_openai_response,
