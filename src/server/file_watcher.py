@@ -170,15 +170,15 @@ class FileWatcher:
         Scan the project root for all Python files.
 
         Returns:
-            Set of absolute paths to Python files (excluding .rewritten.py files)
+            Set of absolute paths to Python files (excluding .aco_rewritten.py files)
         """
         python_files = set()
 
         # Search for all .py files recursively from project root
         pattern = os.path.join(self.project_root, "**", "*.py")
         for file_path in glob.glob(pattern, recursive=True):
-            # Skip .rewritten.py files (these are debugging files, not real code)
-            if file_path.endswith(".rewritten.py"):
+            # Skip .aco_rewritten.py files (these are debugging files, not real code)
+            if ".aco_rewritten" in file_path:
                 continue
 
             # Skip files in __pycache__ directories
@@ -320,19 +320,18 @@ class FileWatcher:
             # Read source code
             with open(file_path, "r", encoding="utf-8") as f:
                 source = f.read()
-            # logger.debug(f"[FileWatcher] Read {len(source)} characters from {file_path}")
 
             # Apply AST rewrites and compile to code object
             # logger.debug(f"[FileWatcher] Applying AST rewrites to {module_name}")
             debug_ast = os.environ.get("ACO_DEBUG_AST_REWRITES")
-            if debug_ast:
+            if debug_ast and not ".aco_rewritten.py" in file_path:
                 code_object, tree = rewrite_source_to_code(
                     source, file_path, module_to_file=self.module_to_file, return_tree=True
                 )
-                # Write transformed source to .rewritten.py for debugging
+                # Write transformed source to .aco_rewritten.py for debugging
                 import ast
 
-                debug_path = file_path.replace(".py", ".rewritten.py")
+                debug_path = file_path.replace(".py", ".aco_rewritten.py")
                 try:
                     rewritten_source = ast.unparse(tree)
                     with open(debug_path, "w", encoding="utf-8") as f:

@@ -623,7 +623,7 @@ class TaintPropagationTransformer(ast.NodeTransformer):
             return ast.copy_location(new_node, node)
 
         # Transform method calls
-        elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+        elif isinstance(node.func, ast.Attribute):
             func_name = node.func.attr
 
             # Skip dunder methods

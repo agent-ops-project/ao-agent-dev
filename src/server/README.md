@@ -101,3 +101,8 @@ docker logs XXX
 ```
 
 `XXX`: `workflow-backend` for develop_server, `workflow-proxy` for auth server. `workflow-frontend` is not interesting, should do Right click -> Inspect -> Console
+
+### Debugging
+
+If you want to see the rewritten python code (not only the binary): `export ACO_DEBUG_AST_REWRITES=1`. 
+This will store `xxx.rewritten.py` files next to the original ones that are rewritten. If you don't see these files, maybe you're not rewriting the originals.
