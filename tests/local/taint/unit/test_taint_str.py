@@ -3,9 +3,10 @@
 import pytest
 
 from aco.runner.taint_wrappers import taint_wrap, TaintWrapper, get_taint_origins
-from ....utils import with_ast_rewriting
+from ....utils import with_ast_rewriting, with_ast_rewriting_class
 
 
+@with_ast_rewriting_class
 class TestTaintStr:
     """Test suite for TaintWrapper (string) functionality."""
 
@@ -18,7 +19,7 @@ class TestTaintStr:
 
         # Test with single string taint
         s2 = taint_wrap("world", taint_origin="source1")
-        assert isinstance(s2, TaintWrapper)
+        assert isinstance(s2, str)
         assert s2.obj == "world"
         assert s2._taint_origin == ["source1"]
 
@@ -196,9 +197,9 @@ class TestTaintStr:
 
         result = s.split("-")
         assert len(result) == 3
-        assert all(isinstance(part, TaintWrapper) for part in result)
+        assert all(isinstance(part, str) for part in result)
         assert [str(part) for part in result] == ["hello", "world", "test"]
-        assert all(get_taint_origins(part) == ["source1"] for part in result)
+        assert all(get_taint_origins(part) == ["source1"] for part in result), f"result: {result}"
 
     def test_search_methods(self):
         """Test startswith, endswith, find, index, count methods."""
@@ -239,7 +240,6 @@ class TestTaintStr:
         test_set = {s1, s2, s3}
         assert len(test_set) == 1  # All are considered equal
 
-    @with_ast_rewriting
     def test_str_repr(self):
         """Test __str__ and __repr__ methods."""
         s = taint_wrap("hello", taint_origin="source1")

@@ -167,7 +167,12 @@ class TaintWrapper:
 
     def __iter__(self):
         obj = object.__getattribute__(self, "obj")
-        return iter(obj)
+        taint_origin = object.__getattribute__(self, "_taint_origin")
+        for item in obj:
+            if taint_origin:
+                yield taint_wrap(item, taint_origin=taint_origin)
+            else:
+                yield item
 
     def __hash__(self):
         obj = object.__getattribute__(self, "obj")

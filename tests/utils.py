@@ -2,7 +2,7 @@ import inspect
 import textwrap
 import os
 from datetime import datetime
-from aco.server.ast_transformer import rewrite_source_to_code
+from aco.server.file_watcher import rewrite_source_to_code
 from aco.server.database_manager import DB
 
 
@@ -111,7 +111,48 @@ def with_ast_rewriting(test_func):
             body_source, f"<{test_func.__name__}>", module_to_file={}
         )
 
-        # Execute the transformed code using caller's globals
-        exec(code_object, globals())
+        # Set up the taint environment (normally done by agent_runner)
+        import builtins
+        from contextvars import ContextVar
+
+        if not hasattr(builtins, "TAINT_ESCROW"):
+            builtins.TAINT_ESCROW = ContextVar("taint_escrow", default=set())
+
+        # Add taint functions to builtins (normally done by agent_runner)
+        from aco.server.ast_transformer import (
+            taint_fstring_join,
+            taint_format_string,
+            taint_percent_format,
+            exec_func,
+        )
+
+        builtins.taint_fstring_join = taint_fstring_join
+        builtins.taint_format_string = taint_format_string
+        builtins.taint_percent_format = taint_percent_format
+        builtins.exec_func = exec_func
+
+        # Execute the transformed code using test function's globals
+        test_globals = test_func.__globals__.copy()
+        test_globals.update(globals())  # Add utils globals for any dependencies
+        exec(code_object, test_globals)
 
     return wrapper
+
+
+def with_ast_rewriting_class(cls):
+    """
+    Class decorator that applies @with_ast_rewriting to all test methods in a class.
+
+    Usage:
+        @with_ast_rewriting_class
+        class TestSomething:
+            def test_method(self):
+                # This will be executed with AST rewriting
+                pass
+    """
+    for attr_name in dir(cls):
+        if attr_name.startswith("test_") and callable(getattr(cls, attr_name)):
+            original_method = getattr(cls, attr_name)
+            decorated_method = with_ast_rewriting(original_method)
+            setattr(cls, attr_name, decorated_method)
+    return cls

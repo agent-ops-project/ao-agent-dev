@@ -240,3 +240,6 @@ aco
 
 # Claude local
 CLAUDE.local.md
+
+# Rewritten files
+*.aco_rewritten.py

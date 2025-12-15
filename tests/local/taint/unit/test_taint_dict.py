@@ -3,8 +3,10 @@
 import pytest
 
 from aco.runner.taint_wrappers import taint_wrap, TaintWrapper, get_taint_origins
+from ....utils import with_ast_rewriting_class
 
 
+@with_ast_rewriting_class
 class TestTaintDict:
     """Test suite for TaintWrapper (dict) functionality."""
 

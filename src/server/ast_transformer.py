@@ -787,7 +787,26 @@ class TaintPropagationTransformer(ast.NodeTransformer):
         """Transform comparison operations into exec_func calls."""
         node = self.generic_visit(node)
 
-        # Only handle single comparisons for now (a < b, not a < b < c)
+        # Handle chained comparisons by breaking into binary comparisons
+        if len(node.ops) > 1:
+            # Transform a < b < c into (a < b) and (b < c)
+            comparisons = []
+            left = node.left
+
+            for op, right in zip(node.ops, node.comparators):
+                # Create and transform each binary comparison
+                binary_compare = ast.Compare(left=left, ops=[op], comparators=[right])
+                comparisons.append(self.visit_Compare(binary_compare))
+                left = right  # Next comparison's left is current right
+
+            # Connect with 'and' operations
+            result = comparisons[0]
+            for comp in comparisons[1:]:
+                result = ast.BoolOp(op=ast.And(), values=[result, comp])
+
+            return ast.copy_location(result, node)
+
+        # Handle single comparisons
         if len(node.ops) == 1 and len(node.comparators) == 1:
             op_type = type(node.ops[0])
 

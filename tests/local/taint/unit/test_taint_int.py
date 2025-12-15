@@ -3,23 +3,27 @@
 import pytest
 
 from aco.runner.taint_wrappers import taint_wrap, TaintWrapper, get_taint_origins
+from ....utils import with_ast_rewriting_class
 
 
+@with_ast_rewriting_class
 class TestTaintInt:
     """Test suite for TaintWrapper (int) functionality."""
 
     def test_creation(self):
         """Test TaintWrapper creation with various taint origins."""
+        print("hereee")
         # Test with no taint
         i1 = 42  # No wrapping for no taint
         assert int(i1) == 42
+        print("hello")
         assert get_taint_origins(i1) == []
 
         # Test with single string taint
         i2 = taint_wrap(100, taint_origin="source1")
-        assert isinstance(i2, TaintWrapper)
+        assert isinstance(i2, int)
         assert int(i2) == 100
-        assert i2._taint_origin == ["source1"]
+        assert get_taint_origins(i2) == ["source1"]
 
         # Test with single int taint
         i3 = taint_wrap(-5, taint_origin=999)
@@ -43,7 +47,7 @@ class TestTaintInt:
         # Addition
         result = i1 + i2
         assert int(result) == 13
-        assert isinstance(result, TaintWrapper)
+        assert isinstance(result, int)
         assert set(get_taint_origins(result)) == {"source1", "source2"}
 
         # Addition with regular int
@@ -89,7 +93,7 @@ class TestTaintInt:
         # True division (returns TaintWrapper)
         result = i1 / i2
         assert float(result) == 10 / 3
-        assert isinstance(result, TaintWrapper)
+        assert isinstance(result, float)
         assert set(get_taint_origins(result)) == {"source1", "source2"}
 
         # Modulo
