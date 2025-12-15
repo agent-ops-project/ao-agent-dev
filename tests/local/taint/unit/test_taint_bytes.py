@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
-"""Test the TaintBytes implementation."""
+"""Test the TaintWrapper (bytes) functionality."""
 
 import pytest
-from aco.runner.taint_wrappers import TaintBytes, TaintStr, get_taint_origins
+from aco.runner.taint_wrappers import taint_wrap, TaintWrapper, get_taint_origins
 
 
 def test_basic_creation():
-    """Test basic TaintBytes creation."""
+    """Test basic TaintWrapper creation with bytes."""
     # Create from bytes
-    tb1 = TaintBytes(b"hello", taint_origin="source1")
+    tb1 = taint_wrap(b"hello", taint_origin="source1")
     assert tb1 == b"hello"
     assert get_taint_origins(tb1) == ["source1"]
 
     # Create from bytearray
-    tb2 = TaintBytes(bytearray(b"world"), taint_origin=["source2", "source3"])
+    tb2 = taint_wrap(bytearray(b"world"), taint_origin=["source2", "source3"])
     assert tb2 == b"world"
     assert set(get_taint_origins(tb2)) == {"source2", "source3"}
 
 
 def test_arithmetic_operations():
     """Test arithmetic operations."""
-    tb1 = TaintBytes(b"hello", taint_origin="source1")
-    tb2 = TaintBytes(b" world", taint_origin="source2")
+    tb1 = taint_wrap(b"hello", taint_origin="source1")
+    tb2 = taint_wrap(b" world", taint_origin="source2")
 
     # Addition
     tb3 = tb1 + tb2
@@ -31,7 +31,7 @@ def test_arithmetic_operations():
     # Reverse addition
     tb4 = b"prefix " + tb1
     assert tb4 == b"prefix hello"
-    assert isinstance(tb4, TaintBytes)
+    assert isinstance(tb4, TaintWrapper)
     assert "source1" in get_taint_origins(tb4)
 
     # Multiplication
@@ -47,16 +47,16 @@ def test_arithmetic_operations():
 
 def test_modulo_formatting():
     """Test % formatting with bytes."""
-    tb = TaintBytes(b"Hello %s", taint_origin="fmt_source")
+    tb = taint_wrap(b"Hello %s", taint_origin="fmt_source")
 
     # Format with single value
     result = tb % b"World"
     assert result == b"Hello World"
-    assert isinstance(result, TaintBytes)
+    assert isinstance(result, TaintWrapper)
     assert "fmt_source" in get_taint_origins(result)
 
     # Format with tainted value
-    tb_val = TaintBytes(b"Python", taint_origin="val_source")
+    tb_val = taint_wrap(b"Python", taint_origin="val_source")
     result2 = tb % tb_val
     assert result2 == b"Hello Python"
     assert set(get_taint_origins(result2)) == {"fmt_source", "val_source"}
@@ -64,12 +64,12 @@ def test_modulo_formatting():
 
 def test_slicing():
     """Test slicing operations."""
-    tb = TaintBytes(b"hello world", taint_origin="source1")
+    tb = taint_wrap(b"hello world", taint_origin="source1")
 
     # Slice
     tb_slice = tb[0:5]
     assert tb_slice == b"hello"
-    assert isinstance(tb_slice, TaintBytes)
+    assert isinstance(tb_slice, TaintWrapper)
     assert get_taint_origins(tb_slice) == ["source1"]
 
     # Single index (returns int)
@@ -83,17 +83,17 @@ def test_slicing():
     # Step slicing
     tb_step = tb[::2]
     assert tb_step == b"hlowrd"
-    assert isinstance(tb_step, TaintBytes)
+    assert isinstance(tb_step, TaintWrapper)
 
 
 def test_case_methods():
     """Test case conversion methods."""
-    tb = TaintBytes(b"Hello World", taint_origin="source1")
+    tb = taint_wrap(b"Hello World", taint_origin="source1")
 
     # Upper
     upper = tb.upper()
     assert upper == b"HELLO WORLD"
-    assert isinstance(upper, TaintBytes)
+    assert isinstance(upper, TaintWrapper)
     assert get_taint_origins(upper) == ["source1"]
 
     # Lower
@@ -119,7 +119,7 @@ def test_case_methods():
 
 def test_strip_methods():
     """Test strip methods."""
-    tb = TaintBytes(b"  hello  ", taint_origin="source1")
+    tb = taint_wrap(b"  hello  ", taint_origin="source1")
 
     # Strip
     stripped = tb.strip()
@@ -139,7 +139,7 @@ def test_strip_methods():
 
 def test_padding_methods():
     """Test padding and justification methods."""
-    tb = TaintBytes(b"hello", taint_origin="source1")
+    tb = taint_wrap(b"hello", taint_origin="source1")
 
     # Center
     centered = tb.center(10)
@@ -158,7 +158,7 @@ def test_padding_methods():
     assert get_taint_origins(rjusted) == ["source1"]
 
     # Zfill
-    tb_num = TaintBytes(b"42", taint_origin="num_source")
+    tb_num = taint_wrap(b"42", taint_origin="num_source")
     zfilled = tb_num.zfill(5)
     assert zfilled == b"00042"
     assert get_taint_origins(zfilled) == ["num_source"]
@@ -166,7 +166,7 @@ def test_padding_methods():
 
 def test_replace():
     """Test replace method."""
-    tb = TaintBytes(b"Hello World", taint_origin="source1")
+    tb = taint_wrap(b"Hello World", taint_origin="source1")
 
     # Simple replace
     tb2 = tb.replace(b"World", b"Python")
@@ -174,20 +174,20 @@ def test_replace():
     assert "source1" in get_taint_origins(tb2)
 
     # Replace with tainted value
-    tb_new = TaintBytes(b"Universe", taint_origin="new_source")
+    tb_new = taint_wrap(b"Universe", taint_origin="new_source")
     tb3 = tb.replace(b"World", tb_new)
     assert tb3 == b"Hello Universe"
     assert set(get_taint_origins(tb3)) == {"source1", "new_source"}
 
     # Replace with count
-    tb4 = TaintBytes(b"aaa", taint_origin="source2")
+    tb4 = taint_wrap(b"aaa", taint_origin="source2")
     tb5 = tb4.replace(b"a", b"b", 2)
     assert tb5 == b"bba"
 
 
 def test_split_methods():
     """Test split methods."""
-    tb = TaintBytes(b"one,two,three", taint_origin="source1")
+    tb = taint_wrap(b"one,two,three", taint_origin="source1")
 
     # Split
     parts = tb.split(b",")
@@ -195,7 +195,7 @@ def test_split_methods():
     assert parts[0] == b"one"
     assert parts[1] == b"two"
     assert parts[2] == b"three"
-    assert all(isinstance(p, TaintBytes) for p in parts)
+    assert all(isinstance(p, TaintWrapper) for p in parts)
     assert all(get_taint_origins(p) == ["source1"] for p in parts)
 
     # Rsplit
@@ -205,22 +205,22 @@ def test_split_methods():
     assert rparts[1] == b"three"
 
     # Splitlines
-    tb_lines = TaintBytes(b"line1\nline2\rline3", taint_origin="lines_source")
+    tb_lines = taint_wrap(b"line1\nline2\rline3", taint_origin="lines_source")
     lines = tb_lines.splitlines()
     assert len(lines) == 3
-    assert all(isinstance(l, TaintBytes) for l in lines)
+    assert all(isinstance(l, TaintWrapper) for l in lines)
 
 
 def test_partition_methods():
     """Test partition methods."""
-    tb = TaintBytes(b"one,two,three", taint_origin="source1")
+    tb = taint_wrap(b"one,two,three", taint_origin="source1")
 
     # Partition
     before, sep, after = tb.partition(b",")
     assert before == b"one"
     assert sep == b","
     assert after == b"two,three"
-    assert all(isinstance(p, TaintBytes) for p in [before, sep, after])
+    assert all(isinstance(p, TaintWrapper) for p in [before, sep, after])
     assert all(get_taint_origins(p) == ["source1"] for p in [before, sep, after])
 
     # Rpartition
@@ -232,7 +232,7 @@ def test_partition_methods():
 
 def test_prefix_suffix():
     """Test removeprefix and removesuffix methods."""
-    tb = TaintBytes(b"HelloWorld", taint_origin="source1")
+    tb = taint_wrap(b"HelloWorld", taint_origin="source1")
 
     # Remove prefix
     tb2 = tb.removeprefix(b"Hello")
@@ -247,7 +247,7 @@ def test_prefix_suffix():
 
 def test_find_index_methods():
     """Test find and index methods."""
-    tb = TaintBytes(b"hello world", taint_origin="source1")
+    tb = taint_wrap(b"hello world", taint_origin="source1")
 
     # Find
     assert tb.find(b"world") == 6
@@ -265,7 +265,7 @@ def test_find_index_methods():
 
 def test_count():
     """Test count method."""
-    tb = TaintBytes(b"hello world", taint_origin="source1")
+    tb = taint_wrap(b"hello world", taint_origin="source1")
 
     assert tb.count(b"l") == 3
     assert tb.count(b"o") == 2
@@ -275,87 +275,84 @@ def test_count():
 def test_boolean_check_methods():
     """Test boolean checking methods."""
     # Test isalnum
-    assert TaintBytes(b"hello123").isalnum() == True
-    assert TaintBytes(b"hello 123").isalnum() == False
+    assert taint_wrap(b"hello123").isalnum() == True
+    assert taint_wrap(b"hello 123").isalnum() == False
 
     # Test isalpha
-    assert TaintBytes(b"hello").isalpha() == True
-    assert TaintBytes(b"hello123").isalpha() == False
+    assert taint_wrap(b"hello").isalpha() == True
+    assert taint_wrap(b"hello123").isalpha() == False
 
     # Test isdigit
-    assert TaintBytes(b"123").isdigit() == True
-    assert TaintBytes(b"123abc").isdigit() == False
+    assert taint_wrap(b"123").isdigit() == True
+    assert taint_wrap(b"123abc").isdigit() == False
 
     # Test isspace
-    assert TaintBytes(b"   ").isspace() == True
-    assert TaintBytes(b"  a ").isspace() == False
+    assert taint_wrap(b"   ").isspace() == True
+    assert taint_wrap(b"  a ").isspace() == False
 
     # Test islower
-    assert TaintBytes(b"hello").islower() == True
-    assert TaintBytes(b"Hello").islower() == False
+    assert taint_wrap(b"hello").islower() == True
+    assert taint_wrap(b"Hello").islower() == False
 
     # Test isupper
-    assert TaintBytes(b"HELLO").isupper() == True
-    assert TaintBytes(b"Hello").isupper() == False
+    assert taint_wrap(b"HELLO").isupper() == True
+    assert taint_wrap(b"Hello").isupper() == False
 
     # Test istitle
-    assert TaintBytes(b"Hello World").istitle() == True
-    assert TaintBytes(b"hello world").istitle() == False
+    assert taint_wrap(b"Hello World").istitle() == True
+    assert taint_wrap(b"hello world").istitle() == False
 
     # Test isascii
-    assert TaintBytes(b"hello").isascii() == True
+    assert taint_wrap(b"hello").isascii() == True
 
 
 def test_decode_encode():
-    """Test decode to TaintStr."""
-    tb = TaintBytes(b"hello", taint_origin="source1")
+    """Test decode to TaintWrapper."""
+    tb = taint_wrap(b"hello", taint_origin="source1")
 
-    # Decode to TaintStr
+    # Decode to TaintWrapper
     ts = tb.decode("utf-8")
     assert ts == "hello"
-    assert isinstance(ts, TaintStr)
+    assert isinstance(ts, TaintWrapper)
     assert get_taint_origins(ts) == ["source1"]
 
     # Decode with errors parameter
-    tb_invalid = TaintBytes(b"\xff\xfe", taint_origin="invalid_source")
+    tb_invalid = taint_wrap(b"\xff\xfe", taint_origin="invalid_source")
     ts_replaced = tb_invalid.decode("utf-8", errors="replace")
-    assert isinstance(ts_replaced, TaintStr)
+    assert isinstance(ts_replaced, TaintWrapper)
     assert get_taint_origins(ts_replaced) == ["invalid_source"]
 
 
 def test_hex_methods():
     """Test hex conversion methods."""
-    tb = TaintBytes(b"hello", taint_origin="source1")
+    tb = taint_wrap(b"hello", taint_origin="source1")
 
     # To hex
     hex_str = tb.hex()
     assert hex_str == "68656c6c6f"
-    assert isinstance(hex_str, TaintStr)
+    assert isinstance(hex_str, TaintWrapper)
     assert get_taint_origins(hex_str) == ["source1"]
 
     # To hex with separator
     hex_sep = tb.hex("-", 2)
     assert hex_sep == "68-656c-6c6f"  # bytes grouped by 2 hex chars (1 byte)
-    assert isinstance(hex_sep, TaintStr)
+    assert isinstance(hex_sep, TaintWrapper)
 
-    # From hex (class method)
-    tb_from_hex = TaintBytes.fromhex("68656c6c6f")
-    assert tb_from_hex == b"hello"
-    assert isinstance(tb_from_hex, bytes)  # Note: fromhex returns plain bytes
+    # From hex (class method) - skip this test as it's not applicable to TaintWrapper
 
 
 def test_join():
     """Test join method."""
-    separator = TaintBytes(b",", taint_origin="sep_source")
+    separator = taint_wrap(b",", taint_origin="sep_source")
     items = [
-        TaintBytes(b"one", taint_origin="source1"),
-        TaintBytes(b"two", taint_origin="source2"),
+        taint_wrap(b"one", taint_origin="source1"),
+        taint_wrap(b"two", taint_origin="source2"),
         b"three",  # Regular bytes
     ]
 
     result = separator.join(items)
     assert result == b"one,two,three"
-    assert isinstance(result, TaintBytes)
+    assert isinstance(result, TaintWrapper)
     origins = set(get_taint_origins(result))
     assert "sep_source" in origins
     assert "source1" in origins
@@ -364,7 +361,7 @@ def test_join():
 
 def test_translate():
     """Test translate method."""
-    tb = TaintBytes(b"hello", taint_origin="source1")
+    tb = taint_wrap(b"hello", taint_origin="source1")
 
     # Create translation table
     table = bytes.maketrans(b"el", b"ip")
@@ -372,25 +369,25 @@ def test_translate():
     # Translate
     translated = tb.translate(table)
     assert translated == b"hippo"
-    assert isinstance(translated, TaintBytes)
+    assert isinstance(translated, TaintWrapper)
     assert get_taint_origins(translated) == ["source1"]
 
 
 def test_expandtabs():
     """Test expandtabs method."""
-    tb = TaintBytes(b"a\tb\tc", taint_origin="source1")
+    tb = taint_wrap(b"a\tb\tc", taint_origin="source1")
 
     expanded = tb.expandtabs(4)
     assert expanded == b"a   b   c"
-    assert isinstance(expanded, TaintBytes)
+    assert isinstance(expanded, TaintWrapper)
     assert get_taint_origins(expanded) == ["source1"]
 
 
 def test_comparison_methods():
     """Test comparison methods."""
-    tb1 = TaintBytes(b"hello", taint_origin="source1")
-    tb2 = TaintBytes(b"hello", taint_origin="source2")
-    tb3 = TaintBytes(b"world", taint_origin="source3")
+    tb1 = taint_wrap(b"hello", taint_origin="source1")
+    tb2 = taint_wrap(b"hello", taint_origin="source2")
+    tb3 = taint_wrap(b"world", taint_origin="source3")
 
     # Equality
     assert tb1 == tb2
@@ -419,10 +416,10 @@ def test_comparison_methods():
 
 def test_utility_methods():
     """Test utility methods."""
-    tb = TaintBytes(b"hello", taint_origin="source1")
+    tb = taint_wrap(b"hello", taint_origin="source1")
 
     # get_raw
-    raw = tb.get_raw()
+    raw = tb.obj
     assert raw == b"hello"
     assert type(raw) == bytes
 
@@ -431,7 +428,7 @@ def test_utility_methods():
 
     # bool
     assert bool(tb) == True
-    assert bool(TaintBytes(b"")) == False
+    assert bool(taint_wrap(b"")) == False
 
     # hash
     assert hash(tb) == hash(b"hello")
@@ -449,19 +446,19 @@ def test_utility_methods():
 def test_edge_cases():
     """Test edge cases and corner scenarios."""
     # Empty bytes
-    tb_empty = TaintBytes(b"", taint_origin="empty_source")
+    tb_empty = taint_wrap(b"", taint_origin="empty_source")
     assert tb_empty == b""
     assert len(tb_empty) == 0
     assert bool(tb_empty) == False
     assert get_taint_origins(tb_empty) == ["empty_source"]
 
-    # None taint origin
-    tb_none = TaintBytes(b"test")
+    # None taint origin - no wrapping for no taint
+    tb_none = b"test"
     assert tb_none == b"test"
     assert get_taint_origins(tb_none) == []
 
     # Multiple operations preserving taint
-    tb1 = TaintBytes(b"hello", taint_origin="source1")
+    tb1 = taint_wrap(b"hello", taint_origin="source1")
     tb2 = tb1.upper().replace(b"L", b"X").strip()
     assert tb2 == b"HEXXO"
     assert "source1" in get_taint_origins(tb2)

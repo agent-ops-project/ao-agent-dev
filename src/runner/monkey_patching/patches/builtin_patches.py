@@ -1,5 +1,5 @@
 from forbiddenfruit import curse
-from aco.runner.taint_wrappers import TaintStr, get_taint_origins
+from aco.runner.taint_wrappers import taint_wrap, get_taint_origins
 
 
 def str_patch():
@@ -21,7 +21,7 @@ def _cursed_join(sep: str, elements: list[str]) -> str:
         elements (list[str]): List of string elements to join
 
     Returns:
-        str | TaintStr: The joined string, returned as TaintStr if any element
+        str | TaintWrapper: The joined string, returned as TaintWrapper if any element
                         or separator has taint information, otherwise regular str
     """
     joined_bytes = _bytes_join(sep.encode(), [elem.encode() for elem in elements])
@@ -30,7 +30,7 @@ def _cursed_join(sep: str, elements: list[str]) -> str:
     nodes = set(get_taint_origins(sep)) | set(get_taint_origins(elements))
 
     if len(nodes) > 0:
-        return TaintStr(final_string, taint_origin=nodes)
+        return taint_wrap(final_string, taint_origin=list(nodes))
     return final_string
 
 

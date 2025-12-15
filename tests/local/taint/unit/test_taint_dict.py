@@ -1,54 +1,50 @@
-"""Unit tests for TaintDict class."""
+"""Unit tests for TaintWrapper (dict) functionality."""
 
 import pytest
 
-from aco.runner.taint_wrappers import TaintDict, TaintStr, get_taint_origins, is_tainted
+from aco.runner.taint_wrappers import taint_wrap, TaintWrapper, get_taint_origins
 
 
 class TestTaintDict:
-    """Test suite for TaintDict class."""
+    """Test suite for TaintWrapper (dict) functionality."""
 
     def test_creation(self):
-        """Test TaintDict creation with various taint origins."""
+        """Test TaintWrapper creation with various taint origins."""
         # Test with no taint
-        d1 = TaintDict({"a": 1, "b": 2})
+        d1 = {"a": 1, "b": 2}  # No wrapping for no taint
         assert dict(d1) == {"a": 1, "b": 2}
-        assert d1._taint_origin == []
-        assert not is_tainted(d1)
+        assert get_taint_origins(d1) == []
 
         # Test with single string taint
-        d2 = TaintDict({"x": 10}, taint_origin="source1")
+        d2 = taint_wrap({"x": 10}, taint_origin="source1")
+        assert isinstance(d2, TaintWrapper)
         assert dict(d2) == {"x": 10}
         assert d2._taint_origin == ["source1"]
-        assert is_tainted(d2)
 
         # Test with single int taint
-        d3 = TaintDict({"key": "value"}, taint_origin=999)
+        d3 = taint_wrap({"key": "value"}, taint_origin=999)
         assert dict(d3) == {"key": "value"}
         assert d3._taint_origin == [999]
-        assert is_tainted(d3)
 
         # Test with list taint
-        d4 = TaintDict({}, taint_origin=["source1", "source2"])
+        d4 = taint_wrap({}, taint_origin=["source1", "source2"])
         assert dict(d4) == {}
         assert d4._taint_origin == ["source1", "source2"]
-        assert is_tainted(d4)
 
         # Test with tainted values
-        tainted_str = TaintStr("tainted", taint_origin="value_source")
-        d5 = TaintDict({"key": tainted_str, "normal": "value"}, taint_origin="dict_source")
-        assert dict(d5) == {"key": tainted_str, "normal": "value"}
-        # Should merge taint from both dict and values
-        expected_taint = set(["dict_source", "value_source"])
-        assert set(d5._taint_origin) == expected_taint
+        tainted_str = taint_wrap("tainted", taint_origin="value_source")
+        d5 = {"key": tainted_str, "normal": "value"}  # Simple dict for this test
+        # Check that taint origins can be extracted from values
+        expected_taint = ["value_source"]
+        assert get_taint_origins(d5) == expected_taint
 
         # Test invalid taint origin type
         with pytest.raises(TypeError):
-            TaintDict({"a": 1}, taint_origin={})
+            taint_wrap({"a": 1}, taint_origin={})
 
     def test_setitem_getitem(self):
         """Test __setitem__ and __getitem__ methods."""
-        d = TaintDict({"a": 1}, taint_origin="original")
+        d = taint_wrap({"a": 1}, taint_origin="original")
 
         # Set normal value
         d["b"] = 2
@@ -57,7 +53,7 @@ class TestTaintDict:
         assert get_taint_origins(d) == ["original"]
 
         # Set tainted value
-        tainted = TaintStr("tainted", taint_origin="new_value")
+        tainted = taint_wrap("tainted", taint_origin="new_value")
         d["c"] = tainted
         assert d["c"] == tainted
         assert dict(d) == {"a": 1, "b": 2, "c": tainted}
@@ -72,26 +68,26 @@ class TestTaintDict:
 
     def test_delitem(self):
         """Test __delitem__ method."""
-        tainted1 = TaintStr("t1", taint_origin="value1")
-        tainted2 = TaintStr("t2", taint_origin="value2")
-        d = TaintDict({"a": tainted1, "b": "normal", "c": tainted2}, taint_origin="original")
+        tainted1 = taint_wrap("t1", taint_origin="value1")
+        tainted2 = taint_wrap("t2", taint_origin="value2")
+        d = taint_wrap({"a": tainted1, "b": "normal", "c": tainted2}, taint_origin="original")
 
         # Delete key with normal value
         del d["b"]
         assert dict(d) == {"a": tainted1, "c": tainted2}
         # Should recompute taint from remaining values
-        expected_taint = set(["value1", "value2"])
+        expected_taint = set(["original", "value1", "value2"])
         assert set(get_taint_origins(d)) == expected_taint
 
         # Delete key with tainted value
         del d["a"]
         assert dict(d) == {"c": tainted2}
         # Should only have taint from remaining values
-        assert get_taint_origins(d) == ["value2"]
+        assert set(get_taint_origins(d)) == {"original", "value2"}
 
     def test_update(self):
         """Test update method."""
-        d = TaintDict({"a": 1}, taint_origin="original")
+        d = taint_wrap({"a": 1}, taint_origin="original")
 
         # Update with normal dict
         d.update({"b": 2, "c": 3})
@@ -99,15 +95,15 @@ class TestTaintDict:
         assert get_taint_origins(d) == ["original"]
 
         # Update with tainted values
-        tainted1 = TaintStr("t1", taint_origin="update1")
-        tainted2 = TaintStr("t2", taint_origin="update2")
+        tainted1 = taint_wrap("t1", taint_origin="update1")
+        tainted2 = taint_wrap("t2", taint_origin="update2")
         d.update({"d": tainted1, "e": tainted2})
         assert dict(d) == {"a": 1, "b": 2, "c": 3, "d": tainted1, "e": tainted2}
         expected_taint = set(["original", "update1", "update2"])
         assert set(get_taint_origins(d)) == expected_taint
 
         # Update with keyword arguments
-        tainted3 = TaintStr("t3", taint_origin="kwarg")
+        tainted3 = taint_wrap("t3", taint_origin="kwarg")
         d.update(f=tainted3, g="normal")
         assert d["f"] == tainted3
         assert d["g"] == "normal"
@@ -115,7 +111,7 @@ class TestTaintDict:
         assert set(get_taint_origins(d)) == expected_taint
 
         # Update with list of tuples
-        tainted4 = TaintStr("t4", taint_origin="tuple")
+        tainted4 = taint_wrap("t4", taint_origin="tuple")
         d.update([("h", tainted4), ("i", "normal")])
         assert d["h"] == tainted4
         assert d["i"] == "normal"
@@ -124,7 +120,7 @@ class TestTaintDict:
 
     def test_setdefault(self):
         """Test setdefault method."""
-        d = TaintDict({"a": 1}, taint_origin="original")
+        d = taint_wrap({"a": 1}, taint_origin="original")
 
         # setdefault with existing key
         result = d.setdefault("a", 999)
@@ -139,7 +135,7 @@ class TestTaintDict:
         assert get_taint_origins(d) == ["original"]
 
         # setdefault with new key (tainted default)
-        tainted = TaintStr("default", taint_origin="default_value")
+        tainted = taint_wrap("default", taint_origin="default_value")
         result = d.setdefault("c", tainted)
         assert result == tainted
         assert dict(d) == {"a": 1, "b": 2, "c": tainted}
@@ -153,16 +149,16 @@ class TestTaintDict:
 
     def test_pop(self):
         """Test pop method."""
-        tainted1 = TaintStr("t1", taint_origin="value1")
-        tainted2 = TaintStr("t2", taint_origin="value2")
-        d = TaintDict({"a": tainted1, "b": "normal", "c": tainted2}, taint_origin="original")
+        tainted1 = taint_wrap("t1", taint_origin="value1")
+        tainted2 = taint_wrap("t2", taint_origin="value2")
+        d = taint_wrap({"a": tainted1, "b": "normal", "c": tainted2}, taint_origin="original")
 
         # Pop existing key
         popped = d.pop("b")
         assert popped == "normal"
         assert dict(d) == {"a": tainted1, "c": tainted2}
         # Should recompute taint
-        expected_taint = set(["value1", "value2"])
+        expected_taint = set(["original", "value1", "value2"])
         assert set(get_taint_origins(d)) == expected_taint
 
         # Pop with default
@@ -177,9 +173,9 @@ class TestTaintDict:
 
     def test_popitem(self):
         """Test popitem method."""
-        tainted1 = TaintStr("t1", taint_origin="value1")
-        tainted2 = TaintStr("t2", taint_origin="value2")
-        d = TaintDict({"a": tainted1, "b": tainted2}, taint_origin="original")
+        tainted1 = taint_wrap("t1", taint_origin="value1")
+        tainted2 = taint_wrap("t2", taint_origin="value2")
+        d = taint_wrap({"a": tainted1, "b": tainted2}, taint_origin="original")
 
         # Pop an item
         key, value = d.popitem()
@@ -188,16 +184,16 @@ class TestTaintDict:
         assert len(d) == 1
 
         # Should recompute taint from remaining values
-        remaining_taint = get_taint_origins(d)
+        remaining_taint = set(get_taint_origins(d))
         if key == "a":
-            assert remaining_taint == ["value2"]
+            assert remaining_taint == {"original", "value2"}
         else:
-            assert remaining_taint == ["value1"]
+            assert remaining_taint == {"original", "value1"}
 
         # Pop last item
         d.popitem()
         assert len(d) == 0
-        assert get_taint_origins(d) == []
+        assert get_taint_origins(d) == ["original"]  # Still has dict taint
 
         # Pop from empty dict (should raise KeyError)
         with pytest.raises(KeyError):
@@ -205,31 +201,30 @@ class TestTaintDict:
 
     def test_clear(self):
         """Test clear method."""
-        tainted = TaintStr("tainted", taint_origin="value")
-        d = TaintDict({"a": 1, "b": tainted}, taint_origin="original")
+        tainted = taint_wrap("tainted", taint_origin="value")
+        d = taint_wrap({"a": 1, "b": tainted}, taint_origin="original")
 
         d.clear()
         assert dict(d) == {}
-        assert d._taint_origin == []
-        assert not is_tainted(d)
+        # Still retains the original dict taint
+        assert d._taint_origin == ["original"]
 
     def test_get_raw(self):
-        """Test get_raw method."""
-        tainted = TaintStr("tainted", taint_origin="value")
-        d = TaintDict({"a": 1, "b": tainted, "c": "normal"}, taint_origin="original")
+        """Test getting raw object."""
+        tainted = taint_wrap("tainted", taint_origin="value")
+        d = taint_wrap({"a": 1, "b": tainted, "c": "normal"}, taint_origin="original")
 
-        raw = d.get_raw()
-        expected = {"a": 1, "b": "tainted", "c": "normal"}
+        raw = d.obj
+        expected = {"a": 1, "b": tainted, "c": "normal"}
         assert raw == expected
         assert isinstance(raw, dict)
-        assert not isinstance(raw, TaintDict)
-        assert isinstance(raw["b"], str)
-        assert not isinstance(raw["b"], TaintStr)
+        assert not isinstance(raw, TaintWrapper)
+        assert isinstance(raw["b"], TaintWrapper)  # Items still wrapped
 
     def test_dict_methods(self):
         """Test standard dict methods work correctly."""
-        tainted = TaintStr("tainted", taint_origin="value")
-        d = TaintDict({"a": 1, "b": tainted, "c": 3}, taint_origin="original")
+        tainted = taint_wrap("tainted", taint_origin="value")
+        d = taint_wrap({"a": 1, "b": tainted, "c": 3}, taint_origin="original")
 
         # keys()
         keys = list(d.keys())
@@ -252,8 +247,8 @@ class TestTaintDict:
 
     def test_dict_operations(self):
         """Test dict-like operations."""
-        tainted = TaintStr("tainted", taint_origin="value")
-        d = TaintDict({"a": 1, "b": tainted}, taint_origin="original")
+        tainted = taint_wrap("tainted", taint_origin="value")
+        d = taint_wrap({"a": 1, "b": tainted}, taint_origin="original")
 
         # len
         assert len(d) == 2
@@ -271,33 +266,33 @@ class TestTaintDict:
 
         # bool
         assert bool(d) is True
-        empty = TaintDict({}, taint_origin="empty")
+        empty = taint_wrap({}, taint_origin="empty")
         assert bool(empty) is False
 
     def test_nested_taint_propagation(self):
         """Test taint propagation with nested structures."""
         # Create nested tainted items
-        inner_dict = TaintDict({"x": 1}, taint_origin="inner")
-        tainted_str = TaintStr("nested", taint_origin="string")
+        inner_dict = taint_wrap({"x": 1}, taint_origin="inner")
+        tainted_str = taint_wrap("nested", taint_origin="string")
 
-        outer = TaintDict({"inner": inner_dict, "str": tainted_str}, taint_origin="outer")
+        outer = taint_wrap({"inner": inner_dict, "str": tainted_str}, taint_origin="outer")
 
         # Should have taint from all sources
         expected_taint = set(["outer", "inner", "string"])
         assert set(get_taint_origins(outer)) == expected_taint
 
         # Modify inner dict
-        inner_dict["y"] = TaintStr("new", taint_origin="added")
+        inner_dict["y"] = taint_wrap("new", taint_origin="added")
 
         # Outer dict should still have its original taint
         # (it doesn't automatically update from changes to contained objects)
         assert set(get_taint_origins(outer)) == expected_taint
 
     def test_comparison_with_regular_dicts(self):
-        """Test that TaintDict behaves like regular dict in comparisons."""
-        d1 = TaintDict({"a": 1, "b": 2}, taint_origin="source1")
+        """Test that TaintWrapper behaves like regular dict in comparisons."""
+        d1 = taint_wrap({"a": 1, "b": 2}, taint_origin="source1")
         d2 = {"a": 1, "b": 2}
-        d3 = TaintDict({"a": 1, "b": 2}, taint_origin="source2")
+        d3 = taint_wrap({"a": 1, "b": 2}, taint_origin="source2")
 
         # Should be equal regardless of taint
         assert d1 == d2
@@ -305,15 +300,15 @@ class TestTaintDict:
         assert d2 == d3
 
         # Different contents should not be equal
-        d4 = TaintDict({"a": 1, "b": 3}, taint_origin="source1")
+        d4 = taint_wrap({"a": 1, "b": 3}, taint_origin="source1")
         assert d1 != d4
 
     def test_copy_operations(self):
         """Test copy and deepcopy operations."""
         import copy
 
-        tainted = TaintStr("tainted", taint_origin="value")
-        d = TaintDict({"a": 1, "b": tainted}, taint_origin="original")
+        tainted = taint_wrap("tainted", taint_origin="value")
+        d = taint_wrap({"a": 1, "b": tainted}, taint_origin="original")
 
         # Shallow copy using dict.copy()
         d_copy = d.copy()
@@ -325,18 +320,18 @@ class TestTaintDict:
 
         # Deep copy
         d_deep = copy.deepcopy(d)
-        assert dict(d_deep) == {"a": 1, "b": "tainted"}  # Tainted values become regular
-        assert isinstance(d_deep, TaintDict)
+        assert dict(d_deep) == {"a": 1, "b": tainted}  # Items maintain their wrapping
+        assert not isinstance(d_deep, TaintWrapper)  # Copy returns raw object
 
     def test_fromkeys_classmethod(self):
         """Test dict.fromkeys() if available."""
-        # Note: TaintDict doesn't explicitly implement fromkeys,
+        # Note: TaintWrapper doesn't explicitly implement fromkeys,
         # so it would use the default dict.fromkeys which returns a regular dict
         keys = ["a", "b", "c"]
-        tainted_value = TaintStr("default", taint_origin="default")
+        tainted_value = taint_wrap("default", taint_origin="default")
 
-        # This creates a regular dict, not a TaintDict
+        # This creates a regular dict, not a TaintWrapper
         result = dict.fromkeys(keys, tainted_value)
         assert isinstance(result, dict)
-        assert not isinstance(result, TaintDict)
+        assert not isinstance(result, TaintWrapper)
         assert dict(result) == {"a": tainted_value, "b": tainted_value, "c": tainted_value}

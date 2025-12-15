@@ -10,7 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from aco.runner.taint_wrappers import TaintStr
+from aco.runner.taint_wrappers import taint_wrap
 from aco.server.database_manager import DB
 from ....utils import cleanup_taint_db, setup_test_session
 
@@ -79,7 +79,9 @@ def test_cross_session_writer_reader():
             )
 
             # The response should be tainted with the writer node ID
-            tainted_content = TaintStr(response.choices[0].message.content, [writer_node_id])
+            tainted_content = taint_wrap(
+                response.choices[0].message.content, taint_origin=[writer_node_id]
+            )
 
             # Write to file (this should store taint info)
             print(f"Writing tainted content to {content_file}")
@@ -140,7 +142,7 @@ def test_cross_session_writer_reader():
 
                 if prev_session_id and taint_nodes:
                     # Create tainted string with previous session's taint
-                    tainted_input = TaintStr(original_content, taint_nodes)
+                    tainted_input = taint_wrap(original_content, taint_origin=taint_nodes)
                     print(
                         f"✅ Retrieved taint from previous session: {prev_session_id}, nodes: {taint_nodes}"
                     )
@@ -162,10 +164,10 @@ def test_cross_session_writer_reader():
             # The response should be tainted with both reader and writer nodes
             additional_content = response.choices[0].message.content
 
-            # This is the key test: when we create a TaintStr from the LLM response,
+            # This is the key test: when we create a TaintWrapper from the LLM response,
             # it should include both the reader node ID and the writer node IDs from the input
             expected_taint = [reader_node_id] + (taint_nodes if taint_nodes else [])
-            tainted_response = TaintStr(additional_content, expected_taint)
+            tainted_response = taint_wrap(additional_content, taint_origin=expected_taint)
 
             # Write extended content
             print(f"Writing extended content to {extended_file}")

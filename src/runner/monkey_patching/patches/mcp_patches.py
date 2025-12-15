@@ -2,7 +2,6 @@ from functools import wraps
 from aco.runner.monkey_patching.patching_utils import get_input_dict, send_graph_node_and_edges
 from aco.server.database_manager import DB
 from aco.common.logger import logger
-from aco.runner.taint_wrappers import get_taint_origins, taint_wrap
 
 
 # ===========================================================
@@ -49,13 +48,13 @@ def patch_mcp_send_request(session_instance):
         # 2. Get full input dict.
         input_dict = get_input_dict(original_function, *args, **kwargs)
 
-        # 3. Get taint origins (did another LLM produce the input?).
-        taint_origins = get_taint_origins(input_dict)
+        # 3. Get taint origins from TAINT_ESCROW (set by exec_func)
+        taint_origins = list(TAINT_ESCROW.get())
 
         method = input_dict["request"].root.method
         if not method in ["tools/call"]:
             result = await original_function(*args, **kwargs)
-            return taint_wrap(result, taint_origins)
+            return result  # No wrapping here, exec_func will use existing escrow
 
         # 4. Get result from cache or call tool.
         cache_output = DB.get_in_out(input_dict, api_type)
@@ -74,8 +73,9 @@ def patch_mcp_send_request(session_instance):
             api_type=api_type,
         )
 
-        # 6. Taint the output object and return it.
-        return taint_wrap(cache_output.output, [cache_output.node_id])
+        # 6. Set the new taint in escrow for exec_func to wrap with.
+        TAINT_ESCROW.set([cache_output.node_id])
+        return cache_output.output  # No wrapping here, exec_func will wrap
 
     # Install patch.
     session_instance.send_request = patched_function.__get__(session_instance, ClientSession)

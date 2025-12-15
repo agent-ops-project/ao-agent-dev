@@ -10,7 +10,8 @@ This script demonstrates:
 import os
 import sys
 from pathlib import Path
-from aco.runner.taint_wrappers import TaintFile, TaintStr, get_taint_origins
+from aco.runner.taint_wrappers import taint_wrap, get_taint_origins
+from aco.server.ast_transformer import taint_open
 
 # Add utils path for test helpers
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -28,9 +29,9 @@ def session1_write():
     setup_test_session("session-001", name="Session 1 - Writer")
 
     # Create some tainted data with node IDs as taint origins
-    tainted_data1 = TaintStr("This is line 1 with secret data\n", taint_origin="node-001")
-    tainted_data2 = TaintStr("This is line 2 with more secrets\n", taint_origin="node-002")
-    tainted_data3 = TaintStr(
+    tainted_data1 = taint_wrap("This is line 1 with secret data\n", taint_origin="node-001")
+    tainted_data2 = taint_wrap("This is line 2 with more secrets\n", taint_origin="node-002")
+    tainted_data3 = taint_wrap(
         "This is line 3 with combined data\n", taint_origin=["node-001", "node-003"]
     )
 
@@ -38,8 +39,8 @@ def session1_write():
     print(f"Tainted data 2 origins: {get_taint_origins(tainted_data2)}")
     print(f"Tainted data 3 origins: {get_taint_origins(tainted_data3)}")
 
-    # Write to a file using TaintFile
-    with TaintFile.open("test_taint_data.txt", "w") as f:
+    # Write to a file using taint_open
+    with taint_open("test_taint_data.txt", "w") as f:
         f.write(tainted_data1)
         f.write(tainted_data2)
         f.write(tainted_data3)
@@ -58,8 +59,8 @@ def session2_read():
     # Create experiment record for this session
     setup_test_session("session-002", name="Session 2 - Reader")
 
-    # Read from the file using TaintFile
-    with TaintFile.open("test_taint_data.txt", "r") as f:
+    # Read from the file using taint_open
+    with taint_open("test_taint_data.txt", "r") as f:
         line1 = f.readline()
         line2 = f.readline()
         line3 = f.readline()

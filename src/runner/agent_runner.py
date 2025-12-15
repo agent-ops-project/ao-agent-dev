@@ -12,6 +12,7 @@ import debugpy
 import signal
 import runpy
 import builtins
+from contextvars import ContextVar
 from typing import Optional, List
 
 from aco.common.logger import logger
@@ -22,7 +23,7 @@ from aco.common.constants import (
     SERVER_START_TIMEOUT,
     SERVER_START_WAIT,
 )
-from aco.common.utils import MODULE2FILE
+from aco.common.utils import MODULES_TO_FILES
 from aco.cli.aco_server import launch_daemon_server
 from aco.runner.ast_rewrite_hook import install_patch_hook, set_module_to_user_file
 from aco.runner.context_manager import set_parent_session_id, set_server_connection
@@ -236,7 +237,7 @@ class AgentRunner:
             "environment": dict(os.environ),
             "process_id": self.process_id,
             "prev_session_id": os.getenv("AGENT_COPILOT_SESSION_ID"),
-            "module_to_file": MODULE2FILE,
+            "module_to_file": MODULES_TO_FILES,
         }
 
         if self.user_id is not None:
@@ -278,8 +279,11 @@ class AgentRunner:
         if not os.environ.get("ACO_SEED"):
             os.environ["ACO_SEED"] = str(random.randint(0, 2**31 - 1))
 
+        # Enable taint tracking in AST-rewritten code
+        os.environ["AGENT_COPILOT_ENABLE_TRACING"] = "True"
+
         # Install AST hooks
-        set_module_to_user_file(MODULE2FILE)
+        set_module_to_user_file(MODULES_TO_FILES)
         install_patch_hook()
 
         # Register taint functions in builtins
@@ -287,6 +291,8 @@ class AgentRunner:
         builtins.taint_format_string = taint_format_string
         builtins.taint_percent_format = taint_percent_format
         builtins.exec_func = exec_func
+        # Register TAINT_ESCROW for thread-safe and async-safe taint passing
+        builtins.TAINT_ESCROW = ContextVar("taint_escrow", default=set())
 
     def _apply_runtime_setup(self) -> None:
         """Apply runtime setup for the agent runner execution environment."""

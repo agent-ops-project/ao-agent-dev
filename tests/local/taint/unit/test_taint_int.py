@@ -1,52 +1,49 @@
-"""Unit tests for TaintInt class."""
+"""Unit tests for TaintWrapper (int) functionality."""
 
 import pytest
 
-from aco.runner.taint_wrappers import TaintInt, TaintFloat, get_taint_origins, is_tainted
+from aco.runner.taint_wrappers import taint_wrap, TaintWrapper, get_taint_origins
 
 
 class TestTaintInt:
-    """Test suite for TaintInt class."""
+    """Test suite for TaintWrapper (int) functionality."""
 
     def test_creation(self):
-        """Test TaintInt creation with various taint origins."""
+        """Test TaintWrapper creation with various taint origins."""
         # Test with no taint
-        i1 = TaintInt(42)
+        i1 = 42  # No wrapping for no taint
         assert int(i1) == 42
-        assert i1._taint_origin == []
-        assert not is_tainted(i1)
+        assert get_taint_origins(i1) == []
 
         # Test with single string taint
-        i2 = TaintInt(100, taint_origin="source1")
+        i2 = taint_wrap(100, taint_origin="source1")
+        assert isinstance(i2, TaintWrapper)
         assert int(i2) == 100
         assert i2._taint_origin == ["source1"]
-        assert is_tainted(i2)
 
         # Test with single int taint
-        i3 = TaintInt(-5, taint_origin=999)
+        i3 = taint_wrap(-5, taint_origin=999)
         assert int(i3) == -5
         assert i3._taint_origin == [999]
-        assert is_tainted(i3)
 
         # Test with list taint
-        i4 = TaintInt(0, taint_origin=["source1", "source2"])
+        i4 = taint_wrap(0, taint_origin=["source1", "source2"])
         assert int(i4) == 0
         assert i4._taint_origin == ["source1", "source2"]
-        assert is_tainted(i4)
 
         # Test invalid taint origin type
         with pytest.raises(TypeError):
-            TaintInt(10, taint_origin={})
+            taint_wrap(10, taint_origin={})
 
     def test_arithmetic_operations(self):
         """Test arithmetic operations."""
-        i1 = TaintInt(10, taint_origin="source1")
-        i2 = TaintInt(3, taint_origin="source2")
+        i1 = taint_wrap(10, taint_origin="source1")
+        i2 = taint_wrap(3, taint_origin="source2")
 
         # Addition
         result = i1 + i2
         assert int(result) == 13
-        assert isinstance(result, TaintInt)
+        assert isinstance(result, TaintWrapper)
         assert set(get_taint_origins(result)) == {"source1", "source2"}
 
         # Addition with regular int
@@ -89,10 +86,10 @@ class TestTaintInt:
         assert int(result) == 2
         assert get_taint_origins(result) == ["source1"]
 
-        # True division (returns TaintFloat)
+        # True division (returns TaintWrapper)
         result = i1 / i2
         assert float(result) == 10 / 3
-        assert isinstance(result, TaintFloat)
+        assert isinstance(result, TaintWrapper)
         assert set(get_taint_origins(result)) == {"source1", "source2"}
 
         # Modulo
@@ -117,7 +114,7 @@ class TestTaintInt:
 
     def test_unary_operations(self):
         """Test unary operations."""
-        i = TaintInt(10, taint_origin="source1")
+        i = taint_wrap(10, taint_origin="source1")
 
         # Negation
         result = -i
@@ -130,7 +127,7 @@ class TestTaintInt:
         assert get_taint_origins(result) == ["source1"]
 
         # Absolute value
-        i2 = TaintInt(-5, taint_origin="source2")
+        i2 = taint_wrap(-5, taint_origin="source2")
         result = abs(i2)
         assert int(result) == 5
         assert get_taint_origins(result) == ["source2"]
@@ -142,8 +139,8 @@ class TestTaintInt:
 
     def test_bitwise_operations(self):
         """Test bitwise operations."""
-        i1 = TaintInt(0b1010, taint_origin="source1")  # 10
-        i2 = TaintInt(0b1100, taint_origin="source2")  # 12
+        i1 = taint_wrap(0b1010, taint_origin="source1")  # 10
+        i2 = taint_wrap(0b1100, taint_origin="source2")  # 12
 
         # AND
         result = i1 & i2
@@ -176,7 +173,7 @@ class TestTaintInt:
         assert get_taint_origins(result) == ["source1"]
 
         # Left shift
-        i3 = TaintInt(2, taint_origin="source3")
+        i3 = taint_wrap(2, taint_origin="source3")
         result = i1 << i3
         assert int(result) == 40  # 10 << 2
         assert set(get_taint_origins(result)) == {"source1", "source3"}
@@ -188,8 +185,8 @@ class TestTaintInt:
 
     def test_comparison_operations(self):
         """Test comparison operations (should return regular bool)."""
-        i1 = TaintInt(10, taint_origin="source1")
-        i2 = TaintInt(20, taint_origin="source2")
+        i1 = taint_wrap(10, taint_origin="source1")
+        i2 = taint_wrap(20, taint_origin="source2")
 
         # All comparisons should return regular bool
         assert (i1 == 10) is True
@@ -207,13 +204,13 @@ class TestTaintInt:
 
     def test_conversion_methods(self):
         """Test conversion methods."""
-        i = TaintInt(42, taint_origin="source1")
+        i = taint_wrap(42, taint_origin="source1")
 
         # __int__
         result = int(i)
         assert result == 42
         assert isinstance(result, int)
-        assert not isinstance(result, TaintInt)
+        assert not isinstance(result, TaintWrapper)
 
         # __float__
         result = float(i)
@@ -222,14 +219,14 @@ class TestTaintInt:
 
         # __index__ (used for list indexing, etc.)
         test_list = [1, 2, 3, 4, 5]
-        i2 = TaintInt(2, taint_origin="index")
+        i2 = taint_wrap(2, taint_origin="index")
         assert test_list[i2] == 3
 
     def test_boolean_context(self):
         """Test boolean evaluation."""
-        i1 = TaintInt(0, taint_origin="source1")
-        i2 = TaintInt(1, taint_origin="source2")
-        i3 = TaintInt(-1, taint_origin="source3")
+        i1 = taint_wrap(0, taint_origin="source1")
+        i2 = taint_wrap(1, taint_origin="source2")
+        i3 = taint_wrap(-1, taint_origin="source3")
 
         assert bool(i1) is False
         assert bool(i2) is True
@@ -242,18 +239,18 @@ class TestTaintInt:
             assert False
 
     def test_get_raw(self):
-        """Test get_raw method."""
-        i = TaintInt(42, taint_origin="source1")
-        raw = i.get_raw()
+        """Test getting raw object."""
+        i = taint_wrap(42, taint_origin="source1")
+        raw = i.obj
         assert raw == 42
         assert isinstance(raw, int)
-        assert not isinstance(raw, TaintInt)
+        assert not isinstance(raw, TaintWrapper)
 
     def test_taint_propagation_complex(self):
         """Test complex taint propagation scenarios."""
-        i1 = TaintInt(10, taint_origin="source1")
-        i2 = TaintInt(20, taint_origin="source2")
-        i3 = TaintInt(30, taint_origin="source3")
+        i1 = taint_wrap(10, taint_origin="source1")
+        i2 = taint_wrap(20, taint_origin="source2")
+        i3 = taint_wrap(30, taint_origin="source3")
 
         # Chain operations
         result = (i1 + i2) * i3
@@ -268,17 +265,17 @@ class TestTaintInt:
     def test_special_values(self):
         """Test with special integer values."""
         # Zero
-        i_zero = TaintInt(0, taint_origin="zero")
+        i_zero = taint_wrap(0, taint_origin="zero")
         assert int(i_zero) == 0
         assert bool(i_zero) is False
 
         # Negative
-        i_neg = TaintInt(-100, taint_origin="negative")
+        i_neg = taint_wrap(-100, taint_origin="negative")
         assert int(i_neg) == -100
         assert abs(i_neg) == 100
 
         # Large numbers
-        i_large = TaintInt(10**100, taint_origin="large")
+        i_large = taint_wrap(10**100, taint_origin="large")
         assert int(i_large) == 10**100
         result = i_large + 1
         assert int(result) == 10**100 + 1

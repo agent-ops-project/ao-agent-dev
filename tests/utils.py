@@ -84,7 +84,7 @@ def with_ast_rewriting(test_func):
         def test_something(self):
             # Test code here will be executed with AST rewriting
             result = json.loads(tainted_data)
-            assert isinstance(result, TaintDict)
+            assert isinstance(result, TaintWrapper)
     """
 
     def wrapper(*args, **kwargs):
