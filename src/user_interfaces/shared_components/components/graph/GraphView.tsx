@@ -51,10 +51,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const [containerHeight, setContainerHeight] = useState(1500);
   const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
   const [rfKey, setRfKey] = useState(0);
-  const [availableWidth, setAvailableWidth] = useState(0);
   const [isMetadataPanelOpen, setIsMetadataPanelOpen] = useState(false);
-  const [hasInitialized, setHasInitialized] = useState(false);
-  const [userToggledPanel, setUserToggledPanel] = useState(false);
 
   // Create layout engine instance using useMemo to prevent recreation
   const layoutEngine = useMemo(() => new LayoutEngine(), []);
@@ -62,7 +59,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
   // Constants for metadata panel calculations
   const METADATA_PANEL_WIDTH = 350;
   const BUTTON_COLUMN_WIDTH = 52;
-  const PANEL_PADDING = 100;
 
   const handleNodeUpdate = useCallback(
     (nodeId: string, field: keyof GraphNode, value: string) => {
@@ -178,16 +174,14 @@ export const GraphView: React.FC<GraphViewProps> = ({
     const handleResize = () => {
       if (containerRef.current) {
         const totalWidth = containerRef.current.offsetWidth;
-        setAvailableWidth(totalWidth);
 
-        // Since we're using flexbox, the graph container is the first child
-        // Get its actual width for layout calculations
-        const graphContainer = containerRef.current.firstChild;
-        let mainColWidth = totalWidth;
-        if (graphContainer && graphContainer instanceof HTMLElement) {
-          mainColWidth = graphContainer.offsetWidth;
+        // Calculate available width for graph, accounting for metadata panel and button column
+        let graphAvailableWidth = totalWidth - BUTTON_COLUMN_WIDTH;
+        if (isMetadataPanelOpen && metadataPanel) {
+          graphAvailableWidth -= METADATA_PANEL_WIDTH;
         }
-        setContainerWidth(mainColWidth);
+
+        setContainerWidth(graphAvailableWidth);
       }
     };
 
@@ -201,57 +195,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     return () => {
       resizeObserver.disconnect();
     };
-  }, []);
-
-  // Auto-open metadata panel on first load if width is sufficient
-  useEffect(() => {
-    const MIN_WIDTH_FOR_AUTO_OPEN = 1000;
-    if (!hasInitialized && availableWidth > 0) {
-      setHasInitialized(true);
-      if (metadataPanel && availableWidth >= MIN_WIDTH_FOR_AUTO_OPEN) {
-        setIsMetadataPanelOpen(true);
-      }
-    }
-  }, [availableWidth, hasInitialized, metadataPanel]);
-
-  // Calculate the maximum X position of nodes and edges to detect overlap
-  const maxContentX = useMemo(() => {
-    if (nodes.length === 0 && edges.length === 0) return 0;
-
-    // Get maximum X from nodes
-    const maxNodeX = nodes.length > 0
-      ? Math.max(...nodes.map(node => node.position.x + NODE_WIDTH))
-      : 0;
-
-    // Get maximum X from edge points
-    const edgeXValues = edges.flatMap(edge => {
-      const edgeData = edge.data as any;
-      return edgeData?.points?.map((p: any) => p.x) ?? [];
-    });
-    const maxEdgeX = edgeXValues.length > 0 ? Math.max(...edgeXValues) : 0;
-
-    return Math.max(maxNodeX, maxEdgeX);
-  }, [nodes, edges]);
-
-  // Auto-collapse when metadata panel would overlap with content (but only if user hasn't manually toggled)
-  useEffect(() => {
-    const spaceNeededForPanel = maxContentX + METADATA_PANEL_WIDTH + BUTTON_COLUMN_WIDTH + PANEL_PADDING;
-    const wouldOverlap = availableWidth > 0 && availableWidth < spaceNeededForPanel;
-
-    if (!userToggledPanel && isMetadataPanelOpen && wouldOverlap) {
-      setIsMetadataPanelOpen(false);
-    }
-  }, [availableWidth, isMetadataPanelOpen, userToggledPanel, maxContentX, METADATA_PANEL_WIDTH, BUTTON_COLUMN_WIDTH, PANEL_PADDING]);
-
-  // Auto-expand when there's enough space for metadata panel without overlap (but only if user hasn't manually toggled)
-  useEffect(() => {
-    const spaceNeededForPanel = maxContentX + METADATA_PANEL_WIDTH + BUTTON_COLUMN_WIDTH + PANEL_PADDING;
-    const hasEnoughSpace = availableWidth >= spaceNeededForPanel;
-
-    if (!userToggledPanel && !isMetadataPanelOpen && metadataPanel && hasEnoughSpace) {
-      setIsMetadataPanelOpen(true);
-    }
-  }, [availableWidth, isMetadataPanelOpen, userToggledPanel, metadataPanel, maxContentX, METADATA_PANEL_WIDTH, BUTTON_COLUMN_WIDTH, PANEL_PADDING]);
+  }, [isMetadataPanelOpen, metadataPanel, METADATA_PANEL_WIDTH, BUTTON_COLUMN_WIDTH]);
 
   // Always show the metadata button if we have a metadata panel
   const showMetadataButton = !!metadataPanel;
@@ -387,7 +331,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
               title={isMetadataPanelOpen ? "Hide metadata" : "Show metadata"}
               onClick={() => {
                 setIsMetadataPanelOpen(!isMetadataPanelOpen);
-                setUserToggledPanel(true);
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = isDarkTheme ? "rgba(80, 80, 80, 0.8)" : "rgba(255, 255, 255, 1)";
