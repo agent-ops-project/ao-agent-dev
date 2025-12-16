@@ -143,6 +143,7 @@ class DevelopServer:
 
     def broadcast_experiment_list_to_uis(self, conn=None) -> None:
         """Only broadcast to one UI (conn) or, if conn is None, to all."""
+
         # If a specific conn is provided, send experiments filtered by that conn's user
         def build_and_send(target_conn, db_rows):
             session_map = {session.session_id: session for session in self.sessions.values()}
@@ -156,19 +157,22 @@ class DevelopServer:
 
                 # Get data from DB entries.
                 timestamp = row["timestamp"]
-                # Format timestamp for display (MM/DD HH:MM)
-                if hasattr(timestamp, 'strftime'):
-                    timestamp = timestamp.strftime("%m/%d %H:%M")
+                # Format timestamp as ISO string for frontend parsing
+                if hasattr(timestamp, "isoformat"):
+                    timestamp = timestamp.isoformat()
+                elif hasattr(timestamp, "strftime"):
+                    timestamp = timestamp.strftime("%Y-%m-%d %H:%M:%S")
                 else:
-                    # If it's already a string, try to parse and reformat
+                    # If it's already a string, ensure it's in a parseable format
                     try:
                         from datetime import datetime
-                        dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
-                        timestamp = dt.strftime("%m/%d %H:%M")
+
+                        dt = datetime.strptime(str(timestamp), "%Y-%m-%d %H:%M:%S")
+                        timestamp = dt.isoformat()
                     except:
                         # If parsing fails, use as-is
                         pass
-                
+
                 run_name = row["name"]
                 success = row["success"]
                 notes = row["notes"]
@@ -201,6 +205,7 @@ class DevelopServer:
                 logger.debug(f"exp len {len(experiment_list)}")
             except Exception as e:
                 logger.error(f"Error sending experiment list to UI: {e}")
+
         if conn:
             user_id = None
             info = self.conn_info.get(conn)
