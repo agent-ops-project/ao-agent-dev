@@ -4,7 +4,8 @@ import ReactFlow, {
   Edge,
   useNodesState,
   useEdgesState,
-  ReactFlowProvider
+  ReactFlowProvider,
+  useReactFlow
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { CustomNode } from './CustomNode';
@@ -34,6 +35,55 @@ const edgeTypes = {
   custom: CustomEdge,
 };
 
+// Inner component that has access to ReactFlow instance
+const FlowWithViewport: React.FC<{
+  nodes: Node[];
+  edges: Edge[];
+  onNodesChange: any;
+  onEdgesChange: any;
+  viewport: { x: number; y: number; zoom: number };
+  rfKey: number;
+}> = ({ nodes, edges, onNodesChange, onEdgesChange, viewport, rfKey }) => {
+  const { setViewport: setRFViewport } = useReactFlow();
+
+  // Apply viewport changes using ReactFlow's API
+  useEffect(() => {
+    setRFViewport(viewport, { duration: 0 });
+  }, [viewport, setRFViewport]);
+
+  return (
+    <ReactFlow
+      key={rfKey}
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
+      fitView={false}
+      proOptions={{ hideAttribution: true }}
+      minZoom={0.4}
+      maxZoom={1}
+      defaultViewport={viewport}
+      nodesDraggable={false}
+      nodesConnectable={false}
+      elementsSelectable={true}
+      panOnDrag={false}
+      zoomOnScroll={false}
+      zoomOnPinch={false}
+      zoomOnDoubleClick={false}
+      panOnScroll={false}
+      preventScrolling={false}
+      style={{
+        width: "100%",
+        height: "auto",
+        padding: "0",
+        margin: "0",
+      }}
+    />
+  );
+};
+
 export const GraphView: React.FC<GraphViewProps> = ({
   nodes: initialNodes,
   edges: initialEdges,
@@ -48,6 +98,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [containerWidth, setContainerWidth] = useState(400);
+  const [maxContainerWidth, setMaxContainerWidth] = useState<number | null>(null);
   const [containerHeight, setContainerHeight] = useState(1500);
   const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
   const [rfKey, setRfKey] = useState(0);
@@ -59,6 +110,15 @@ export const GraphView: React.FC<GraphViewProps> = ({
   // Constants for metadata panel calculations
   const METADATA_PANEL_WIDTH = 350;
   const BUTTON_COLUMN_WIDTH = 52;
+
+  // Store the calculated layout (node and edge positions) - this should be constant
+  const layoutCacheRef = useRef<{
+    flowNodes: Node[];
+    flowEdges: Edge[];
+    minXAll: number;
+    maxXAll: number;
+    widthSpan: number;
+  } | null>(null);
 
   const handleNodeUpdate = useCallback(
     (nodeId: string, field: keyof GraphNode, value: string) => {
@@ -75,9 +135,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
     [onNodeUpdate, session_id, messageSender]
   );
 
-  const updateLayout = useCallback(() => {
-    // Use the new layout engine instead of separate functions
-    const layout = layoutEngine.layoutGraph(initialNodes, initialEdges, containerWidth);
+  // Calculate the graph layout (node and edge positions) - should only change when nodes/edges change
+  const calculateLayout = useCallback(() => {
+    // Don't calculate layout until we have actual container dimensions
+    if (maxContainerWidth === null) return;
+
+    // Use the maximum available width (without metadata panel) for layout calculation
+    const layout = layoutEngine.layoutGraph(initialNodes, initialEdges, maxContainerWidth);
 
     // Calculate if we have left bands that need negative positioning
     const hasLeftBands = layout.edges.some(edge => edge.band?.includes('Left'));
@@ -135,10 +199,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
       };
     });
 
-    setNodes(flowNodes);
-    setEdges(flowEdges);
-
-    // Horizontal-only viewport fit (no vertical adjustments)
+    // Calculate bounding box for viewport calculations
     const PADDING_X = 40;
     const nodeMinX = flowNodes.length ? Math.min(...flowNodes.map(n => n.position.x)) : 0;
     const nodeMaxX = flowNodes.length ? Math.max(...flowNodes.map(n => n.position.x + NODE_WIDTH)) : 0;
@@ -148,34 +209,106 @@ export const GraphView: React.FC<GraphViewProps> = ({
     const minXAll = Math.min(nodeMinX, edgesMinX);
     const maxXAll = Math.max(nodeMaxX, edgesMaxX);
     const widthSpan = Math.max(1, maxXAll - minXAll);
+
+    // Store the layout in cache
+    layoutCacheRef.current = {
+      flowNodes,
+      flowEdges,
+      minXAll,
+      maxXAll,
+      widthSpan,
+    };
+
+    console.log('[GraphView] Layout calculated:', {
+      maxContainerWidth,
+      nodeCount: flowNodes.length,
+      edgeCount: flowEdges.length,
+      minXAll,
+      maxXAll,
+      widthSpan,
+    });
+
+    setNodes(flowNodes);
+    setEdges(flowEdges);
+
+    // Immediately calculate and update viewport after layout changes
     const bboxW = widthSpan + PADDING_X * 2;
     const availableW = Math.max(1, containerWidth);
     const zoom = Math.min(1, availableW / bboxW);
     const x = -minXAll * zoom + (availableW - widthSpan * zoom) / 2;
     setViewport({ x, y: 0, zoom });
-    setRfKey(k => k + 1);
   }, [
     initialNodes,
     initialEdges,
-    containerWidth,
     handleNodeUpdate,
     setNodes,
     setEdges,
     session_id,
-    layoutEngine
+    messageSender,
+    isDarkTheme,
+    layoutEngine,
+    maxContainerWidth
   ]);
 
+  // Calculate viewport (zoom and position) based on current container width
+  const updateViewport = useCallback(() => {
+    if (!layoutCacheRef.current) return;
+
+    const { minXAll, maxXAll, widthSpan } = layoutCacheRef.current;
+    const PADDING_X = 40;
+    const bboxW = widthSpan + PADDING_X * 2;
+    const availableW = Math.max(1, containerWidth);
+    const zoom = Math.min(1, availableW / bboxW);
+    const x = -minXAll * zoom + (availableW - widthSpan * zoom) / 2;
+
+    console.log('[GraphView] Viewport update:', {
+      containerWidth,
+      isMetadataPanelOpen,
+      minXAll,
+      maxXAll,
+      widthSpan,
+      zoom,
+      viewportX: x,
+    });
+
+    setViewport({ x, y: 0, zoom });
+    // Don't increment rfKey here - it causes a flash during metadata panel toggle
+  }, [containerWidth, isMetadataPanelOpen]);
+
+  // Recalculate layout when nodes/edges change
   useEffect(() => {
-    updateLayout();
-  }, [updateLayout]);
+    calculateLayout();
+  }, [calculateLayout]);
+
+  // Update viewport when container width changes (metadata panel opens/closes)
+  useEffect(() => {
+    updateViewport();
+  }, [updateViewport]);
 
 
+  // Set maxContainerWidth only once on initial mount
+  useEffect(() => {
+    if (containerRef.current && maxContainerWidth === null) {
+      const totalWidth = containerRef.current.offsetWidth;
+      const maxAvailableWidth = totalWidth - BUTTON_COLUMN_WIDTH;
+      setMaxContainerWidth(maxAvailableWidth);
+
+      // Also set initial containerWidth to trigger viewport calculation
+      let graphAvailableWidth = totalWidth - BUTTON_COLUMN_WIDTH;
+      if (isMetadataPanelOpen && metadataPanel) {
+        graphAvailableWidth -= METADATA_PANEL_WIDTH;
+      }
+      setContainerWidth(graphAvailableWidth);
+    }
+  }, [maxContainerWidth, BUTTON_COLUMN_WIDTH, isMetadataPanelOpen, metadataPanel, METADATA_PANEL_WIDTH]);
+
+  // Handle container width changes for viewport adjustments
   useEffect(() => {
     const handleResize = () => {
       if (containerRef.current) {
         const totalWidth = containerRef.current.offsetWidth;
 
-        // Calculate available width for graph, accounting for metadata panel and button column
+        // Calculate current available width for graph, accounting for metadata panel and button column
         let graphAvailableWidth = totalWidth - BUTTON_COLUMN_WIDTH;
         if (isMetadataPanelOpen && metadataPanel) {
           graphAvailableWidth -= METADATA_PANEL_WIDTH;
@@ -247,39 +380,19 @@ export const GraphView: React.FC<GraphViewProps> = ({
           <div
             className={styles.flowContainer}
             style={{
+              width: `${containerWidth}px`,
               height: `${containerHeight}px`,
               marginTop: "0px",
               paddingTop: "0px",
             }}
           >
-            <ReactFlow
-              key={rfKey}
+            <FlowWithViewport
               nodes={nodes}
               edges={edges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
-              nodeTypes={nodeTypes}
-              edgeTypes={edgeTypes}
-              fitView={false}
-              proOptions={{ hideAttribution: true }}
-              minZoom={0.4}
-              maxZoom={1}
-              defaultViewport={viewport}
-              nodesDraggable={false}
-              nodesConnectable={false}
-              elementsSelectable={true}
-              panOnDrag={false}
-              zoomOnScroll={false}
-              zoomOnPinch={false}
-              zoomOnDoubleClick={false}
-              panOnScroll={false}
-              preventScrolling={false}
-              style={{
-                width: "100%",
-                height: "auto",
-                padding: "0",
-                margin: "0",
-              }}
+              viewport={viewport}
+              rfKey={rfKey}
             />
           </div>
         </ReactFlowProvider>

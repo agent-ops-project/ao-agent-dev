@@ -405,7 +405,7 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({
                     return <i className="codicon codicon-circle-outline" style={{ marginRight: '8px', fontSize: '16px', opacity: 0.6 }} />;
                   };
 
-                  // Format timestamp to dd/mm/yyyy
+                  // Format timestamp to dd/mm/yyyy hh:mm
                   const formatDate = (timestamp?: string) => {
                     if (!timestamp) return 'No date';
                     try {
@@ -413,7 +413,9 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({
                       const day = String(date.getDate()).padStart(2, '0');
                       const month = String(date.getMonth() + 1).padStart(2, '0');
                       const year = date.getFullYear();
-                      return `${day}/${month}/${year}`;
+                      const hours = String(date.getHours()).padStart(2, '0');
+                      const minutes = String(date.getMinutes()).padStart(2, '0');
+                      return `${day}/${month}/${year} ${hours}:${minutes}`;
                     } catch {
                       return timestamp;
                     }
