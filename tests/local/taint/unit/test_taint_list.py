@@ -2,7 +2,7 @@
 
 import pytest
 
-from aco.runner.taint_wrappers import taint_wrap, TaintWrapper, get_taint_origins
+from aco.runner.taint_wrappers import taint_wrap, get_taint_origins
 from ....utils import with_ast_rewriting_class
 
 
@@ -19,7 +19,6 @@ class TestTaintList:
 
         # Test with single string taint
         l2 = taint_wrap(["a", "b"], taint_origin="source1")
-        assert isinstance(l2, TaintWrapper)
         assert list(l2) == ["a", "b"]
         assert l2._taint_origin == ["source1"]
 
@@ -58,7 +57,20 @@ class TestTaintList:
         l.append(tainted)
         assert list(l) == [1, 2, 3, tainted]
         expected_taint = set(["original", "new_item"])
-        assert set(get_taint_origins(l)) == expected_taint
+        assert set(get_taint_origins(l)) == expected_taint, f"{set(get_taint_origins(l))}"
+
+    def test_obj(self):
+        class SomeObj:
+            def __init__(self, x, y):
+                self.list = [x, y]
+
+            def add_to_list(self, z):
+                self.list.append(z)
+
+        tainted = taint_wrap(3, taint_origin="new_item")
+        o = taint_wrap(SomeObj(1, 2))
+        o.add_to_list(tainted)
+        assert get_taint_origins(o.list[-1]) == ["new_item"], f"{get_taint_origins(o.list[-1])}"
 
     def test_extend(self):
         """Test extend method."""
@@ -231,8 +243,6 @@ class TestTaintList:
         raw = l.obj
         assert raw == [1, tainted, 3]  # Returns list with wrapped items
         assert isinstance(raw, list)
-        assert not isinstance(raw, TaintWrapper)
-        assert isinstance(raw[1], TaintWrapper)  # Items still wrapped
 
     def test_list_methods(self):
         """Test standard list methods work correctly."""

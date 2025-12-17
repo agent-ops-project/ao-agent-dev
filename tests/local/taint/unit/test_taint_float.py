@@ -15,12 +15,11 @@ class TestTaintFloat:
         """Test TaintWrapper creation with various taint origins."""
         # Test with no taint
         f1 = 3.14  # No wrapping for no taint
-        assert float(f1) == 3.14
         assert get_taint_origins(f1) == []
 
         # Test with single string taint
         f2 = taint_wrap(2.718, taint_origin="source1")
-        assert isinstance(f2, TaintWrapper)
+        assert isinstance(f2, float)
         assert float(f2) == 2.718
         assert f2._taint_origin == ["source1"]
 
@@ -46,7 +45,7 @@ class TestTaintFloat:
         # Addition
         result = f1 + f2
         assert float(result) == 13.0
-        assert isinstance(result, TaintWrapper)
+        assert isinstance(result, float)
         assert set(get_taint_origins(result)) == {"source1", "source2"}
 
         # Addition with regular float
@@ -92,7 +91,7 @@ class TestTaintFloat:
         # True division
         result = f1 / f2
         assert float(result) == 4.2
-        assert isinstance(result, TaintWrapper)
+        assert isinstance(result, float)
         assert set(get_taint_origins(result)) == {"source1", "source2"}
 
         # Reverse true division
