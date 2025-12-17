@@ -191,9 +191,7 @@ class DatabaseManager:
         # Overwrite input for node.
         row = self.backend.get_llm_call_input_api_type_query(session_id, node_id)
         input_overwrite = json.loads(row["input"])
-        logger.info(f"[EditIO] before {input_overwrite['input']}")
         input_overwrite["input"] = new_input
-        logger.info(f"[EditIO] after {input_overwrite['input']}")
         input_overwrite = json.dumps(input_overwrite)
         self.backend.set_input_overwrite_query(input_overwrite, session_id, node_id)
 
