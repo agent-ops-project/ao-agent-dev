@@ -18,7 +18,7 @@ declare global {
 
 export const App: React.FC = () => {
   const [processes, setProcesses] = useState<ProcessInfo[]>([]);
-  const [databaseMode, setDatabaseMode] = useState<'Local' | 'Remote'>('Local');
+  const [databaseMode, setDatabaseMode] = useState<'Local' | 'Remote' | null>(null);
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'experiments' | 'experiment-graph'>('experiments');
   const [selectedExperiment, setSelectedExperiment] = useState<ProcessInfo | null>(null);
@@ -26,22 +26,30 @@ export const App: React.FC = () => {
   const [allGraphs, setAllGraphs] = useState<Record<string, GraphData>>({});
   const isDarkTheme = useIsVsCodeDarkTheme();
 
+  console.log('[DatabaseMode] Component initialized with default:', databaseMode);
+
   // Listen for backend messages and update state
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
       switch (message.type) {
         case "session_id":
+          console.log('[DatabaseMode] Received session_id message:', message);
           // Handle initial connection message with database mode
           if (message.database_mode) {
             const mode = message.database_mode === 'local' ? 'Local' : 'Remote';
+            console.log('[DatabaseMode] Setting mode from session_id:', message.database_mode, '->', mode);
             setDatabaseMode(mode);
+          } else {
+            console.log('[DatabaseMode] session_id message missing database_mode field');
           }
           break;
         case "database_mode_changed":
+          console.log('[DatabaseMode] Received database_mode_changed:', message.database_mode);
           // Handle database mode change broadcast from server
           if (message.database_mode) {
             const mode = message.database_mode === 'local' ? 'Local' : 'Remote';
+            console.log('[DatabaseMode] Setting mode from database_mode_changed:', message.database_mode, '->', mode);
             setDatabaseMode(mode);
           }
           break;

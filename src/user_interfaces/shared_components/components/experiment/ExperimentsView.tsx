@@ -18,7 +18,7 @@ interface ExperimentsViewProps {
   onLogin?: () => void;
   showHeader?: boolean;
   onModeChange?: (mode: 'Local' | 'Remote') => void;
-  currentMode?: 'Local' | 'Remote';
+  currentMode?: 'Local' | 'Remote' | null;
 }
 
 export const ExperimentsView: React.FC<ExperimentsViewProps> = ({
@@ -32,7 +32,7 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({
   onLogin,
   showHeader = false,
   onModeChange,
-  currentMode = 'Local',
+  currentMode = null,
 }) => {
   const [hoveredCards, setHoveredCards] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['running', 'finished']));
@@ -574,7 +574,7 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({
         onClick={() => setDropdownOpen(!dropdownOpen)}
       >
         <i className="codicon codicon-database" />
-        {currentMode}
+        {currentMode || 'Loading...'}
         <i className={`codicon ${dropdownOpen ? 'codicon-chevron-up' : 'codicon-chevron-down'}`} />
       </button>
       {dropdownOpen && (

@@ -458,6 +458,18 @@ class DevelopServer:
 
     def handle_get_all_experiments(self, conn: socket.socket) -> None:
         """Handle request to refresh the experiment list (e.g., when VS Code window regains focus)."""
+        # First, send current session_id and database_mode to ensure UI state is synced
+        # This handles the case where the webview was recreated (e.g., tab switch) and needs state restoration
+        send_json(
+            conn,
+            {
+                "type": "session_id",
+                "session_id": None,
+                "config_path": ACO_CONFIG,
+                "database_mode": DB.get_current_mode(),
+            },
+        )
+        # Then send the experiment list
         self.broadcast_experiment_list_to_uis(conn)
 
     def handle_auth(self, msg: dict, conn: socket.socket) -> None:
