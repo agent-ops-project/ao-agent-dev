@@ -420,14 +420,13 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({
                       <span style={{
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
+                        whiteSpace: 'pre'
                       }}>
-                        {formatDate(process.timestamp)}
+                        {formatDate(process.timestamp)}{'\t'}
                       </span>
                       <span style={{
                         fontSize: '11px',
                         color: isDarkTheme ? '#858585' : '#8e8e8e',
-                        marginLeft: '8px',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',

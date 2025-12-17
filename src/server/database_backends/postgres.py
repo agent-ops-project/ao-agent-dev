@@ -558,6 +558,8 @@ def upsert_user(google_id, email, name, picture):
     """
     Upsert user - insert if not exists, update if exists.
 
+    Includes retry logic to handle connection closures (e.g., from database mode switching).
+
     Args:
         google_id: Google OAuth ID
         email: User email
@@ -567,25 +569,60 @@ def upsert_user(google_id, email, name, picture):
     Returns:
         The user record after upsert
     """
-    # Check if user exists
-    existing = query_one("SELECT * FROM users WHERE google_id = %s", (google_id,))
+    max_retries = 3
+    for attempt in range(max_retries):
+        conn = None
+        try:
+            conn = get_conn()
+            c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    if existing:
-        # Update existing user
-        execute(
-            "UPDATE users SET name = %s, picture = %s, updated_at = CURRENT_TIMESTAMP WHERE google_id = %s",
-            (name, picture, google_id),
-        )
-    else:
-        # Insert new user
-        execute(
-            "INSERT INTO users (google_id, email, name, picture, created_at, updated_at) "
-            "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-            (google_id, email, name, picture),
-        )
+            # Check if user exists
+            c.execute("SELECT * FROM users WHERE google_id = %s", (google_id,))
+            existing = c.fetchone()
 
-    # Return the user record
-    return query_one("SELECT * FROM users WHERE google_id = %s", (google_id,))
+            if existing:
+                # Update existing user
+                c.execute(
+                    "UPDATE users SET name = %s, picture = %s, updated_at = CURRENT_TIMESTAMP WHERE google_id = %s",
+                    (name, picture, google_id),
+                )
+            else:
+                # Insert new user
+                c.execute(
+                    "INSERT INTO users (google_id, email, name, picture, created_at, updated_at) "
+                    "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                    (google_id, email, name, picture),
+                )
+
+            # Commit the transaction
+            conn.commit()
+
+            # Return the user record
+            c.execute("SELECT * FROM users WHERE google_id = %s", (google_id,))
+            result = c.fetchone()
+            return result
+
+        except psycopg2.InterfaceError as e:
+            # Connection was closed - retry
+            if attempt < max_retries - 1:
+                logger.warning(
+                    f"Connection closed during upsert, retrying ({attempt + 1}/{max_retries}): {e}"
+                )
+                if conn:
+                    try:
+                        conn.close()
+                    except:
+                        pass
+                continue
+            else:
+                raise
+        except Exception:
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                return_conn(conn)
 
 
 def get_user_by_id_query(user_id):

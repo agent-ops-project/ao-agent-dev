@@ -260,7 +260,13 @@ class DevelopServer:
             logger.warning(f"Failed to load finished runs from database: {e}")
 
     def handle_graph_request(self, conn, session_id):
-        # Query graph_topology for the session and reconstruct the in-memory graph
+        # Check if we have in-memory graph first (most up-to-date)
+        if session_id in self.session_graphs:
+            graph = self.session_graphs[session_id]
+            send_json(conn, {"type": "graph_update", "session_id": session_id, "payload": graph})
+            return
+
+        # Fall back to database if no in-memory graph
         row = DB.get_graph(session_id)
         if row and row["graph_topology"]:
             graph = json.loads(row["graph_topology"])
@@ -723,7 +729,6 @@ class DevelopServer:
         try:
             # Expect handshake first
             handshake_line = file_obj.readline()
-            logger.debug(f"handshake line: {handshake_line}")
             if not handshake_line:
                 return
             handshake = json.loads(handshake_line.strip())
