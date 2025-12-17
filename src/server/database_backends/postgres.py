@@ -3,12 +3,10 @@ PostgreSQL database backend for workflow experiments.
 """
 
 import json
-import dill
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 import threading
-import inspect
 from urllib.parse import urlparse
 
 from aco.common.logger import logger
@@ -210,8 +208,20 @@ def query_one(sql, params=()):
         c.execute(sql, params)
         result = c.fetchone()
         return result
+    except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+        # Connection died - don't try to rollback, just close it
+        logger.warning(f"Connection died during query_one: {e}")
+        try:
+            conn.close()
+        except:
+            pass
+        raise
     except Exception as e:
-        conn.rollback()
+        # Other errors - try to rollback
+        try:
+            conn.rollback()
+        except:
+            pass
         raise
     finally:
         return_conn(conn)
@@ -225,8 +235,20 @@ def query_all(sql, params=()):
         c.execute(sql, params)
         result = c.fetchall()
         return result
+    except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+        # Connection died - don't try to rollback, just close it
+        logger.warning(f"Connection died during query_all: {e}")
+        try:
+            conn.close()
+        except:
+            pass
+        raise
     except Exception as e:
-        conn.rollback()
+        # Other errors - try to rollback
+        try:
+            conn.rollback()
+        except:
+            pass
         raise
     finally:
         return_conn(conn)
@@ -240,8 +262,20 @@ def execute(sql, params=()):
         c.execute(sql, params)
         conn.commit()
         return c.lastrowid if hasattr(c, "lastrowid") else None
+    except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+        # Connection died - don't try to rollback, just close it
+        logger.warning(f"Connection died during execute: {e}")
+        try:
+            conn.close()
+        except:
+            pass
+        raise
     except Exception as e:
-        conn.rollback()
+        # Other errors - try to rollback
+        try:
+            conn.rollback()
+        except:
+            pass
         raise
     finally:
         return_conn(conn)
