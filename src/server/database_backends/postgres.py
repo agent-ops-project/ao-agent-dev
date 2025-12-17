@@ -636,7 +636,7 @@ def upsert_user(google_id, email, name, picture):
             result = c.fetchone()
             return result
 
-        except psycopg2.InterfaceError as e:
+        except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
             # Connection was closed - retry
             if attempt < max_retries - 1:
                 logger.warning(

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Optional, Any
 
 from aco.common.logger import logger
+from aco.server.database_backends import postgres, sqlite
 from aco.runner.monkey_patching.api_parser import (
     get_model_name,
     func_kwargs_to_json_str,
@@ -83,13 +84,9 @@ class DatabaseManager:
         """
         if self._backend_module is None:
             if self._backend_type == "sqlite":
-                from aco.server.database_backends import sqlite
-
                 self._backend_module = sqlite
                 logger.debug("Loaded SQLite backend module")
             elif self._backend_type == "postgres":
-                from aco.server.database_backends import postgres
-
                 self._backend_module = postgres
                 logger.debug("Loaded PostgreSQL backend module")
             else:
@@ -173,7 +170,7 @@ class DatabaseManager:
         Raises:
             Exception: If current backend doesn't support user management (e.g., SQLite)
         """
-        return self.backend.upsert_user(google_id, email, name, picture)
+        return postgres.upsert_user(google_id, email, name, picture)
 
     def get_user_by_id(self, user_id):
         """
