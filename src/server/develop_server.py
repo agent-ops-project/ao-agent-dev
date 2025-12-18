@@ -358,6 +358,8 @@ class DevelopServer:
         node_id = msg["node_id"]
         new_input = msg["value"]
 
+        logger.info(f"[EditIO] node ID {node_id}")
+
         DB.set_input_overwrite(session_id, node_id, new_input)
         if session_id in self.session_graphs:
             for node in self.session_graphs[session_id]["nodes"]:

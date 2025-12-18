@@ -434,6 +434,7 @@ class DatabaseManager:
         row = self.backend.get_llm_call_by_session_and_hash_query(session_id, input_hash)
 
         if row is None:
+            logger.debug(f"Cache MISS, (session_id, input_hash): {(session_id, input_hash)}")
             return CacheOutput(
                 input_dict=input_dict,
                 output=None,
@@ -447,11 +448,10 @@ class DatabaseManager:
         node_id = row["node_id"]
         output = None
 
-        logger.debug(
-            f"Cache HIT, (session_id, node_id, input_hash): {(session_id, node_id, input_hash)}"
-        )
-
         if row["input_overwrite"] is not None:
+            logger.debug(
+                f"Cache HIT - Input overwrite, (session_id, node_id, input_hash): {(session_id, node_id, input_hash)}"
+            )
             overwrite_json_str = row["input_overwrite"]
             overwrite_text = json.loads(overwrite_json_str)["input"]
             # the format of the input is not always a JSON dict.
@@ -463,8 +463,12 @@ class DatabaseManager:
         # Here, no matter if we made an edit to the input or not, the input dict should
         # be a valid input to the underlying function
 
+        # TODO We can't distinguish between output and output_overwrite
         if row["output"] is not None:
             output = json_str_to_api_obj(row["output"], api_type)
+            logger.debug(
+                f"Cache HIT, (session_id, node_id, input_hash): {(session_id, node_id, input_hash)}"
+            )
 
         set_seed(node_id)
         return CacheOutput(
@@ -496,10 +500,10 @@ class DatabaseManager:
         # Insert new row with a new node_id. reset randomness to avoid
         # generating exact same UUID when re-running, but MCP generates randomness and we miss cache
         random.seed()
-        node_id = str(uuid.uuid4())
-        logger.debug(
-            f"Cache MISS, (session_id, node_id, input_hash): {(cache_result.session_id, node_id, cache_result.input_hash)}"
-        )
+        if cache_result.node_id:
+            node_id = cache_result.node_id
+        else:
+            node_id = str(uuid.uuid4())
         # Avoid caching bad http responses
         response_ok = api_obj_to_response_ok(output_obj, api_type)
 
