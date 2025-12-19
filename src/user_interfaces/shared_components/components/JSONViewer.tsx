@@ -54,7 +54,24 @@ const JSONNode: React.FC<JSONNodeProps> = ({ keyName, value, isDarkTheme, depth,
 
   const indent = depth * 20;
 
+  // Check if a value is a LosslessNumber from lossless-json library
+  const isLosslessNumber = (val: any): boolean => {
+    return val !== null && typeof val === 'object' && val.isLosslessNumber === true;
+  };
+
+  // Get the actual value, unwrapping LosslessNumber if needed
+  const unwrapValue = (val: any): any => {
+    if (isLosslessNumber(val)) {
+      return Number(val.value);
+    }
+    return val;
+  };
+
   const isExpandable = (val: any) => {
+    // LosslessNumber objects should not be expandable - they're just numbers
+    if (isLosslessNumber(val)) {
+      return false;
+    }
     return (
       val !== null &&
       typeof val === 'object' &&
@@ -148,6 +165,34 @@ const JSONNode: React.FC<JSONNodeProps> = ({ keyName, value, isDarkTheme, depth,
       return 30;
     };
 
+    // Handle LosslessNumber objects - render them as regular numbers
+    if (isLosslessNumber(val)) {
+      const numValue = unwrapValue(val);
+      return (
+        <textarea
+          rows={getRows(numValue.toString())}
+          value={isEditing ? editValue : numValue.toString()}
+          onChange={(e) => handleChange(e.target.value)}
+          onFocus={() => {
+            if (!isEditing) {
+              setEditValue(numValue.toString());
+              setIsEditing(true);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              cancelEdit();
+            } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+              e.preventDefault();
+              saveEdit();
+            }
+          }}
+          readOnly={!editable}
+          style={getTextareaStyle(colors.number)}
+        />
+      );
+    }
     // Always display values in a textarea for editability
     if (val === null) {
       return (

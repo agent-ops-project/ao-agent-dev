@@ -166,6 +166,7 @@ EDIT_IO_EXCLUDE_PATTERNS = [
     r"^content\.type$",
     r"^content\.object$",
     r"^content\.created(_at)?$",
+    r"^content\.completed_at$",
     r"^content\.model$",
     r"^content\.status$",
     r"^content\.background$",
@@ -202,7 +203,7 @@ EDIT_IO_EXCLUDE_PATTERNS = [
     r"^content\.choices\.\d+\.(finish_reason|logprobs|seed)$",
     # content.output.* fields
     r"^content\.output\.\d+\.(id|type|status)$",
-    r"^content\.output\.\d+\.content\.\d+\.(type|annotations|logprobs|text)$",
+    r"^content\.output\.\d+\.content\.\d+\.(type|annotations|logprobs)$",
     # content.candidates.* fields (Google Gemini)
     r"^content\.candidates\.\d+\.(finishReason|index)$",
     r"^content\.usageMetadata",
