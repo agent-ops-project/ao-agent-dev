@@ -34,13 +34,13 @@ r = Response()  # has r.nested_obj (object) and r.status (int)
 # }
 ```
 
-`r.nested_obj` will get its own `TAINT_DICT` entry when `TAINT_DICT[r.nested_obj]` is accessed for the first time (i.e., `add_to_taint_dict_and_return` is called lazily).
+`r.nested_obj` will get its own `TAINT_DICT` entry when accessed via `taint_propagating_get`, which calls `add_to_taint_dict_and_return` lazily. Non-built-in nested objects aren't mirrored in parent's shadow structure since `taint_propagating_get` retrieves their object reference directly for TAINT_DICT lookup.
 
 ## Attribute and Subscript Access
 
 ### Attribute access chains
 
-The AST transformer rewrites access chains to propagate taint through `TAINT_STACK`:
+The AST transformer rewrites access chains to propagate taint through `TAINT_STACK`. `taint_propagating_get` retrieves attributes with their taint, while `exec_func` executes methods:
 
 ```python
 # Original: tainted_response.contents[0].text
@@ -73,7 +73,7 @@ Also refer to the pseudo code of `taint_propagating_get`.
 We wrap method calls inside an exec_func() function during the AST rewrite. For more details, refer to the pseudo code of exec_func() below. 
 
 At a high-level method calls is as follows:
- - We distinguish between functions and methods that are defined in user code versus in third-party lirbaries. We define user code as all code inside a project_root.
+ - We distinguish between functions and methods that are defined in user code versus in third-party libraries (determined by `is_user_code()`).
  - Inside the project root, code is AST-rewritten. For any AST rewritten code, passing TaintWrapper objects into functions is harmless. So, when we call a method that's defined inside user code (i.e., has been rewritten), we just pass TaintWrapper objects as they are.
  - However, there is a boundary to third-party libraries where passing TaintWrappers is not safe. We therefore unwrap any TaintWrappers before passing them into a third-party library and record the variable's taint inside `TAINT_STACK`. After the third-party method returns, we call `add_to_taint_dict_and_return` on its output (i.e., wrap if the output is a built-in and store the output in `TAINT_DICT` with `TAINT_STACK` taint).
  - The reason that we assoiate `TAINT_STACK` taint with the output is because some third-party libraries are instrumentalized to overwrite `TAINT_STACK`. If not, the taint propagation follows a `taint in = taint out` pattern.
@@ -92,7 +92,7 @@ user_obj.nested_obj = TaintWrapper(5) # Nothing needs to be done, pointer update
 
 ### Subscript access
 
-Subscript access follows the patterns described above. Collections (e.g., list, set, dict, tuple) are built-ins, i.e., they don't have a weak reference. We therefore wrap them when we add them to `TAINT_DICT`. TaintWrapper makes sure that the wrapper around collections works transparently (i.e., slicing, subscripts, etc. all work).
+Subscript access follows the patterns described above. Collections (e.g., list, set, dict, tuple) are built-ins and we therefore wrap them when we add them to `TAINT_DICT`. TaintWrapper makes sure that the wrapper around collections works transparently (i.e., slicing, subscripts, etc. all work).
 
 So for example:
 
@@ -103,7 +103,7 @@ l.append(i) # i is passed into append without unwrapping, since l is a TaintWrap
 # Result: When l[0] is accessed, we return i's TaintWrapper with the correct taint
 ```
 
-However, to correctly map the taint in `TAINT_DICT` to the representation in the collection, **we treat collection methods like append, sort, reverse as special cases:** The AST transformer detects collection methods (append, sort, etc.) and injects shadow synchronization code. This works for both wrapped standalone collections and unwrapped nested collections.
+However, to correctly map the taint in `TAINT_DICT` to the representation in the collection, **we treat collection methods like append, sort, reverse as special cases:** The AST transformer gives them custom implementations (not generic exec_func wrapping) that preserve TaintWrapper inputs while synchronizing shadow structures. This works for both wrapped standalone collections and unwrapped nested collections.
 
 ### Assignment Operations
 Assignments are rewritten by the AST into `wrapper_aware_assign` functions. If we're assigning to an object defined in user code, we just go ahead. Otherwise, we unwrap if needed, and then do the assignment.
@@ -112,7 +112,6 @@ Assignments are rewritten by the AST into `wrapper_aware_assign` functions. If w
 
 - **TAINT_STACK**: Uses ContextVar for async-safe taint propagation
 - **TAINT_DICT**: Requires synchronization for thread-safe shadow tree mutations. We achieve this by using a wrapper around WeakKeyDictionary with a lock.
-s
 ## Pseudo code of core functions
 
 ### add_to_taint_dict_and_return(obj)
@@ -133,7 +132,7 @@ s
 
 **Pseudo code:**
 
-We don't track taint through "third-party code" (i.e., code outside of project_root). If `obj` is defined outside the `project_root`, just return the plain object, i.e.: if access_type == attr: `return obj.key`, else `obj[key]`
+We don't track taint through "third-party code" (determined by helper `is_user_code(obj)`). If `obj` is third-party code, just return the plain object, i.e.: if access_type == attr: `return obj.key`, else `obj[key]`
 
 If `obj` is defined inside project_root, we propagate taint. Do the following:
 
@@ -180,7 +179,7 @@ As discussed above, we implement methods for collections (e.g., `.append()`) "ma
 **Three categories of mutations:**
 1. **Positional** (append, extend, insert, pop): Mirror operation at same indices
 2. **Key-Based** (\_\_setitem\_\_, update, pop): Mirror key assignments/deletions  
-3. **Permutation** (sort, reverse): Use "Tag-and-Follow" to reorder shadow elements: Zip your actual data with this index map. E.g.L zipped = list(zip(actual_data, obj_references in shadow list in TAINT_DICT)).
+3. **Permutation** (sort, reverse): Use "Tag-and-Follow" to reorder shadow elements: Before sorting, zip collection items with their shadow taint entries. After sorting the zipped pairs, extract the reordered shadow list to update TAINT_DICT. E.g.: `sorted_pairs = sorted(zip(collection, shadow_taints), key=lambda x: x[0]); collection[:] = [item for item, _ in sorted_pairs]; shadow_taints[:] = [taint for _, taint in sorted_pairs]`
 
 ```python
 # AST transformation concept:
