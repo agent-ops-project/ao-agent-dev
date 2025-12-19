@@ -920,6 +920,10 @@ def exec_func(func, args, kwargs, user_py_files=None):
             bound_hash_before = _get_bound_obj_hash(bound_self)
 
             result = await func(*untainted_args, **untainted_kwargs)
+            result_produced_taints = get_taint_origins(result)
+
+            if result_produced_taints:
+                all_origins = set(result_produced_taints)
 
             hashes_after = (
                 _compute_hashes(untainted_args),
@@ -966,6 +970,10 @@ def exec_func(func, args, kwargs, user_py_files=None):
     bound_hash_before = _get_bound_obj_hash(bound_self)
 
     result = func(*untainted_args, **untainted_kwargs)
+    result_produced_taints = get_taint_origins(result)
+
+    if result_produced_taints:
+        all_origins = set(result_produced_taints)
 
     hashes_after = (_compute_hashes(untainted_args), _compute_hashes(untainted_kwargs.values()))
     bound_hash_after = _get_bound_obj_hash(bound_self)

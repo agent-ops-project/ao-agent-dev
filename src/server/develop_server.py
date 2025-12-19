@@ -368,7 +368,8 @@ class DevelopServer:
         node_id = msg["node_id"]
         new_input = msg["value"]
 
-        logger.info(f"[EditIO] node ID {node_id}")
+        logger.info(f"[EditIO] edit input msg keys {[*msg.keys()]}")
+        logger.info(f"[EditIO] edit input msg: {msg}")
 
         DB.set_input_overwrite(session_id, node_id, new_input)
         if session_id in self.session_graphs:
@@ -385,6 +386,8 @@ class DevelopServer:
         session_id = msg["session_id"]
         node_id = msg["node_id"]
         new_output = msg["value"]
+
+        logger.info(f"[EditIO] edit output msg: {msg}")
 
         DB.set_output_overwrite(session_id, node_id, new_output)
         if session_id in self.session_graphs:

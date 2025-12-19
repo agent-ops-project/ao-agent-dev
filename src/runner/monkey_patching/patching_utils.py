@@ -96,7 +96,9 @@ def send_graph_node_and_edges(node_id, input_dict, output_obj, source_node_ids, 
     model = get_model_name(input_dict, api_type)
 
     if lost_taint:
-        source_node_ids += lost_taint
+        extended_source_node_ids = list(set(source_node_ids) | lost_taint)
+    else:
+        extended_source_node_ids = source_node_ids
 
     # Send node
     node_msg = {
@@ -112,7 +114,7 @@ def send_graph_node_and_edges(node_id, input_dict, output_obj, source_node_ids, 
             "model": model,
             "attachments": attachments,
         },
-        "incoming_edges": source_node_ids,
+        "incoming_edges": extended_source_node_ids,
     }
 
     try:

@@ -914,9 +914,6 @@ class TaintStr(str):
     def encode(self, *args, **kwargs):
         return self.get_raw().encode(*args, **kwargs)
 
-    def decode(self, *args, **kwargs):
-        return self.get_raw().decode(*args, **kwargs)
-
     def __str__(self):
         return self
 
