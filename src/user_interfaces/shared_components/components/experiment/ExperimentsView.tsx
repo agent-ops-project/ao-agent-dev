@@ -552,15 +552,7 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({
           >
             Local
           </div>
-          <div
-            style={{
-              ...dropdownItemStyle,
-              backgroundColor: currentMode === 'Remote' ? (isDarkTheme ? '#094771' : '#e3f2fd') : 'transparent',
-            }}
-            onClick={() => handleModeChange('Remote')}
-          >
-            Remote
-          </div>
+          {/* Remote option hidden - feature not yet visible in UI */}
         </div>
       )}
     </div>
@@ -659,21 +651,7 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({
               <IconSignOut size={20} />
             </button>
           </div>
-        ) : (
-          <button
-            style={loginButtonStyle}
-            onClick={handleLoginClick}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.backgroundColor = isDarkTheme ? '#2a2d2e' : '#e8e8e8';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.backgroundColor = isDarkTheme ? '#1e1e1e' : '#ffffff';
-            }}
-          >
-            Sign in with Google
-            <IconGoogle size={16} />
-          </button>
-        )}
+        ) : null /* Login button hidden - feature not yet visible in UI */}
       </div>
     </div>
   );

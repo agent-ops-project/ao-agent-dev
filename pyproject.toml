@@ -67,3 +67,9 @@ examples = [
     "openai-agents",
     "google-genai"
 ]
+
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocs-minify-plugin",
+    "mkdocstrings[python]>=0.24",
+]
