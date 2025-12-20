@@ -1,6 +1,8 @@
 name: Pytest
 
-on: [push]
+on:
+  push:
+  workflow_dispatch:
 
 jobs:
   test-non-billable:
