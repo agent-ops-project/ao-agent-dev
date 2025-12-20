@@ -40,4 +40,4 @@ def test_debug_examples(script_path: str):
 
 
 if __name__ == "__main__":
-    test_debug_examples("./example_workflows/debug_examples/anthropic_add_numbers.py")
+    test_debug_examples("./example_workflows/debug_examples/multiple_runs_asyncio.py")

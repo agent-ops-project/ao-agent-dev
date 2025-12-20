@@ -271,5 +271,10 @@ def api_obj_to_response_ok(response_obj: Any, api_type: str) -> bool:
         return response_obj.ok
     elif api_type in ["httpx.Client.send", "httpx.AsyncClient.send"]:
         return response_obj.is_success
+    elif api_type == "MCP.ClientSession.send_request":
+        # MCP CallToolResult has an isError field (defaults to False if not set)
+        if hasattr(response_obj, "isError"):
+            return not response_obj.isError
+        return True
     else:
         return True

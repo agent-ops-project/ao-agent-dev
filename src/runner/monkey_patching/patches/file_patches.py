@@ -109,7 +109,6 @@ def patch_builtin_open():
     """
     from aco.common.logger import logger
 
-    logger.debug("Patching built-in open() function")
     original_open = builtins.open
 
     @wraps(original_open)
@@ -160,6 +159,4 @@ def apply_file_patches():
     """Apply all file-related patches."""
     from aco.common.logger import logger
 
-    logger.debug("apply_file_patches called - about to patch built-in open()")
     patch_builtin_open()
-    logger.debug("File patches applied successfully")

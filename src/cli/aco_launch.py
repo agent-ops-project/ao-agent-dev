@@ -2,7 +2,7 @@ import os
 import yaml
 from argparse import ArgumentParser, REMAINDER
 from aco.common.constants import ACO_CONFIG, ACO_PROJECT_ROOT
-from aco.runner.develop_shim import DevelopShim
+from aco.runner.agent_runner import AgentRunner
 
 
 def launch_command_parser():
@@ -85,15 +85,15 @@ def _validate_launch_command(args):
 def launch_command(args):
     args = _validate_launch_command(args)
 
-    # Note: UI event logging moved to DevelopShim where session_id is available
-    shim = DevelopShim(
+    # Note: UI event logging moved to AgentRunner where session_id is available
+    agent_runner = AgentRunner(
         script_path=args.script_path,
         script_args=args.script_args,
         is_module_execution=args.module,
         project_root=args.project_root,
         run_name=args.run_name,
     )
-    shim.run()
+    agent_runner.run()
 
 
 def main():

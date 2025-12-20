@@ -1,15 +1,17 @@
 import asyncio
-import threading
 import os
 import random
 import json
 import time
+import socket
+import subprocess
+import sys
+import re
 import pytest
 from flatten_json import flatten, unflatten_list
 from dataclasses import dataclass
 from aco.server.database_manager import DB
-from aco.runner.develop_shim import DevelopShim
-from aco.runner.develop_shim import ensure_server_running
+from aco.common.constants import HOST, PORT
 
 try:
     from tests.billable.caching_utils import restart_server
@@ -61,6 +63,8 @@ def get_target_output_key_and_value(script_path: str):
 def find_row_and_get_edit_msg(script_path: str, rows: list):
     key_to_edit, value_to_edit, new_value = get_key_value_new_value(script_path)
 
+    node_id = None
+    session_id = None
     for row in rows:
         input_dict = json.loads(json.loads(row["input"])["input"])
         flattened_input_dict = flatten(input_dict, ".")
@@ -83,66 +87,106 @@ def find_row_and_get_edit_msg(script_path: str, rows: list):
     return msg
 
 
+def _run_script_with_aco_launch(script_path: str, project_root: str, env: dict) -> tuple[int, str]:
+    """
+    Run a script using aco-launch and return (return_code, session_id).
+
+    Parses the session_id from the runner's output.
+    """
+    env["ACO_NO_DEBUG_MODE"] = "True"
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "aco.cli.aco_launch", "--project-root", project_root, script_path],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    output_lines = []
+    session_id = None
+
+    # Read output and look for session_id
+    for line in proc.stdout:
+        print(line, end="")  # Print to terminal in real-time
+        output_lines.append(line)
+        # Look for session_id in log output
+        if "session_id:" in line or "Registered with session_id:" in line:
+            # Extract session_id from line like "Registered with session_id: abc123"
+            match = re.search(r"session_id[:\s]+([a-f0-9-]+)", line, re.IGNORECASE)
+            if match:
+                session_id = match.group(1)
+
+    proc.wait()
+    return proc.returncode, session_id
+
+
+def send_message_to_server(msg: dict) -> None:
+    """Send a message to the develop server via a new socket connection."""
+    conn = socket.create_connection((HOST, PORT), timeout=10)
+    try:
+        # Send a hello message to identify as a UI client
+        hello = {"type": "hello", "role": "ui"}
+        conn.sendall((json.dumps(hello) + "\n").encode("utf-8"))
+
+        # Read the hello response (session_id assignment for UI)
+        file_obj = conn.makefile(mode="r")
+        file_obj.readline()  # discard response
+
+        # Send the actual message
+        conn.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+
+        # Give server time to process
+        time.sleep(0.5)
+    finally:
+        conn.close()
+
+
 async def run_test(script_path: str, project_root: str):
     # Restart server to ensure clean state for this test
     restart_server()
 
-    shim = DevelopShim(
-        script_path=script_path,
-        script_args=[],
-        is_module_execution=False,
-        project_root=project_root,
-        run_name=None,
-    )
+    # Set up environment
+    env = os.environ.copy()
     aco_random_seed = random.randint(0, 2**31 - 1)
-    os.environ["ACO_SEED"] = str(aco_random_seed)
+    env["ACO_SEED"] = str(aco_random_seed)
 
-    ensure_server_running()
-    shim._connect_to_server()
-
-    # Explicitly set both server and client to use local SQLite database
-    # Send message to server to switch to local mode
+    # Ensure we use local SQLite database
     DB.switch_mode("local")
-    set_db_mode_msg = {"type": "set_database_mode", "mode": "local"}
-    shim.server_conn.sendall((json.dumps(set_db_mode_msg) + "\n").encode("utf-8"))
 
-    # Give the server a moment to complete database mode switch and transaction
-    time.sleep(0.2)
+    # First run
+    return_code, session_id = _run_script_with_aco_launch(script_path, project_root, env)
+    assert return_code == 0, f"First run failed with return_code {return_code}"
+    assert session_id is not None, "Could not extract session_id from first run output"
 
-    # Start background thread to listen for server messages
-    shim.listener_thread = threading.Thread(
-        target=shim._listen_for_server_messages, args=(shim.server_conn,)
-    )
-    shim.listener_thread.start()
-
-    return_code = shim._run_user_script_subprocess()
-    assert return_code == 0, f"failed with return_code {return_code}"
-
-    print("~~~~ session_id", shim.session_id)
+    print(f"~~~~ session_id {session_id}")
 
     rows = DB.query_all(
         "SELECT node_id, input, input_overwrite, output, session_id FROM llm_calls WHERE session_id=?",
-        (shim.session_id,),
+        (session_id,),
     )
 
-    # send edit input message
-    message = find_row_and_get_edit_msg(script_path, rows)
-    shim.server_conn.sendall((json.dumps(message) + "\n").encode("utf-8"))
+    # Send edit input message to server
+    edit_message = find_row_and_get_edit_msg(script_path, rows)
+    send_message_to_server(edit_message)
 
-    # send a restart message
-    message = {"type": "restart", "role": "shim-control", "session_id": shim.session_id}
-    shim.server_conn.sendall((json.dumps(message) + "\n").encode("utf-8"))
+    # Wait for server to process edit
+    time.sleep(1)
 
-    time.sleep(2)
+    # Send restart message to clear the graph before rerun
+    # This is needed so the server clears the old graph and accepts new nodes with updated outputs
+    restart_message = {"type": "restart", "role": "ui", "session_id": session_id}
+    send_message_to_server(restart_message)
+    time.sleep(1)
 
-    assert shim.restart_event.is_set(), "Restart even not set"
-    shim.restart_event.clear()
-    returncode_rerun = shim._run_user_script_subprocess()
-    assert returncode_rerun == 0, f"re-run failed with return_code {return_code}"
+    # Second run (rerun with edit applied)
+    # Pass the same session_id so it reuses the cache but applies the edit
+    env["AGENT_COPILOT_SESSION_ID"] = session_id
+    returncode_rerun, _ = _run_script_with_aco_launch(script_path, project_root, env)
+    assert returncode_rerun == 0, f"Re-run failed with return_code {returncode_rerun}"
 
     graph_topology = DB.query_one(
         "SELECT log, success, graph_topology FROM experiments WHERE session_id=?",
-        (shim.session_id,),
+        (session_id,),
     )
     graph = json.loads(graph_topology["graph_topology"])
 
@@ -158,35 +202,27 @@ async def run_test(script_path: str, project_root: str):
         target_value_after_edit == output_dict_flattened[target_key]
     ), f"{script_path}: output after edit expected to be {target_value_after_edit} but is {output_dict_flattened[target_key]}"
 
-    # Re-run again without editing
-    message = {"type": "restart", "role": "shim-control", "session_id": shim.session_id}
-    shim.server_conn.sendall((json.dumps(message) + "\n").encode("utf-8"))
+    # Send restart message to clear the graph before third run
+    restart_message = {"type": "restart", "role": "ui", "session_id": session_id}
+    send_message_to_server(restart_message)
+    time.sleep(1)
 
-    time.sleep(2)
-
-    assert shim.restart_event.is_set(), "Restart even not set"
-    shim.restart_event.clear()
-    returncode_rerun = shim._run_user_script_subprocess()
-    assert returncode_rerun == 0, f"re-run failed with return_code {return_code}"
+    # Third run without editing (should use cached results including the edit)
+    returncode_third, _ = _run_script_with_aco_launch(script_path, project_root, env)
+    assert returncode_third == 0, f"Third run failed with return_code {returncode_third}"
 
     new_graph_topology = DB.query_one(
         "SELECT log, success, graph_topology FROM experiments WHERE session_id=?",
-        (shim.session_id,),
+        (session_id,),
     )
     new_graph = json.loads(new_graph_topology["graph_topology"])
 
     assert len(graph["nodes"]) == len(
         new_graph["nodes"]
-    ), f"Graph after re-run with edit does not have same number of nodes as before. Graph before has {len(graph['nodes'])} nodes and graph after has {graph['nodes']} nodes."
+    ), f"Graph after re-run with edit does not have same number of nodes as before. Graph before has {len(graph['nodes'])} nodes and graph after has {len(new_graph['nodes'])} nodes."
 
     for node1, node2 in zip(graph["nodes"], new_graph["nodes"]):
         assert node1["id"] == node2["id"], "Node IDs don't match."
-
-    # Cleanup: Close server connection and stop listener thread
-    shim._kill_current_process()
-    shim.send_deregister()
-    shim.server_conn.close()
-    shim.listener_thread.join(timeout=2)
 
 
 @pytest.mark.parametrize(

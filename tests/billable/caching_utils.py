@@ -1,13 +1,12 @@
-import threading
 import os
+import sys
 import random
 import json
 import time
 import subprocess
+import re
 from dataclasses import dataclass
 from aco.server.database_manager import DB
-from aco.runner.develop_shim import DevelopShim
-from aco.runner.develop_shim import ensure_server_running
 
 
 @dataclass
@@ -24,81 +23,100 @@ def restart_server():
     time.sleep(1)
 
 
+def _run_script_with_aco_launch(script_path: str, project_root: str, env: dict) -> tuple[int, str]:
+    """
+    Run a script using aco-launch and return (return_code, session_id).
+
+    Parses the session_id from the runner's output.
+    """
+    env["ACO_NO_DEBUG_MODE"] = "True"
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "aco.cli.aco_launch", "--project-root", project_root, script_path],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    output_lines = []
+    session_id = None
+
+    # Read output and look for session_id
+    for line in proc.stdout:
+        output_lines.append(line)
+        # Look for session_id in log output
+        if "session_id:" in line or "Registered with session_id:" in line:
+            # Extract session_id from line like "Registered with session_id: abc123"
+            match = re.search(r"session_id[:\s]+([a-f0-9-]+)", line, re.IGNORECASE)
+            if match:
+                session_id = match.group(1)
+
+    proc.wait()
+    return proc.returncode, session_id
+
+
 async def run_test(script_path: str, project_root: str):
+    """
+    Run a test script twice using aco-launch and return data for caching validation.
+
+    This function:
+    1. Restarts the server for clean state
+    2. Runs the script once via aco-launch
+    3. Captures LLM calls and graph topology
+    4. Runs the script again (should use cached results)
+    5. Captures LLM calls and graph again
+    6. Returns both sets of data for comparison
+    """
     # Restart server to ensure clean state for this test
     restart_server()
 
-    shim = DevelopShim(
-        script_path=script_path,
-        script_args=[],
-        is_module_execution=False,
-        project_root=project_root,
-        run_name=None,
-    )
+    # Set up environment
+    env = os.environ.copy()
     aco_random_seed = random.randint(0, 2**31 - 1)
-    os.environ["ACO_SEED"] = str(aco_random_seed)
+    env["ACO_SEED"] = str(aco_random_seed)
 
-    ensure_server_running()
-    shim._connect_to_server()
-
-    # Explicitly set both server and client to use local SQLite database
-    # Send message to server to switch to local mode
+    # Ensure we use local SQLite database
     DB.switch_mode("local")
-    set_db_mode_msg = {"type": "set_database_mode", "mode": "local"}
-    shim.server_conn.sendall((json.dumps(set_db_mode_msg) + "\n").encode("utf-8"))
 
-    # Give the server a moment to complete database mode switch and transaction
-    time.sleep(0.2)
+    # First run
+    return_code, session_id = _run_script_with_aco_launch(script_path, project_root, env)
+    assert return_code == 0, f"First run failed with return_code {return_code}"
+    assert session_id is not None, "Could not extract session_id from first run output"
 
-    # Start background thread to listen for server messages
-    shim.listener_thread = threading.Thread(
-        target=shim._listen_for_server_messages, args=(shim.server_conn,)
-    )
-    shim.listener_thread.start()
+    print(f"~~~~ session_id {session_id}")
 
-    return_code = shim._run_user_script_subprocess()
-    assert return_code == 0, f"failed with return_code {return_code}"
-
-    print("~~~~ session_id", shim.session_id)
-
+    # Query results from first run
     rows = DB.query_all(
         "SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=?",
-        (shim.session_id,),
+        (session_id,),
     )
 
     graph_topology = DB.query_one(
         "SELECT log, success, graph_topology FROM experiments WHERE session_id=?",
-        (shim.session_id,),
+        (session_id,),
     )
     graph = json.loads(graph_topology["graph_topology"])
 
-    # send a restart message
-    message = {"type": "restart", "role": "shim-control", "session_id": shim.session_id}
-    shim.server_conn.sendall((json.dumps(message) + "\n").encode("utf-8"))
+    # Wait a moment before second run
+    time.sleep(1)
 
-    time.sleep(2)
+    # Second run (should use cached results)
+    # Pass the same session_id so it reuses the cache
+    env["AGENT_COPILOT_SESSION_ID"] = session_id
+    returncode_rerun, _ = _run_script_with_aco_launch(script_path, project_root, env)
+    assert returncode_rerun == 0, f"Re-run failed with return_code {returncode_rerun}"
 
-    assert shim.restart_event.is_set(), "Restart even not set"
-    shim.restart_event.clear()
-    returncode_rerun = shim._run_user_script_subprocess()
-    assert returncode_rerun == 0, f"re-run failed with return_code {return_code}"
-
+    # Query results from second run
     new_rows = DB.query_all(
         "SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=?",
-        (shim.session_id,),
+        (session_id,),
     )
 
     new_graph_topology = DB.query_one(
         "SELECT log, success, graph_topology FROM experiments WHERE session_id=?",
-        (shim.session_id,),
+        (session_id,),
     )
     new_graph = json.loads(new_graph_topology["graph_topology"])
-
-    # Cleanup: Close server connection and stop listener thread
-    shim._kill_current_process()
-    shim.send_deregister()
-    shim.server_conn.close()
-    shim.listener_thread.join(timeout=2)
 
     run_data_obj = RunData(rows=rows, new_rows=new_rows, graph=graph, new_graph=new_graph)
 

@@ -5,7 +5,6 @@ import threading
 import subprocess
 import time
 import uuid
-import subprocess
 import shlex
 import multiprocessing
 from datetime import datetime
@@ -46,11 +45,11 @@ class DevelopServer:
         self.conn_info = {}  # conn -> {role, session_id}
         self.session_graphs = {}  # session_id -> graph_data
         self.ui_connections = set()  # All UI connections (simplified)
-        self.sessions = {}  # session_id -> Session (only for shim connections)
-        self.rerun_sessions = set()  # Track sessions being rerun to avoid clearing llm_calls
+        self.sessions = {}  # session_id -> Session (only for agent runner connections)
         self.module_to_file = module_to_file or MODULE2FILE  # Module mapping for file watcher
         self.file_watcher_process = None  # Child process for file watching
         self.current_user_id = None  # Store the current authenticated user_id
+        self.rerun_sessions = set()  # Track sessions being rerun to avoid clearing llm_calls
 
     # ============================================================
     # File Watcher Management
@@ -58,41 +57,26 @@ class DevelopServer:
 
     def start_file_watcher(self) -> None:
         """Start the file watcher process if module mapping is available."""
-        logger.info(f"[DevelopServer] Attempting to start file watcher...")
-        logger.info(f"[DevelopServer] Module mapping contains {len(self.module_to_file)} modules")
-
         if not self.module_to_file:
             logger.warning("[DevelopServer] No module mapping provided, skipping file watcher")
             return
-
-        # Log some sample modules
-        sample_modules = list(self.module_to_file.items())[:3]
-        for module_name, file_path in sample_modules:
-            logger.info(f"[DevelopServer] Sample module: {module_name} -> {file_path}")
 
         if self.file_watcher_process and self.file_watcher_process.is_alive():
             logger.warning("[DevelopServer] File watcher process is already running")
             return
 
         try:
-            # Spawn file watcher as a separate process
-            logger.info("[DevelopServer] Spawning file watcher process...")
             self.file_watcher_process = multiprocessing.Process(
                 target=run_file_watcher_process,
                 args=(self.module_to_file,),
                 daemon=True,  # Dies when parent process dies
             )
             self.file_watcher_process.start()
-            logger.info(
-                f"[DevelopServer] ✓ File watcher process started (PID: {self.file_watcher_process.pid})"
-            )
 
             # Give it a moment to start
             time.sleep(0.1)
-            if self.file_watcher_process.is_alive():
-                logger.info(f"[DevelopServer] ✓ File watcher process is running")
-            else:
-                logger.error(f"[DevelopServer] ✗ File watcher process died immediately")
+            if not self.file_watcher_process.is_alive():
+                logger.error(f"[DevelopServer] File watcher process died immediately")
 
         except Exception as e:
             logger.error(f"[DevelopServer] ✗ Failed to start file watcher process: {e}")
@@ -110,7 +94,6 @@ class DevelopServer:
                     # Force kill if it doesn't terminate gracefully
                     self.file_watcher_process.kill()
                     self.file_watcher_process.join()
-                logger.info("[DevelopServer] File watcher process stopped")
             except Exception as e:
                 logger.error(f"[DevelopServer] Error stopping file watcher process: {e}")
             finally:
@@ -203,7 +186,6 @@ class DevelopServer:
             msg = {"type": "experiment_list", "experiments": experiment_list}
             try:
                 send_json(target_conn, msg)
-                logger.debug(f"exp len {len(experiment_list)}")
             except Exception as e:
                 logger.error(f"Error sending experiment list to UI: {e}")
 
@@ -240,6 +222,65 @@ class DevelopServer:
         else:
             print(f"No graph found for session_id: {session_id}")
         print("--------------------------------\n")
+
+    # ============================================================
+    # Helper methods
+    # ============================================================
+
+    def _clear_session_ui(self, session_id: str) -> None:
+        """Clear UI state for a session (graphs and color previews)."""
+        # Clear graph in both memory and database atomically to prevent stale data
+        empty_graph = {"nodes": [], "edges": []}
+        self.session_graphs[session_id] = empty_graph
+        DB.update_graph_topology(session_id, empty_graph)
+
+        # Reset color previews in both memory and database
+        DB.update_color_preview(session_id, [])
+        self.broadcast_to_all_uis(
+            {"type": "color_preview_update", "session_id": session_id, "color_preview": []}
+        )
+
+        # Broadcast empty graph to all UIs
+        self.broadcast_to_all_uis(
+            {
+                "type": "graph_update",
+                "session_id": session_id,
+                "payload": empty_graph,
+            }
+        )
+
+    def _spawn_session_process(self, session_id: str, child_session_id: str) -> None:
+        """Spawn a new session process with the original command and environment."""
+        try:
+            cwd, command, environment = DB.get_exec_command(session_id)
+            logger.debug(
+                f"[DevelopServer] Rerunning finished session {session_id} with cwd={cwd} and command={command}"
+            )
+
+            # Mark this session as being rerun to avoid clearing llm_calls
+            self.rerun_sessions.add(child_session_id)
+
+            # Set up environment
+            env = os.environ.copy()
+            env["AGENT_COPILOT_SESSION_ID"] = session_id
+            env.update(environment)
+            logger.debug(
+                f"[DevelopServer] Restored {len(environment)} environment variables for session {session_id}"
+            )
+
+            # Spawn the process
+            args = shlex.split(command)
+            subprocess.Popen(args, cwd=cwd, env=env, close_fds=True, start_new_session=True)
+
+            # Update session status and timestamp
+            session = self.sessions.get(child_session_id)
+            if session:
+                session.status = "running"
+                DB.update_timestamp(child_session_id, datetime.now())
+                self.broadcast_experiment_list_to_uis()
+
+        except Exception as e:
+            logger.error(f"[DevelopServer] Failed to rerun finished session: {e}")
 
     # ============================================================
     # Handle message types.
@@ -298,15 +339,9 @@ class DevelopServer:
                 for source_session in source_sessions:
                     target_sessions.add(source_session)
                     cross_session_sources.append(source)
-                    logger.info(
-                        f"[DevelopServer] Found cross-session edge: node {source} in session {source_session}"
-                    )
 
         # If we have cross-session references, add the node to those sessions instead of current session
         if target_sessions:
-            logger.info(
-                f"[DevelopServer] Adding node {node['id']} to cross-session targets: {target_sessions}"
-            )
             for target_sid in target_sessions:
                 self._add_node_to_session(target_sid, node, cross_session_sources)
         else:
@@ -326,7 +361,6 @@ class DevelopServer:
                 break
         if not node_exists:
             graph["nodes"].append(node)
-            logger.info(f"[DevelopServer] Added node {node['id']} to session {sid}")
 
         # Build set of existing edge IDs for duplicate checking
         existing_edge_ids = {e["id"] for e in graph["edges"]}
@@ -354,16 +388,13 @@ class DevelopServer:
         color_preview = node_colors[-6:]  # Only display last 6 colors
         DB.update_color_preview(sid, color_preview)
         # Broadcast color preview update to all UIs
-        logger.debug(f"[DevelopServer] Broadcast color {time.time()}")
         self.broadcast_to_all_uis(
             {"type": "color_preview_update", "session_id": sid, "color_preview": color_preview}
         )
-        logger.debug(f"[DevelopServer] Broadcast graph update {time.time()}")
         self.broadcast_graph_update(sid)
         DB.update_graph_topology(sid, graph)
 
     def handle_edit_input(self, msg: dict) -> None:
-        logger.debug(f"[DevelopServer] Received edit_input: {msg}")
         session_id = msg["session_id"]
         node_id = msg["node_id"]
         new_input = msg["value"]
@@ -379,10 +410,8 @@ class DevelopServer:
                     break
             DB.update_graph_topology(session_id, self.session_graphs[session_id])
             self.broadcast_graph_update(session_id)
-        logger.debug("[DevelopServer] Input overwrite completed")
 
     def handle_edit_output(self, msg: dict) -> None:
-        logger.debug(f"[DevelopServer] Received edit_output: {msg}")
         session_id = msg["session_id"]
         node_id = msg["node_id"]
         new_output = msg["value"]
@@ -397,11 +426,9 @@ class DevelopServer:
                     break
             DB.update_graph_topology(session_id, self.session_graphs[session_id])
             self.broadcast_graph_update(session_id)
-        logger.debug("[DevelopServer] Output overwrite completed")
 
     def handle_update_node(self, msg: dict) -> None:
         """Handle updateNode message for updating node properties like label"""
-        logger.debug(f"[DevelopServer] Received updateNode: {msg}")
         session_id = msg.get("session_id")
         node_id = msg.get("node_id")
         field = msg.get("field")
@@ -416,9 +443,6 @@ class DevelopServer:
                 if node["id"] == node_id:
                     # Update the specified field
                     node[field] = value
-                    logger.debug(
-                        f"[DevelopServer] Updated node {node_id} field '{field}' to '{value}'"
-                    )
                     break
 
             # Update the graph topology and broadcast the change
@@ -546,7 +570,7 @@ class DevelopServer:
             session.shim_conn = conn
         session.status = "running"
         self.broadcast_experiment_list_to_uis()
-        self.conn_info[conn] = {"role": "shim-control", "session_id": session_id}
+        self.conn_info[conn] = {"role": "agent-runner", "session_id": session_id}
         send_json(conn, {"type": "session_id", "session_id": session_id})
 
     def handle_erase(self, msg):
@@ -569,33 +593,17 @@ class DevelopServer:
         if not parent_session_id:
             logger.error("[DevelopServer] Restart message missing session_id. Ignoring.")
             return
+        # Clear UI state (updates both memory and database atomically)
+        self._clear_session_ui(session_id)
+
         session = self.sessions.get(parent_session_id)
 
-        # Clear graph in both memory and database atomically to prevent stale data
-        empty_graph = {"nodes": [], "edges": []}
-        self.session_graphs[session_id] = empty_graph
-        DB.update_graph_topology(session_id, empty_graph)
-
-        # Reset color previews in both memory and database
-        DB.update_color_preview(session_id, [])
-        self.broadcast_to_all_uis(
-            {"type": "color_preview_update", "session_id": session_id, "color_preview": []}
-        )
-
-        # Broadcast empty graph to all UIs
-        self.broadcast_to_all_uis(
-            {
-                "type": "graph_update",
-                "session_id": session_id,
-                "payload": empty_graph,
-            }
-        )
-
         if session and session.status == "running":
+            # Send graceful restart signal to existing session if still connected
             if session.shim_conn:
                 restart_msg = {"type": "restart", "session_id": parent_session_id}
                 logger.debug(
-                    f"[DevelopServer] Session running...Sending restart to shim-control for session_id: {parent_session_id} with message: {restart_msg}"
+                    f"[DevelopServer] Session running...Sending restart for session_id: {parent_session_id}"
                 )
                 try:
                     send_json(session.shim_conn, restart_msg)
@@ -605,53 +613,14 @@ class DevelopServer:
             else:
                 logger.warning(f"[DevelopServer] No shim_conn for session_id: {parent_session_id}")
         elif session and session.status == "finished":
-            # Rerun for finished session: launch new shim-control with same session_id
-            cwd, command, environment = DB.get_exec_command(parent_session_id)
-
-            logger.debug(
-                f"[DevelopServer] Rerunning finished session {parent_session_id} with cwd={cwd} and command={command}"
-            )
-            # Mark this session as being rerun to avoid clearing llm_calls
-            self.rerun_sessions.add(session_id)
-            try:
-                # Insert session_id into environment so shim-control uses the same session_id
-                env = os.environ.copy()
-                env["AGENT_COPILOT_SESSION_ID"] = parent_session_id
-
-                # Restore the user's original environment variables
-                env.update(environment)
-                logger.debug(
-                    f"[DevelopServer] Restored {len(environment)} environment variables for session {parent_session_id}"
-                )
-
-                # Rerun the original command. This starts the shim-control, which starts the shim-runner.
-                args = shlex.split(command)
-                subprocess.Popen(args, cwd=cwd, env=env, close_fds=True, start_new_session=True)
-
-                # Update the session status to running and update timestamp for rerun
-                session = self.sessions.get(session_id)
-                if session:
-                    session.status = "running"
-                    # Update database timestamp so it sorts correctly
-                    new_timestamp = datetime.now()
-                    DB.update_timestamp(session_id, new_timestamp)
-                    # Broadcast updated experiment list with rerun session at the front
-                    self.broadcast_experiment_list_to_uis()
-            except Exception as e:
-                logger.error(f"[DevelopServer] Failed to rerun finished session: {e}")
+            # Rerun for finished session: spawn new process with same session_id
+            self._spawn_session_process(parent_session_id, session_id)
 
     def handle_deregister_message(self, msg: dict) -> bool:
         session_id = msg["session_id"]
         session = self.sessions.get(session_id)
         if session:
             session.status = "finished"
-            self.broadcast_experiment_list_to_uis()
-
-    def handle_debugger_restart_message(self, msg: dict) -> bool:
-        """Handle debugger restart notification, update session info."""
-        # TODO: Test
-        session_id = msg["session_id"]
-        if session_id in self.sessions:
             self.broadcast_experiment_list_to_uis()
 
     def handle_shutdown(self) -> None:
@@ -661,7 +630,6 @@ class DevelopServer:
         self.stop_file_watcher()
         # Close all client sockets
         for s in list(self.conn_info.keys()):
-            logger.debug(f"[DevelopServer] Closing socket: {s}")
             try:
                 s.close()
             except Exception as e:
@@ -676,12 +644,10 @@ class DevelopServer:
         self.broadcast_to_all_uis(
             {"type": "graph_update", "session_id": None, "payload": {"nodes": [], "edges": []}}
         )
-        logger.info("[DevelopServer] Database and in-memory state cleared.")
 
     def handle_set_database_mode(self, msg: dict):
         """Handle database mode switching from UI dropdown."""
         mode = msg.get("mode")  # "local" or "remote"
-        logger.debug(f"[DevelopServer] received set DB mode: {mode}")
         if mode not in ["local", "remote"]:
             logger.error(f"[DevelopServer] Invalid database mode: {mode}")
             return
@@ -689,9 +655,6 @@ class DevelopServer:
         try:
             current_mode = DB.get_current_mode()
             if current_mode != mode:
-                logger.info(
-                    f"[DevelopServer] Switching database mode from {current_mode} to {mode}"
-                )
                 DB.switch_mode(mode)
 
                 # Broadcast the mode change to all UIs so they can update their UI controls
@@ -699,9 +662,6 @@ class DevelopServer:
 
                 # Refresh experiment list with new database - UI will see different data
                 self.broadcast_experiment_list_to_uis()
-                logger.info(f"[DevelopServer] Successfully switched to {mode} database mode")
-            else:
-                logger.debug(f"[DevelopServer] Database mode already set to {mode}")
 
         except Exception as e:
             logger.error(f"[DevelopServer] Failed to switch database mode: {e}")
@@ -720,8 +680,6 @@ class DevelopServer:
             self.handle_restart_message(msg)
         elif msg_type == "deregister":
             self.handle_deregister_message(msg)
-        elif msg_type == "debugger_restart":
-            self.handle_debugger_restart_message(msg)
         elif msg_type == "add_node":
             self.handle_add_node(msg)
         elif msg_type == "edit_input":
@@ -766,8 +724,8 @@ class DevelopServer:
             handshake = json.loads(handshake_line.strip())
             role = handshake.get("role")
             session_id = None
-            # Only assign session_id for shim-control.
-            if role == "shim-control":
+            # Only assign session_id for agent-runner.
+            if role == "agent-runner":
                 # If rerun, use previous session_id. Else, assign new one.
                 prev_session_id = handshake.get("prev_session_id")
                 if prev_session_id is not None:
@@ -806,25 +764,26 @@ class DevelopServer:
                 session.status = "running"
                 self.broadcast_experiment_list_to_uis()
                 self.conn_info[conn] = {"role": role, "session_id": session_id}
-                send_json(conn, {"type": "session_id", "session_id": session_id})
+                send_json(
+                    conn,
+                    {
+                        "type": "session_id",
+                        "session_id": session_id,
+                        "database_mode": DB.get_current_mode(),
+                    },
+                )
 
                 # Extract module mapping for file watcher
                 module_to_file = handshake.get("module_to_file", {})
                 if module_to_file:
-                    logger.info(
-                        f"[DevelopServer] Received {len(module_to_file)} modules from shim-control"
-                    )
                     # Update server's module mapping
                     self.module_to_file.update(module_to_file)
                     # Restart file watcher with updated mapping
                     self.stop_file_watcher()
                     self.start_file_watcher()
                 else:
-                    logger.warning(f"[DevelopServer] No module mapping received from shim-control")
+                    logger.warning(f"[DevelopServer] No module mapping received from agent-runner")
 
-            elif role == "shim-runner":
-                # Send acknowledgment to shim-runner that experiment is ready
-                send_json(conn, {"type": "ready", "database_mode": DB.get_current_mode()})
             elif role == "ui":
                 # Always reload finished runs from the DB before sending experiment list
                 self.load_finished_runs()
@@ -858,20 +817,20 @@ class DevelopServer:
 
                     # Print message type.
                     msg_type = msg.get("type", "unknown")
-                    logger.debug(f"[DevelopServer] Received message type: {msg_type} {time.time()}")
+                    logger.debug(f"[DevelopServer] Received message type: {msg_type}")
 
                     if "session_id" not in msg:
                         msg["session_id"] = session_id
 
                     self.process_message(msg, conn)
 
-            except (ConnectionResetError, OSError) as e:
-                logger.info(f"[DevelopServer] Connection closed: {e}")
+            except (ConnectionResetError, OSError):
+                pass  # Expected when connections close
         finally:
             # Clean up connection
             info = self.conn_info.pop(conn, None)
-            # Only mark session finished for shim-control disconnects
-            if info and role == "shim-control":
+            # Only mark session finished for agent-runner disconnects
+            if info and role == "agent-runner":
                 session = self.sessions.get(info["session_id"])
                 if session:
                     with session.lock:
@@ -890,9 +849,8 @@ class DevelopServer:
         """Main server loop: accept clients and spawn handler threads."""
         # Clear the log file on server startup
         try:
-            with open(ACO_LOG_PATH, "w") as f:
+            with open(ACO_LOG_PATH, "w"):
                 pass  # Just truncate the file
-            logger.debug("Server log file cleared on startup")
         except Exception as e:
             logger.warning(f"Could not clear log file on startup: {e}")
 

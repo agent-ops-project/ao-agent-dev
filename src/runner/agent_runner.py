@@ -1,0 +1,511 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+import socket
+import json
+import shlex
+import random
+import threading
+import queue
+import time
+import warnings
+import psutil
+import debugpy
+import signal
+import runpy
+import builtins
+from typing import Optional, List
+
+from aco.common.logger import logger
+from aco.common.constants import (
+    HOST,
+    PORT,
+    CONNECTION_TIMEOUT,
+    SERVER_START_TIMEOUT,
+    SERVER_START_WAIT,
+    MESSAGE_POLL_INTERVAL,
+)
+from aco.common.utils import MODULE2FILE, compute_code_hash
+from aco.cli.aco_server import launch_daemon_server
+from aco.runner.ast_rewrite_hook import install_patch_hook, set_module_to_user_file
+from aco.runner.context_manager import set_parent_session_id, set_server_connection
+from aco.runner.monkey_patching.apply_monkey_patches import apply_all_monkey_patches
+from aco.server.ast_transformer import (
+    taint_fstring_join,
+    taint_format_string,
+    taint_percent_format,
+    exec_func,
+)
+from aco.server.database_manager import DB
+
+
+def get_runner_dir():
+    """Return the absolute path to the runner directory."""
+    return os.path.abspath(os.path.dirname(__file__))
+
+
+def _log_error(context: str, exception: Exception) -> None:
+    """Centralized error logging utility."""
+    import traceback
+
+    logger.error(f"[AgentRunner] {context}: {exception}")
+    logger.debug(f"[AgentRunner] Traceback: {traceback.format_exc()}")
+
+
+def ensure_server_running() -> None:
+    """Ensure the develop server is running, start it if necessary."""
+    try:
+        socket.create_connection((HOST, PORT), timeout=SERVER_START_TIMEOUT).close()
+        logger.debug(f"Server already running on {HOST}:{PORT}")
+    except Exception:
+        logger.info(f"Starting server on {HOST}:{PORT}")
+        launch_daemon_server()
+        time.sleep(SERVER_START_WAIT)
+        socket.create_connection((HOST, PORT), timeout=CONNECTION_TIMEOUT).close()
+        logger.debug("Server started successfully")
+
+
+class AgentRunner:
+    """Unified agent runner that combines orchestration and execution in a single process."""
+
+    def __init__(
+        self,
+        script_path: str,
+        script_args: List[str],
+        is_module_execution: bool,
+        project_root: str,
+        sample_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        run_name: Optional[str] = None,
+    ):
+        self.script_path = script_path
+        self.script_args = script_args
+        self.is_module_execution = is_module_execution
+        self.project_root = project_root
+        self.sample_id = sample_id
+        self.user_id = user_id
+        self.run_name = run_name
+
+        # State management
+        self.shutdown_flag = False
+        self.restart_event = threading.Event()
+        self.process_id = os.getpid()
+
+        # Server communication
+        self.session_id: Optional[str] = None
+        self.server_conn: Optional[socket.socket] = None
+
+        # Threading for server messages
+        self.listener_thread: Optional[threading.Thread] = None
+
+        # Queue for synchronous request-response messages (e.g., add_subrun responses)
+        # The listener thread routes non-control messages here for send_to_server_and_receive
+        self.response_queue: queue.Queue = queue.Queue()
+
+        # Register signal handlers
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+
+    def _send_message(self, msg_type: str, **kwargs) -> None:
+        """Send a message to the develop server."""
+        if not self.server_conn:
+            return
+        message = {"type": msg_type, "role": "agent-runner", **kwargs}
+        if self.session_id:
+            message["session_id"] = self.session_id
+        try:
+            self.server_conn.sendall((json.dumps(message) + "\n").encode("utf-8"))
+        except Exception as e:
+            _log_error("Failed to send message to server", e)
+
+    def send_deregister(self) -> None:
+        """Send deregistration message to the develop server."""
+        self._send_message("deregister")
+
+    def _signal_handler(self, signum, frame) -> None:
+        """Handle termination signals gracefully."""
+        logger.info(f"Received signal {signum}, shutting down...")
+        self.send_deregister()
+        if self.server_conn:
+            try:
+                self.server_conn.close()
+            except Exception as e:
+                _log_error("Error closing server connection", e)
+        sys.exit(0)
+
+    def _listen_for_server_messages(self, sock: socket.socket) -> None:
+        """Background thread: listen for 'restart' or 'shutdown' messages from the server."""
+        try:
+            sock.setblocking(False)
+            buffer = b""
+            while not self.shutdown_flag:
+                try:
+                    import select
+
+                    rlist, _, _ = select.select([sock], [], [], 1.0)
+                    if rlist:
+                        data = sock.recv(4096)
+                        logger.info(
+                            f"[AgentRunner] Listener received raw data: {data[:200] if data else 'empty'}"
+                        )
+                        if not data:
+                            break
+                        buffer += data
+                        while b"\n" in buffer:
+                            line, buffer = buffer.split(b"\n", 1)
+                            logger.info(f"[AgentRunner] Listener parsed line: {line[:200]}")
+                            try:
+                                msg = json.loads(line.decode("utf-8").strip())
+                                self._handle_server_message(msg)
+                            except json.JSONDecodeError as e:
+                                logger.error(
+                                    f"[AgentRunner] Listener JSON decode error: {e}, line: {line}"
+                                )
+                                continue
+                except Exception as e:
+                    _log_error("Error in message listener", e)
+                    break
+        except Exception as e:
+            _log_error("Error in listener thread", e)
+        finally:
+            try:
+                sock.close()
+            except Exception as e:
+                _log_error("Error closing socket", e)
+
+    def _handle_server_message(self, msg: dict) -> None:
+        """Handle incoming server messages.
+
+        Control messages (restart, shutdown) are handled directly.
+        Response messages (session_id, etc.) are routed to the response queue
+        for send_to_server_and_receive to pick up.
+        """
+        msg_type = msg.get("type")
+        if msg_type == "restart":
+            logger.info(f"[AgentRunner] Received restart message: {msg}")
+            self.restart_event.set()
+        elif msg_type == "shutdown":
+            logger.info(f"[AgentRunner] Received shutdown message: {msg}")
+            self.shutdown_flag = True
+        else:
+            # Route to response queue for synchronous request-response patterns
+            logger.debug(f"[AgentRunner] Routing response to queue: {msg}")
+            self.response_queue.put(msg)
+
+    def _is_debugpy_session(self) -> bool:
+        """Detect if we're running under debugpy (VSCode debugging)."""
+        if os.environ.get("ACO_NO_DEBUG_MODE", False):
+            return False
+
+        try:
+            return debugpy.is_client_connected() or hasattr(debugpy, "_client")
+        except (ImportError, AttributeError):
+            pass
+
+        if "debugpy" in sys.modules:
+            return True
+
+        debugpy_env_vars = [
+            "DEBUGPY_LAUNCHER_PORT",
+            "PYDEVD_LOAD_VALUES_ASYNC",
+            "PYDEVD_USE_FRAME_EVAL",
+        ]
+        return any(os.getenv(var) for var in debugpy_env_vars)
+
+    def _get_parent_cmdline(self) -> List[str]:
+        """Get the command line of the parent process."""
+        try:
+            current_process = psutil.Process()
+            parent = current_process.parent()
+            return parent.cmdline() if parent else []
+        except Exception as e:
+            _log_error("Failed to get parent cmdline", e)
+            return []
+
+    def _generate_restart_command(self) -> str:
+        """Generate the appropriate command for restarting the script."""
+        original_command = " ".join(shlex.quote(arg) for arg in sys.argv)
+
+        if not self._is_debugpy_session():
+            return original_command
+
+        python_executable = sys.executable
+        parent_cmdline = self._get_parent_cmdline()
+
+        if not parent_cmdline:
+            return f"/usr/bin/env {python_executable} {original_command}"
+
+        cmdline_str = " ".join(shlex.quote(arg) for arg in parent_cmdline)
+
+        # Pattern 1: VSCode launcher - debugpy/launcher PORT -- args
+        if "launcher" in cmdline_str and "--" in parent_cmdline:
+            dash_index = parent_cmdline.index("--")
+            original_args = " ".join(shlex.quote(arg) for arg in parent_cmdline[dash_index + 1 :])
+            return f"/usr/bin/env {python_executable} {original_args}"
+
+        # Pattern 2: Direct debugpy module - python -m debugpy [options] -m module/script
+        if "-m" in parent_cmdline and "debugpy" in parent_cmdline:
+            if self.is_module_execution:
+                target_args = f"-m {self.script_path} {' '.join(shlex.quote(arg) for arg in self.script_args)}"
+            else:
+                target_args = f"{shlex.quote(self.script_path)} {' '.join(shlex.quote(arg) for arg in self.script_args)}"
+            return f"{python_executable} {target_args}"
+
+        # Fallback: basic command
+        if self.is_module_execution:
+            target_args = (
+                f"-m {self.script_path} {' '.join(shlex.quote(arg) for arg in self.script_args)}"
+            )
+        else:
+            target_args = f"{shlex.quote(self.script_path)} {' '.join(shlex.quote(arg) for arg in self.script_args)}"
+
+        return f"{python_executable} {target_args}"
+
+    def _connect_to_server(self) -> None:
+        """Connect to the develop server and perform handshake."""
+        try:
+            self.server_conn = socket.create_connection((HOST, PORT), timeout=CONNECTION_TIMEOUT)
+        except Exception as e:
+            logger.error(f"Cannot connect to develop server: {e}")
+            sys.exit(1)
+
+        handshake = {
+            "type": "hello",
+            "role": "agent-runner",
+            "name": self.run_name,
+            "cwd": os.getcwd(),
+            "command": self._generate_restart_command(),
+            "environment": dict(os.environ),
+            "process_id": self.process_id,
+            "prev_session_id": os.getenv("AGENT_COPILOT_SESSION_ID"),
+            "module_to_file": MODULE2FILE,
+            "code_hash": compute_code_hash(),
+        }
+
+        if self.user_id is not None:
+            handshake["user_id"] = str(self.user_id)
+
+        try:
+            self.server_conn.sendall((json.dumps(handshake) + "\n").encode("utf-8"))
+            file_obj = self.server_conn.makefile(mode="r")
+            session_line = file_obj.readline()
+            if session_line:
+                session_msg = json.loads(session_line.strip())
+                self.session_id = session_msg.get("session_id")
+                database_mode = session_msg.get("database_mode")
+                if database_mode:
+                    DB.switch_mode(database_mode)
+                    logger.debug(f"Using database mode: {database_mode}")
+                logger.info(f"Registered with session_id: {self.session_id}")
+        except Exception as e:
+            _log_error("Server communication failed", e)
+            raise
+
+    def _setup_environment(self) -> None:
+        """Set up the execution environment for the agent runner."""
+        # Enable tracing - this tells AST-injected code to use real exec_func
+        os.environ["AGENT_COPILOT_ENABLE_TRACING"] = "1"
+
+        # Set up PYTHONPATH for AST rewrite hooks
+        runtime_tracing_dir = get_runner_dir()
+
+        if "PYTHONPATH" in os.environ:
+            os.environ["PYTHONPATH"] = (
+                self.project_root
+                + os.pathsep
+                + runtime_tracing_dir
+                + os.pathsep
+                + os.environ["PYTHONPATH"]
+            )
+        else:
+            os.environ["PYTHONPATH"] = self.project_root + os.pathsep + runtime_tracing_dir
+
+        # Set random seed
+        if not os.environ.get("ACO_SEED"):
+            os.environ["ACO_SEED"] = str(random.randint(0, 2**31 - 1))
+
+        # Install AST hooks
+        set_module_to_user_file(MODULE2FILE)
+        install_patch_hook()
+
+        # Register taint functions in builtins
+        builtins.taint_fstring_join = taint_fstring_join
+        builtins.taint_format_string = taint_format_string
+        builtins.taint_percent_format = taint_percent_format
+        builtins.exec_func = exec_func
+
+    def _apply_runtime_setup(self) -> None:
+        """Apply runtime setup for the agent runner execution environment."""
+        # Set up context manager with server connection and response queue
+        set_parent_session_id(self.session_id)
+        set_server_connection(self.server_conn, self.response_queue)
+
+        # Apply monkey patches
+        apply_all_monkey_patches()
+
+        # Set random seeds
+        aco_random_seed = int(os.environ["ACO_SEED"])
+        random.seed(aco_random_seed)
+
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", module="numpy")
+                from numpy.random import seed
+
+                seed(aco_random_seed)
+        except ImportError:
+            pass
+
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", module="torch")
+                from torch import manual_seed
+
+                manual_seed(aco_random_seed)
+        except ImportError:
+            pass
+
+    def _convert_file_to_module_name(self, script_path: str) -> str:
+        """Convert a file path to a module name that Python can import."""
+        if os.path.isabs(script_path):
+            abs_path = script_path
+        else:
+            abs_path = os.path.abspath(script_path)
+
+        try:
+            rel_path = os.path.relpath(abs_path, self.project_root)
+
+            if rel_path.startswith(".."):
+                module_name = os.path.splitext(os.path.basename(abs_path))[0]
+                return module_name
+
+            if rel_path.endswith(".py"):
+                rel_path = rel_path[:-3]
+
+            module_name = rel_path.replace(os.sep, ".")
+
+            if module_name.endswith(".__init__"):
+                module_name = module_name[:-9]
+
+            if not module_name:
+                module_name = os.path.splitext(os.path.basename(abs_path))[0]
+
+            return module_name
+
+        except ValueError:
+            base_name = os.path.splitext(os.path.basename(abs_path))[0]
+            return base_name
+
+    def _execute_user_code(self) -> int:
+        """Execute the user's code directly in this process.
+
+        Returns:
+            Exit code from the user's script (0 for success, non-zero for error)
+        """
+        try:
+            # Ensure current working directory is in sys.path for module imports
+            cwd = os.getcwd()
+            if cwd not in sys.path:
+                sys.path.insert(0, cwd)
+                logger.info(f"[AgentRunner] Added current directory to sys.path: {cwd}")
+
+            # Run user program.
+            if self.is_module_execution:
+                sys.argv = [self.script_path] + self.script_args
+                runpy.run_module(self.script_path, run_name="__main__")
+            else:
+                module_name = self._convert_file_to_module_name(self.script_path)
+                sys.argv = [self.script_path] + self.script_args
+                runpy.run_module(module_name, run_name="__main__")
+            return 0
+        except SystemExit as e:
+            return e.code if e.code is not None else 0
+        except Exception as e:
+            _log_error("Error executing user code", e)
+            return 1
+
+    def _run_debug_mode(self) -> int:
+        """Run the script in debug mode with persistent restart loop.
+
+        In debug mode, after the script completes, we wait for either a restart
+        signal (from the UI) or a shutdown signal before exiting. This allows
+        the user to re-run the script without restarting the debug session.
+
+        Returns:
+            Exit code from the last script execution
+        """
+        logger.info("[AgentRunner] Debug mode detected. Running with restart capability.")
+        exit_code = 0
+        first_run = True
+
+        while not self.shutdown_flag:
+            logger.info("[AgentRunner] Running script...")
+
+            # Only apply runtime setup (monkey patches, etc.) on first run
+            # to avoid double-patching issues on restart
+            if first_run:
+                self._apply_runtime_setup()
+                first_run = False
+
+            exit_code = self._execute_user_code()
+
+            logger.info(
+                f"[AgentRunner] Script completed with exit code {exit_code}. "
+                "Waiting for restart or shutdown..."
+            )
+
+            # Wait for either restart or shutdown signal
+            while not self.shutdown_flag and not self.restart_event.is_set():
+                time.sleep(MESSAGE_POLL_INTERVAL)
+
+            if self.shutdown_flag:
+                logger.info("[AgentRunner] Shutdown requested, exiting debug mode.")
+                break
+
+            if self.restart_event.is_set():
+                logger.info("[AgentRunner] Restart requested, rerunning script...")
+                self.restart_event.clear()
+                continue
+
+        return exit_code
+
+    def _run_normal_mode(self) -> int:
+        """Run the script in normal mode (single execution).
+
+        Returns:
+            Exit code from the script execution
+        """
+        self._apply_runtime_setup()
+        return self._execute_user_code()
+
+    def run(self) -> None:
+        """Main entry point to run the unified agent runner."""
+        try:
+            self._setup_environment()
+            ensure_server_running()
+            self._connect_to_server()
+
+            self.listener_thread = threading.Thread(
+                target=self._listen_for_server_messages, args=(self.server_conn,), daemon=True
+            )
+            self.listener_thread.start()
+
+            # Use debug mode if running under debugpy, otherwise normal mode
+            if self._is_debugpy_session():
+                exit_code = self._run_debug_mode()
+            else:
+                exit_code = self._run_normal_mode()
+
+        finally:
+            self.send_deregister()
+            if self.server_conn:
+                try:
+                    self.server_conn.close()
+                except Exception as e:
+                    _log_error("Error closing server connection in cleanup", e)
+
+            if self.listener_thread:
+                self.listener_thread.join(timeout=2)
+
+        sys.exit(exit_code)

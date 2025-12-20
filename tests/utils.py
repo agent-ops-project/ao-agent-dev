@@ -29,8 +29,8 @@ def setup_test_session(session_id, name="Test Session", parent_session_id=None):
     in the database. A more thorough approach would be to:
 
     1. Start a test server instance or mock the server connection
-    2. Simulate the full handshake flow from launch_scripts.py:
-       - Send "hello" message with role="shim-runner"
+    2. Simulate the full handshake flow from agent_runner.py:
+       - Send "hello" message with role="agent-runner"
        - Server creates experiment record
        - Server responds with acknowledgment
     3. Use the actual monkey-patched flow for LLM calls

@@ -2,6 +2,7 @@ import contextvars
 from contextlib import contextmanager
 import json
 import threading
+import queue
 import os
 from aco.common.logger import logger
 from aco.server.database_manager import DB
@@ -17,12 +18,15 @@ parent_session_id = None
 server_conn = None
 server_file = None
 
+# Response queue for synchronous request-response patterns.
+# The listener thread in AgentRunner routes responses here.
+response_queue: queue.Queue = None
+
 # Names of all subruns in the process. Used to ensure they are unique.
 run_names = None
 
 
 def get_run_name(run_name):
-    logger.debug(f"Active runs in run_names set: {run_names}")
     # Run names must be unique for a given parent_session_id.
     if run_name not in run_names:
         run_names.add(run_name)
@@ -55,9 +59,6 @@ def aco_launch(run_name="Workflow run"):
     """
     # Get unique run name.
     run_name = get_run_name(run_name)
-    logger.debug(
-        f"Sub-run '{run_name}' starting in process {os.getpid()}, thread {threading.get_ident()}"
-    )
 
     # Get rerun environment from parent
     # BUG: If parent sets env vars before calling this, these env vars are lost upon restart.
@@ -121,8 +122,8 @@ def set_parent_session_id(session_id):
     run_names = set(DB.get_session_name(parent_session_id))
 
 
-def set_server_connection(server_connection):
-    global server_conn, server_file
+def set_server_connection(server_connection, rsp_queue=None):
+    global server_conn, server_file, response_queue
     server_conn = server_connection
     server_file = server_connection.makefile("rw")
-    logger.debug(f"Set server connection in context_manager")
+    response_queue = rsp_queue
