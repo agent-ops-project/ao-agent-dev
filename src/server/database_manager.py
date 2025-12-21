@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Optional, Any
 
 from aco.common.logger import logger
-from aco.server.database_backends import postgres, sqlite
+from aco.server.database_backends import postgres
 from aco.runner.monkey_patching.api_parser import (
     get_model_name,
     func_kwargs_to_json_str,

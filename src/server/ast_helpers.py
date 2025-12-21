@@ -13,6 +13,7 @@ No wrappers are used. Objects are stored directly in TAINT_DICT by their id.
 
 from inspect import getsourcefile, iscoroutinefunction
 from aco.common.utils import get_aco_py_files
+import builtins
 
 
 # =============================================================================
@@ -31,7 +32,6 @@ def add_to_taint_dict_and_return(obj, taint):
     Returns:
         The object unchanged (no wrapping)
     """
-    import builtins
 
     # Skip non-taintable types
     if isinstance(obj, bool) or obj is None or isinstance(obj, type):
@@ -48,8 +48,6 @@ def get_taint(obj):
 
     Returns [] if not found.
     """
-    import builtins
-
     return builtins.TAINT_DICT.get_taint(obj)
 
 
@@ -326,8 +324,6 @@ def _exec_third_party(func, args, kwargs, obj_taint, is_async):
 
     For async functions, returns a coroutine. For sync functions, returns the result.
     """
-    import builtins
-
     # Collect taint from all inputs
     all_origins = set(obj_taint or [])
     all_origins.update(_collect_taint_from_args(args, kwargs))
@@ -376,8 +372,6 @@ def _finalize_taint(result):
     had its own taint), we preserve that existing taint rather than merging
     with the container's taint. This ensures items maintain their identity.
     """
-    import builtins
-
     # Check if result already has its own taint - preserve it as-is
     # This handles cases like pop() returning an item with its own taint
     if get_taint(result):
@@ -404,8 +398,6 @@ def _finalize_taint(result):
 
 async def _wrap_coroutine_with_taint(coro, taint):
     """Wrap coroutine to set taint context when awaited."""
-    import builtins
-
     builtins.ACTIVE_TAINT.set(taint)
     try:
         result = await coro

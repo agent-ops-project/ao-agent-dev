@@ -13,7 +13,6 @@ exec_func handles user code directly and third-party code with taint propagation
 
 import ast
 from aco.common.utils import get_aco_py_files
-from aco.server.ast_helpers import *
 
 
 class TaintPropagationTransformer(ast.NodeTransformer):

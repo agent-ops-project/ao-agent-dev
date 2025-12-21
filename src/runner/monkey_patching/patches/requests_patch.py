@@ -1,7 +1,6 @@
 from functools import wraps
 from aco.runner.monkey_patching.patching_utils import get_input_dict, send_graph_node_and_edges
 from aco.server.database_manager import DB
-from aco.common.logger import logger
 from aco.common.utils import is_whitelisted_endpoint
 import builtins
 
