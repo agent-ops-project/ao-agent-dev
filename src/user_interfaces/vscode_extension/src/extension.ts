@@ -7,6 +7,50 @@ import { PythonServerClient } from './providers/PythonServerClient';
 // import { AuthManager } from './providers/AuthManager';
 
 export async function activate(context: vscode.ExtensionContext) {
+    // testing only
+    // await context.globalState.update('hasShownInstallPrompt', undefined);
+
+    // Show installation prompt on first activation via status bar
+    const hasShownInstallPrompt = context.globalState.get<boolean>('hasShownInstallPrompt');
+    if (!hasShownInstallPrompt) {
+        const pipCommand = 'pip install agent-copilot';
+
+        // Status bar that stays until clicked
+        const statusBarItem = vscode.window.createStatusBarItem(
+            vscode.StatusBarAlignment.Right,
+            1000 
+        );
+        statusBarItem.text = '$(terminal) Setup: pip install agent-copilot';
+        statusBarItem.tooltip = 'Click to copy install command';
+        statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+        statusBarItem.command = 'agentCopilot.copyInstallCommand';
+        statusBarItem.show();
+
+        // Command to handle click
+        const disposable = vscode.commands.registerCommand('agentCopilot.copyInstallCommand', async () => {
+            // Hide status bar when clicked
+            statusBarItem.dispose();
+            await context.globalState.update('hasShownInstallPrompt', true);
+
+            const selection = await vscode.window.showInformationMessage(
+                '👋 Run "pip install agent-copilot" to complete setup',
+                'Copy Command',
+                'Open Terminal'
+            );
+
+            if (selection === 'Copy Command') {
+                await vscode.env.clipboard.writeText(pipCommand);
+                vscode.window.showInformationMessage('Command copied to clipboard!');
+            } else if (selection === 'Open Terminal') {
+                const terminal = vscode.window.createTerminal('Agent Copilot Setup');
+                terminal.show();
+                terminal.sendText(pipCommand, false);
+            }
+        });
+
+        context.subscriptions.push(statusBarItem, disposable);
+    }
+
     // Google Authentication Provider disabled - feature not yet visible in UI
     // const googleAuthProvider = new GoogleAuthenticationProvider(context);
     // context.subscriptions.push(googleAuthProvider);
