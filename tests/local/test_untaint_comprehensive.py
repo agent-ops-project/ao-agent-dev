@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 import io
 import re
 
-from aco.runner.taint_wrappers import untaint_if_needed, TaintWrapper, taint_wrap
+from aco.server.ast_helpers import untaint_if_needed, taint_wrap
 
 
 class Color(Enum):
@@ -332,14 +332,14 @@ class TestUntaintIfNeeded:
         assert result.x == 10
         assert result.y == 20
 
-    def test_taint_object_wrapper(self):
-        """Test TaintWrapper wrapper"""
+    def test_tainted_object(self):
+        """Test tainted object"""
         original = SimpleClass("wrapped")
-        tainted = TaintWrapper(original, taint_origin=["test_origin"])
+        tainted = taint_wrap(original, taint_origin=["test_origin"])
 
         result = untaint_if_needed(tainted)
-        # Should extract the wrapped object
-        assert result is original
+        # untaint_if_needed is now a no-op, returns the same object
+        assert result is tainted
 
     def test_circular_references(self):
         """Test circular references"""
@@ -546,7 +546,7 @@ class TestUntaintIfNeeded:
             ("Simple Objects", self.test_simple_objects),
             ("Dataclass Objects", self.test_dataclass_objects),
             ("Objects with Slots", self.test_objects_with_slots),
-            ("TaintWrapper Wrapper", self.test_taint_object_wrapper),
+            ("Tainted Object", self.test_tainted_object),
             ("Circular References", self.test_circular_references),
             ("Builtin Objects", self.test_builtin_objects),
             ("Complex Nested Structure", self.test_complex_nested_structure),

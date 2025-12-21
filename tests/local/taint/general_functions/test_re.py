@@ -1,6 +1,6 @@
 import re
 import sys
-from aco.runner.taint_wrappers import TaintWrapper, taint_wrap, get_taint_origins
+from aco.server.ast_helpers import taint_wrap, get_taint_origins
 from ....utils import with_ast_rewriting
 
 
@@ -19,7 +19,7 @@ def test_pattern_search():
 
     # Test that match.group() returns tainted string
     group = match.group()
-    assert isinstance(group, TaintWrapper), f"Expected TaintStr, got {type(group)}"
+    assert get_taint_origins(group) != [], f"Expected tainted value, got {type(group)}"
     assert get_taint_origins(group) == [
         "user_input"
     ], f"Expected ['user_input'], got {get_taint_origins(group)}"
@@ -37,7 +37,7 @@ def test_re_search():
 
     assert match is not None, "Should find match"
     group = match.group()
-    assert isinstance(group, TaintWrapper), f"Expected TaintStr, got {type(group)}"
+    assert get_taint_origins(group) != [], f"Expected tainted value, got {type(group)}"
     assert get_taint_origins(group) == [
         "api_response"
     ], f"Expected ['api_response'], got {get_taint_origins(group)}"
@@ -59,7 +59,7 @@ def test_findall():
     assert len(results) == 2, f"Expected 2 matches, got {len(results)}"
 
     for i, result in enumerate(results):
-        assert isinstance(result, TaintWrapper), f"Expected TaintStr, got {type(result)}"
+        assert get_taint_origins(result) != [], f"Expected tainted value, got {type(result)}"
         assert get_taint_origins(result) == [
             "file_input"
         ], f"Expected ['file_input'], got {get_taint_origins(result)}"
@@ -79,7 +79,9 @@ def test_split():
 
     # Check that parts preserve taint
     for i, result in enumerate(results):
-        assert isinstance(result, TaintWrapper), f"Part {i} expected TaintStr, got {type(result)}"
+        assert (
+            get_taint_origins(result) != []
+        ), f"Part {i} expected tainted value, got {type(result)}"
         assert get_taint_origins(result) == [
             "csv_data"
         ], f"Part {i} expected ['csv_data'], got {get_taint_origins(result)}"
@@ -97,7 +99,7 @@ def test_sub():
 
     result = re.sub(r"world", replacement, tainted)
 
-    assert isinstance(result, TaintWrapper), f"Expected TaintStr, got {type(result)}"
+    assert get_taint_origins(result) != [], f"Expected tainted value, got {type(result)}"
 
     # Should have taint from both original string and replacement
     taint_origins = set(get_taint_origins(result))
@@ -125,7 +127,7 @@ def test_groups():
     assert len(groups) == 2, f"Expected 2 groups, got {len(groups)}"
 
     for i, group in enumerate(groups):
-        assert isinstance(group, TaintWrapper), f"Expected TaintStr, got {type(group)}"
+        assert get_taint_origins(group) != [], f"Expected tainted value, got {type(group)}"
         assert get_taint_origins(group) == [
             "user_data"
         ], f"Expected ['user_data'], got {get_taint_origins(group)}"
@@ -149,9 +151,9 @@ def test_groupdict():
     assert "age" in groupdict, "Should have 'age' group"
 
     for key, value in groupdict.items():
-        assert isinstance(
-            value, TaintWrapper
-        ), f"Group '{key}' expected TaintStr, got {type(value)}"
+        assert (
+            get_taint_origins(value) != []
+        ), f"Group '{key}' expected tainted value, got {type(value)}"
         assert get_taint_origins(value) == [
             "form_input"
         ], f"Group '{key}' expected ['form_input'], got {get_taint_origins(value)}"
@@ -195,9 +197,7 @@ def test_complex_patterns():
 
     for i, group in enumerate(all_groups):
         if group is not None:
-            assert isinstance(
-                group, TaintWrapper
-            ), f"Group {i} should be TaintStr, got {type(group)}"
+            assert get_taint_origins(group) != [], f"Group {i} should be tainted, got {type(group)}"
             assert get_taint_origins(group) == [
                 "contact_data"
             ], f"Group {i} should have contact_data taint"
@@ -220,7 +220,7 @@ def test_empty_and_none_cases():
     result = re.search(r".*", empty_tainted)
     assert result is not None, "Should match empty string"
     group = result.group()
-    assert isinstance(group, TaintWrapper), "Empty match should be TaintStr"
+    assert get_taint_origins(group) != [], "Empty match should be tainted"
     assert get_taint_origins(group) == ["empty_data"], "Empty match should preserve taint"
 
     # Test optional groups that might be None
@@ -251,7 +251,7 @@ def test_function_callbacks():
     tainted = taint_wrap("hello world test", taint_origin=["callback_test"])
     result = re.sub(r"\w+", callback, tainted)
 
-    assert isinstance(result, TaintWrapper), "Result should be TaintStr"
+    assert get_taint_origins(result) != [], "Result should be tainted"
     assert "callback_test" in get_taint_origins(result), "Should preserve original taint"
     assert (
         str(result) == "[HELLO] [WORLD] [TEST]"
@@ -276,7 +276,7 @@ def test_overlapping_taint():
 
     # Check that all parts have taint
     for part in parts:
-        assert isinstance(part, TaintWrapper), "All parts should be tainted"
+        assert get_taint_origins(part) != [], "All parts should be tainted"
         assert get_taint_origins(part) == ["multi_random"]
 
     print("✓ Overlapping taint handled correctly")
@@ -294,13 +294,13 @@ def test_nested_operations():
     # Second operation on results of first
     results = {}
     for pair in pairs:
-        assert isinstance(pair, TaintWrapper), "Split result should be TaintStr"
+        assert get_taint_origins(pair) != [], "Split result should be tainted"
         match = re.search(r"(\w+)=(\w+)", pair)
         if match:
             key = match.group(1)
             value = match.group(2)
-            assert isinstance(key, TaintWrapper), "Key should be TaintStr"
-            assert isinstance(value, TaintWrapper), "Value should be TaintStr"
+            assert get_taint_origins(key) != [], "Key should be tainted"
+            assert get_taint_origins(value) != [], "Value should be tainted"
             assert get_taint_origins(key) == ["config_data"], "Key should preserve taint"
             assert get_taint_origins(value) == ["config_data"], "Value should preserve taint"
             results[str(key)] = str(value)
@@ -327,8 +327,8 @@ def test_large_strings():
     assert len(matches) == 10000, f"Expected 10000 matches, got {len(matches)}"
 
     # Check first and last matches are tainted
-    assert isinstance(matches[0], TaintStr), "First match should be TaintStr"
-    assert isinstance(matches[-1], TaintStr), "Last match should be TaintStr"
+    assert get_taint_origins(matches[0]) != [], "First match should be tainted"
+    assert get_taint_origins(matches[-1]) != [], "Last match should be tainted"
     assert get_taint_origins(matches[0]) == ["large_data"], "Should preserve taint"
 
     print(f"✓ Large string with {len(matches)} matches processed correctly")
@@ -345,12 +345,12 @@ def test_special_characters():
     # Test unicode word matching
     matches = re.findall(r"\w+", tainted)
     for match in matches:
-        assert isinstance(match, TaintWrapper), f"Unicode match should be TaintStr: {match}"
+        assert get_taint_origins(match) != [], f"Unicode match should be tainted: {match}"
         assert get_taint_origins(match) == ["unicode_data"], "Should preserve taint"
 
     # Test special character replacement
     result = re.sub(r"[🎉$]", "X", tainted)
-    assert isinstance(result, TaintWrapper), "Result should be TaintStr"
+    assert get_taint_origins(result) != [], "Result should be tainted"
     assert "X50.99" in str(result), "Should replace special characters"
 
     print("✓ Special characters and unicode handled correctly")
@@ -373,8 +373,8 @@ def test_compiled_vs_string_patterns():
     group2 = match2.group()
 
     # Both should produce tainted results
-    assert isinstance(group1, TaintStr), "String pattern result should be TaintStr"
-    assert isinstance(group2, TaintStr), "Compiled pattern result should be TaintStr"
+    assert get_taint_origins(group1) != [], "String pattern result should be tainted"
+    assert get_taint_origins(group2) != [], "Compiled pattern result should be tainted"
     assert get_taint_origins(group1) == ["pattern_test"], "String pattern should preserve taint"
     assert get_taint_origins(group2) == ["pattern_test"], "Compiled pattern should preserve taint"
 
@@ -391,7 +391,7 @@ def test_subn_with_count():
 
     # Test unlimited substitutions
     result, count = re.subn(r"foo", replacement, tainted)
-    assert isinstance(result, TaintWrapper), "Result should be TaintStr"
+    assert get_taint_origins(result) != [], "Result should be tainted"
     assert count == 3, f"Expected 3 substitutions, got {count}"
     assert "subn_test" in get_taint_origins(result), "Should preserve original taint"
     assert "replacement" in get_taint_origins(result), "Should include replacement taint"
@@ -399,7 +399,7 @@ def test_subn_with_count():
     # Test limited substitutions
     result2, count2 = re.subn(r"FOO", "foo", result, count=2)
     assert count2 == 2, f"Expected 2 substitutions, got {count2}"
-    assert isinstance(result2, TaintStr), "Limited subn result should be TaintStr"
+    assert get_taint_origins(result2) != [], "Limited subn result should be tainted"
 
     print(f"✓ subn with count works: {count} substitutions, result={result.get_raw()}")
 
@@ -421,7 +421,7 @@ def test_error_conditions():
         tainted = taint_wrap("123", taint_origin=["num_test"])
         result = re.search(r"\d+", tainted)
         group = result.group()
-        assert isinstance(group, TaintWrapper), "Should handle normal case"
+        assert get_taint_origins(group) != [], "Should handle normal case"
     except Exception as e:
         assert False, f"Normal case should not raise error: {e}"
 
@@ -440,7 +440,7 @@ def test_expand_method():
     match = pattern.search(first)
 
     expanded = match.expand(second)
-    assert isinstance(expanded, TaintStr), "Expanded result should be TaintStr"
+    assert get_taint_origins(expanded) != [], "Expanded result should be tainted"
 
     # Should have taint from both original string and template
     taint_origins = set(get_taint_origins(expanded))
@@ -463,12 +463,12 @@ def test_edge_case_scenarios():
     matches = re.findall(r"(?=.)", tainted)  # Lookahead creates zero-length matches
     assert len(matches) == 3, f"Expected 3 zero-length matches, got {len(matches)}"
     for match in matches:
-        assert isinstance(match, TaintWrapper), "Zero-length match should be TaintStr"
+        assert get_taint_origins(match) != [], "Zero-length match should be tainted"
 
     # Test 2: Backreferences in replacement
     tainted = taint_wrap("hello world", taint_origin=["backref_test"])
     result = re.sub(r"(\w+) (\w+)", r"\2 \1", tainted)
-    assert isinstance(result, TaintWrapper), "Backreference result should be TaintStr"
+    assert get_taint_origins(result) != [], "Backreference result should be tainted"
     assert str(result) == "world hello", f"Expected 'world hello', got '{result}'"
     assert get_taint_origins(result) == ["backref_test"], "Should preserve taint"
 
@@ -488,13 +488,13 @@ def test_edge_case_scenarios():
     match = re.search(r"world", tainted, re.IGNORECASE)
     assert match is not None, "Should match with IGNORECASE flag"
     group = match.group()
-    assert isinstance(group, TaintWrapper), "Flag-based match should be TaintStr"
+    assert get_taint_origins(group) != [], "Flag-based match should be tainted"
     assert str(group) == "WORLD", f"Expected 'WORLD', got '{group}'"
 
     # Test 5: Empty replacement
     tainted = taint_wrap("remove this text", taint_origin=["remove_test"])
     result = re.sub(r" this", "", tainted)
-    assert isinstance(result, TaintWrapper), "Empty replacement result should be TaintStr"
+    assert get_taint_origins(result) != [], "Empty replacement result should be tainted"
     assert str(result) == "remove text", f"Expected 'remove text', got '{result}'"
 
     # Test 6: Group indexing edge cases
@@ -508,8 +508,8 @@ def test_edge_case_scenarios():
     group6 = match.group(6)  # Last group
 
     assert all(
-        isinstance(g, TaintStr) for g in [group0, group1, group6]
-    ), "All groups should be TaintStr"
+        get_taint_origins(g) != [] for g in [group0, group1, group6]
+    ), "All groups should be tainted"
     assert all(
         get_taint_origins(g) == ["index_test"] for g in [group0, group1, group6]
     ), "All should preserve taint"
@@ -529,7 +529,7 @@ def test_pattern_match():
     assert match is not None, "Should find match at start"
 
     group = match.group()
-    assert isinstance(group, TaintWrapper), f"Expected TaintStr, got {type(group)}"
+    assert get_taint_origins(group) != [], f"Expected tainted value, got {type(group)}"
     assert get_taint_origins(group) == [
         "match_test"
     ], f"Expected ['match_test'], got {get_taint_origins(group)}"
@@ -549,7 +549,7 @@ def test_pattern_fullmatch():
     assert match is not None, "Should fullmatch entire string"
 
     group = match.group()
-    assert isinstance(group, TaintWrapper), f"Expected TaintStr, got {type(group)}"
+    assert get_taint_origins(group) != [], f"Expected tainted value, got {type(group)}"
     assert get_taint_origins(group) == [
         "fullmatch_test"
     ], f"Expected ['fullmatch_test'], got {get_taint_origins(group)}"
@@ -589,7 +589,7 @@ def test_re_match():
     assert match is not None, "Should find match at beginning"
 
     group = match.group()
-    assert isinstance(group, TaintWrapper), f"Expected TaintStr, got {type(group)}"
+    assert get_taint_origins(group) != [], f"Expected tainted value, got {type(group)}"
     assert get_taint_origins(group) == [
         "re_match_test"
     ], f"Expected ['re_match_test'], got {get_taint_origins(group)}"
@@ -608,7 +608,7 @@ def test_re_fullmatch():
     assert match is not None, "Should fullmatch entire string"
 
     group = match.group()
-    assert isinstance(group, TaintWrapper), f"Expected TaintStr, got {type(group)}"
+    assert get_taint_origins(group) != [], f"Expected tainted value, got {type(group)}"
     assert get_taint_origins(group) == [
         "re_fullmatch_test"
     ], f"Expected ['re_fullmatch_test'], got {get_taint_origins(group)}"
@@ -657,7 +657,7 @@ def test_nested_group_taint_tracking():
     expected_contents = ["alice@example.com", "alice", "example.com", "12345"]
 
     for i, (group, expected_content) in enumerate(zip(groups, expected_contents)):
-        assert isinstance(group, TaintWrapper), f"Group {i+1} should be TaintStr, got {type(group)}"
+        assert get_taint_origins(group) != [], f"Group {i+1} should be tainted, got {type(group)}"
         assert (
             str(group) == expected_content
         ), f"Group {i+1} content mismatch: expected '{expected_content}', got '{group}'"
@@ -675,7 +675,7 @@ def test_nested_group_taint_tracking():
         ("domain", domain),
         ("id", user_id),
     ]:
-        assert isinstance(group, TaintWrapper), f"{group_name} should be TaintStr"
+        assert get_taint_origins(group) != [], f"{group_name} should be tainted"
         assert get_taint_origins(group) == ["nested_test"], f"{group_name} should preserve taint"
 
     print("✓ Nested group taint tracking works correctly")
@@ -700,7 +700,7 @@ def test_overlapping_groups_taint_tracking():
     expected_groups = ["prefix", "123", "suffix"]
     for i, (group, expected) in enumerate(zip(groups, expected_groups)):
         assert group is not None, f"Group {i+1} should not be None"
-        assert isinstance(group, TaintWrapper), f"Group {i+1} should be TaintStr"
+        assert get_taint_origins(group) != [], f"Group {i+1} should be tainted"
         assert str(group) == expected, f"Group {i+1} content mismatch"
         assert get_taint_origins(group) == ["overlap_test"], f"Group {i+1} should preserve taint"
 
@@ -720,7 +720,7 @@ def test_zero_width_assertions_taint_tracking():
     assert match is not None, "Should find match with lookahead"
 
     group = match.group()
-    assert isinstance(group, TaintWrapper), f"Expected TaintStr, got {type(group)}"
+    assert get_taint_origins(group) != [], f"Expected tainted value, got {type(group)}"
     assert str(group) == "password", f"Expected 'password', got '{group}'"
     assert get_taint_origins(group) == ["lookahead_test"], "Should preserve taint"
 
@@ -732,7 +732,7 @@ def test_zero_width_assertions_taint_tracking():
     assert match2 is not None, "Should find match with lookbehind"
 
     group2 = match2.group()
-    assert isinstance(group2, TaintStr), f"Expected TaintStr, got {type(group2)}"
+    assert get_taint_origins(group2) != [], f"Expected tainted value, got {type(group2)}"
     assert str(group2) == "123", f"Expected '123', got '{group2}'"
     assert get_taint_origins(group2) == ["lookbehind_test"], "Should preserve taint"
 
@@ -752,7 +752,7 @@ def test_multiple_patch_calls():
     assert match is not None, "Should still find matches after multiple patches"
 
     group = match.group()
-    assert isinstance(group, TaintWrapper), "Should still return TaintStr"
+    assert get_taint_origins(group) != [], "Should still return tainted value"
     assert get_taint_origins(group) == ["multi_patch_test"], "Should still preserve taint"
 
     print("✓ Multiple patch calls handled correctly")

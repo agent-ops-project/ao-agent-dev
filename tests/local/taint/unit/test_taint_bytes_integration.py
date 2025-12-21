@@ -4,11 +4,7 @@
 Tests the unified TaintWrapper's handling of bytes objects.
 """
 
-from aco.runner.taint_wrappers import (
-    get_taint_origins,
-    untaint_if_needed,
-    taint_wrap,
-)
+from aco.server.ast_helpers import get_taint_origins, untaint_if_needed, taint_wrap
 from ....utils import with_ast_rewriting_class
 
 

@@ -41,7 +41,6 @@ from aco.server.ast_helpers import (
     get_attr,
     get_item,
     set_attr,
-    wrap_if_needed,
     add_to_taint_dict_and_return,
     get_taint,
 )
@@ -310,17 +309,16 @@ class AgentRunner:
         builtins.get_attr = get_attr
         builtins.get_item = get_item
         builtins.set_attr = set_attr
-        builtins.wrap_if_needed = wrap_if_needed
         builtins.add_to_taint_dict_and_return = add_to_taint_dict_and_return
         builtins.get_taint = get_taint
 
         # Register ACTIVE_TAINT (ContextVar) for passing taint through third-party code
         builtins.ACTIVE_TAINT = ContextVar("active_taint", default=[])
 
-        # Register TAINT_DICT (ThreadSafeWeakKeyDict) as single source of truth for taint
-        from aco.runner.taint_dict import ThreadSafeWeakKeyDict
+        # Register TAINT_DICT (id-based dict) as single source of truth for taint
+        from aco.runner.taint_dict import ThreadSafeTaintDict
 
-        builtins.TAINT_DICT = ThreadSafeWeakKeyDict()
+        builtins.TAINT_DICT = ThreadSafeTaintDict()
 
     def _apply_runtime_setup(self) -> None:
         """Apply runtime setup for the agent runner execution environment."""

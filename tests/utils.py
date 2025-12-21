@@ -84,7 +84,7 @@ def with_ast_rewriting(test_func):
         def test_something(self):
             # Test code here will be executed with AST rewriting
             result = json.loads(tainted_data)
-            assert isinstance(result, TaintWrapper)
+            assert get_taint_origins(result) != []
     """
 
     def wrapper(*args, **kwargs):
@@ -114,7 +114,7 @@ def with_ast_rewriting(test_func):
         # Set up the taint environment (normally done by agent_runner)
         import builtins
         from contextvars import ContextVar
-        from aco.runner.taint_dict import ThreadSafeWeakKeyDict
+        from aco.runner.taint_dict import ThreadSafeTaintDict
 
         # Initialize ACTIVE_TAINT (ContextVar) for passing taint through third-party code
         if not hasattr(builtins, "ACTIVE_TAINT"):
@@ -122,9 +122,9 @@ def with_ast_rewriting(test_func):
         else:
             builtins.ACTIVE_TAINT.set([])  # Clear for fresh test
 
-        # Initialize TAINT_DICT (ThreadSafeWeakKeyDict) as single source of truth
+        # Initialize TAINT_DICT (id-based dict) as single source of truth
         # Always create fresh TAINT_DICT for each test to avoid cross-test contamination
-        builtins.TAINT_DICT = ThreadSafeWeakKeyDict()
+        builtins.TAINT_DICT = ThreadSafeTaintDict()
 
         # Add taint functions to builtins (normally done by agent_runner)
         from aco.server.ast_helpers import (
@@ -140,7 +140,6 @@ def with_ast_rewriting(test_func):
             get_attr,
             get_item,
             set_attr,
-            wrap_if_needed,
             add_to_taint_dict_and_return,
             get_taint,
         )
@@ -157,7 +156,6 @@ def with_ast_rewriting(test_func):
         builtins.get_attr = get_attr
         builtins.get_item = get_item
         builtins.set_attr = set_attr
-        builtins.wrap_if_needed = wrap_if_needed
         builtins.add_to_taint_dict_and_return = add_to_taint_dict_and_return
         builtins.get_taint = get_taint
 

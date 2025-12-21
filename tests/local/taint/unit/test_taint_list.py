@@ -2,7 +2,7 @@
 
 import pytest
 
-from aco.runner.taint_wrappers import taint_wrap, get_taint_origins, untaint_if_needed
+from aco.server.ast_helpers import taint_wrap, get_taint_origins, untaint_if_needed
 from ....utils import with_ast_rewriting_class
 
 

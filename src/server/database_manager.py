@@ -408,7 +408,7 @@ class DatabaseManager:
     def get_in_out(self, input_dict: dict, api_type: str) -> CacheOutput:
         """Get input/output for LLM call, handling caching and overwrites."""
         from aco.runner.context_manager import get_session_id
-        from aco.runner.taint_wrappers import untaint_if_needed
+        from aco.server.ast_helpers import untaint_if_needed
         from aco.common.utils import hash_input, set_seed
 
         # Pickle input object.

@@ -1,10 +1,6 @@
 import pytest
 import json
-from aco.runner.taint_wrappers import (
-    TaintWrapper,
-    taint_wrap,
-    get_taint_origins,
-)
+from aco.server.ast_helpers import taint_wrap, get_taint_origins
 from ....utils import with_ast_rewriting
 
 
@@ -20,12 +16,12 @@ class TestJsonLoads:
         # Parse the JSON - this will be rewritten to use exec_func
         result = json.loads(tainted_json)
 
-        # Check that result is a TaintDict
-        assert isinstance(result, TaintWrapper)
+        # Check that result has taint
+        assert get_taint_origins(result) != []
         assert get_taint_origins(result) == ["user_input"]
 
         # Check that string values are TaintStr
-        assert isinstance(result["name"], TaintWrapper)
+        assert get_taint_origins(result["name"]) != []
         assert get_taint_origins(result["name"]) == ["user_input"]
 
         # Check that non-string values preserve their types but have taint
@@ -41,12 +37,12 @@ class TestJsonLoads:
         # Parse the JSON
         result = json.loads(tainted_json)
 
-        # Check that result is a TaintDict
-        assert isinstance(result, TaintWrapper)
+        # Check that result has taint
+        assert get_taint_origins(result) != []
         assert get_taint_origins(result) == ["user_input"]
 
         # Check that string values are TaintStr
-        assert isinstance(result["name"], TaintWrapper)
+        assert get_taint_origins(result["name"]) != []
         assert get_taint_origins(result["name"]) == ["user_input"]
 
         # Check that non-string values preserve their types but have taint
@@ -65,29 +61,29 @@ class TestJsonLoads:
         result = json.loads(nested_json)
 
         # Check top level
-        assert isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) != []
         assert get_taint_origins(result) == ["api_response"]
 
         # Check nested dict
-        assert isinstance(result["user"], TaintWrapper)
+        assert get_taint_origins(result["user"]) != []
         assert get_taint_origins(result["user"]) == ["api_response"]
 
         # Check deeply nested dict
-        assert isinstance(result["user"]["details"], TaintWrapper)
+        assert get_taint_origins(result["user"]["details"]) != []
         assert get_taint_origins(result["user"]["details"]) == ["api_response"]
 
         # Check string values at all levels
-        assert isinstance(result["user"]["name"], TaintWrapper)
+        assert get_taint_origins(result["user"]["name"]) != []
         assert get_taint_origins(result["user"]["name"]) == ["api_response"]
-        assert isinstance(result["user"]["details"]["city"], TaintWrapper)
+        assert get_taint_origins(result["user"]["details"]["city"]) != []
         assert get_taint_origins(result["user"]["details"]["city"]) == ["api_response"]
 
         # Check list
-        assert isinstance(result["items"], TaintWrapper)
+        assert get_taint_origins(result["items"]) != []
         assert get_taint_origins(result["items"]) == ["api_response"]
 
         # Check list items
-        assert isinstance(result["items"][0], TaintWrapper)
+        assert get_taint_origins(result["items"][0]) != []
         assert get_taint_origins(result["items"][0]) == ["api_response"]
 
     @with_ast_rewriting
@@ -98,9 +94,9 @@ class TestJsonLoads:
         result = json.loads(clean_json)
 
         # Should not be tainted
-        assert not isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) == []
         assert isinstance(result, dict)
-        assert not isinstance(result["name"], TaintWrapper)
+        assert get_taint_origins(result["name"]) == []
         assert isinstance(result["name"], str)
 
     @with_ast_rewriting
@@ -110,19 +106,19 @@ class TestJsonLoads:
         # Empty object
         tainted_empty = taint_wrap("{}", taint_origin=["test"])
         result = json.loads(tainted_empty)
-        assert isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) != []
         assert get_taint_origins(result) == ["test"]
 
         # Null values
         tainted_null = taint_wrap('{"value": null}', taint_origin=["test"])
         result = json.loads(tainted_null)
-        assert isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) != []
         assert result["value"] is None
 
         # Special characters
         tainted_special = taint_wrap('{"text": "Hello\\nWorld\\t!"}', taint_origin=["test"])
         result = json.loads(tainted_special)
-        assert isinstance(result["text"], TaintWrapper)
+        assert get_taint_origins(result["text"]) != []
         assert result["text"] == "Hello\nWorld\t!"
         assert get_taint_origins(result["text"]) == ["test"]
 
@@ -135,7 +131,7 @@ class TestJsonLoads:
         result = json.loads(json_str)
 
         # Check that the secret value has taint
-        assert isinstance(result["secret"], TaintWrapper)
+        assert get_taint_origins(result["secret"]) != []
         assert get_taint_origins(result["secret"]) == ["user"]
 
 
@@ -152,7 +148,7 @@ class TestJsonDumps:
         result = json.dumps(obj)
 
         # Result should be a TaintStr
-        assert isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) != []
         assert get_taint_origins(result) == ["user_input"]
 
         # Content should be valid JSON
@@ -199,7 +195,7 @@ class TestJsonDumps:
         result = json.dumps(clean_obj)
 
         # Should not be tainted
-        assert not isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) == []
         assert isinstance(result, str)
 
     @with_ast_rewriting
@@ -215,7 +211,7 @@ class TestJsonDumps:
         result = json.dumps(mixed_obj)
 
         # Should be tainted due to one tainted field
-        assert isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) != []
         assert get_taint_origins(result) == ["api"]
 
     @with_ast_rewriting
@@ -228,7 +224,7 @@ class TestJsonDumps:
         result = json.dumps(obj)
 
         # Should have taint
-        assert isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) != []
         assert get_taint_origins(result) == ["user"]
 
 
@@ -244,19 +240,19 @@ class TestJsonRoundTrip:
 
         # loads: JSON string → object
         obj = json.loads(original_json)
-        assert isinstance(obj, TaintWrapper)
-        assert isinstance(obj["message"], TaintWrapper)
+        assert get_taint_origins(obj) != []
+        assert get_taint_origins(obj["message"]) != []
         assert get_taint_origins(obj["message"]) == ["original"]
 
         # dumps: object → JSON string
         json_str = json.dumps(obj)
-        assert isinstance(json_str, TaintWrapper)
+        assert get_taint_origins(json_str) != []
         assert get_taint_origins(json_str) == ["original"]
 
         # loads again: JSON string → object
         final_obj = json.loads(json_str)
-        assert isinstance(final_obj, TaintWrapper)
-        assert isinstance(final_obj["message"], TaintWrapper)
+        assert get_taint_origins(final_obj) != []
+        assert get_taint_origins(final_obj["message"]) != []
         assert get_taint_origins(final_obj["message"]) == ["original"]
 
     @with_ast_rewriting
@@ -274,7 +270,7 @@ class TestJsonRoundTrip:
         recovered_obj = json.loads(json_str)
 
         # Should preserve both taint sources
-        assert isinstance(recovered_obj, TaintWrapper)
+        assert get_taint_origins(recovered_obj) != []
         field1_taint = get_taint_origins(recovered_obj["field1"])
         field2_taint = get_taint_origins(recovered_obj["field2"])
 
@@ -321,7 +317,7 @@ class TestJsonEdgeCases:
         # Should still apply taint even with custom hook
         assert get_taint_origins(result) == ["hook_test"]
         assert "custom" in result
-        assert isinstance(result["custom"], TaintWrapper)  # Should be wrapped by taint_wrap
+        assert get_taint_origins(result["custom"]) != []  # Should be wrapped by taint_wrap
         assert result["custom"] == "added"
 
     @with_ast_rewriting
@@ -332,13 +328,13 @@ class TestJsonEdgeCases:
 
         # Test with indent
         result = json.dumps(obj, indent=2)
-        assert isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) != []
         assert get_taint_origins(result) == ["test"]
         assert "  " in result  # Should have indentation
 
         # Test with sort_keys
         result2 = json.dumps(obj, sort_keys=True)
-        assert isinstance(result2, TaintWrapper)
+        assert get_taint_origins(result2) != []
         assert get_taint_origins(result2) == ["test"]
 
 
@@ -357,13 +353,13 @@ class TestJsonIntegrationWithOtherPatches:
         obj = {"extracted": tainted_from_re}
         json_str = json.dumps(obj)
 
-        assert isinstance(json_str, TaintWrapper)
+        assert get_taint_origins(json_str) != []
         assert get_taint_origins(json_str) == ["regex_result"]
 
         # Parse back
         parsed = json.loads(json_str)
-        assert isinstance(parsed, TaintWrapper)
-        assert isinstance(parsed["extracted"], TaintWrapper)
+        assert get_taint_origins(parsed) != []
+        assert get_taint_origins(parsed["extracted"]) != []
 
     @with_ast_rewriting
     def test_json_boolean_handling(self):
@@ -375,7 +371,7 @@ class TestJsonIntegrationWithOtherPatches:
         )
         result = json.loads(tainted_json)
 
-        assert isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) != []
         assert isinstance(result["enabled"], bool)  # Should be regular bool
         assert isinstance(result["disabled"], bool)  # Should be regular bool
         assert result["enabled"] is True
@@ -402,21 +398,21 @@ class TestJsonEdgeCasesExtended:
         # Empty object
         tainted = taint_wrap("{}", taint_origin=["empty"])
         result = json.loads(tainted)
-        assert isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) != []
         assert len(result) == 0
         assert get_taint_origins(result) == ["empty"]
 
         # Empty array
         tainted = taint_wrap("[]", taint_origin=["empty_array"])
         result = json.loads(tainted)
-        assert isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) != []
         assert len(result) == 0
         assert get_taint_origins(result) == ["empty_array"]
 
         # Empty string value
         tainted = taint_wrap('{"empty": ""}', taint_origin=["empty_str"])
         result = json.loads(tainted)
-        assert isinstance(result["empty"], TaintWrapper)
+        assert get_taint_origins(result["empty"]) != []
         assert result["empty"] == ""
         assert get_taint_origins(result["empty"]) == ["empty_str"]
 
@@ -431,11 +427,11 @@ class TestJsonEdgeCasesExtended:
         )
         result = json.loads(unicode_json)
 
-        assert isinstance(result["unicode"], TaintWrapper)
+        assert get_taint_origins(result["unicode"]) != []
         assert result["unicode"] == "こんにちは"
-        assert isinstance(result["emoji"], TaintWrapper)
+        assert get_taint_origins(result["emoji"]) != []
         assert result["emoji"] == "🌟"
-        assert isinstance(result["newline"], TaintWrapper)
+        assert get_taint_origins(result["newline"]) != []
         assert result["newline"] == "line1\nline2"
 
         # All string values should have taint
@@ -469,15 +465,15 @@ class TestJsonEdgeCasesExtended:
         result = json.loads(complex_json)
 
         # Check deep nesting
-        assert isinstance(result, TaintWrapper)
-        assert isinstance(result["users"], TaintWrapper)
-        assert isinstance(result["users"][0], TaintWrapper)
-        assert isinstance(result["users"][0]["name"], TaintWrapper)
-        assert isinstance(result["users"][0]["scores"], TaintWrapper)
+        assert get_taint_origins(result) != []
+        assert get_taint_origins(result["users"]) != []
+        assert get_taint_origins(result["users"][0]) != []
+        assert get_taint_origins(result["users"][0]["name"]) != []
+        assert get_taint_origins(result["users"][0]["scores"]) != []
         assert isinstance(result["users"][0]["scores"][0], int)  # Numbers should be TaintInt
 
         # Check deeply nested object
-        assert isinstance(result["metadata"]["settings"], TaintWrapper)
+        assert get_taint_origins(result["metadata"]["settings"]) != []
         assert isinstance(result["metadata"]["settings"]["debug"], bool)
         assert result["metadata"]["settings"]["debug"] is True
 
@@ -508,8 +504,8 @@ class TestJsonEdgeCasesExtended:
 
         # Check mixed array
         mixed_arr = result["mixed_array"]
-        assert isinstance(mixed_arr, TaintWrapper)
-        assert isinstance(mixed_arr[0], TaintWrapper)  # "string"
+        assert get_taint_origins(mixed_arr) != []
+        assert get_taint_origins(mixed_arr[0]) != []  # "string"
         assert isinstance(mixed_arr[1], int)  # 42 -> TaintInt
         assert isinstance(mixed_arr[2], bool)  # true -> bool
         assert isinstance(mixed_arr[3], bool)  # false -> bool
@@ -538,7 +534,7 @@ class TestJsonEdgeCasesExtended:
         # Add taint and test
         large_data["metadata"] = taint_wrap("large_test", taint_origin=["performance"])
         json_str = json.dumps(large_data)
-        assert isinstance(json_str, TaintWrapper)
+        assert get_taint_origins(json_str) != []
         assert get_taint_origins(json_str) == ["performance"]
 
     @with_ast_rewriting
@@ -561,8 +557,8 @@ class TestJsonEdgeCasesExtended:
         result2 = json.loads(pretty)
 
         # Both should produce equivalent results
-        assert isinstance(result1["key"], TaintWrapper)
-        assert isinstance(result2["key"], TaintWrapper)
+        assert get_taint_origins(result1["key"]) != []
+        assert get_taint_origins(result2["key"]) != []
         assert result1["key"] == result2["key"] == "value"
 
     @with_ast_rewriting
@@ -570,8 +566,6 @@ class TestJsonEdgeCasesExtended:
         """Test that circular references are handled properly."""
 
         # Note: JSON doesn't support circular references, but our taint tracking should handle them
-        from aco.runner.taint_wrappers import TaintDict
-
         circular_dict = taint_wrap({"name": "test"}, taint_origin=["circular"])
         circular_dict["self"] = circular_dict  # Create circular reference
 
@@ -593,7 +587,7 @@ class TestJsonEdgeCasesExtended:
         obj = {"data": taint_wrap("test", taint_origin=["custom"]), "tags": {1, 2, 3}}
         result = json.dumps(obj, cls=CustomEncoder)
 
-        assert isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) != []
         assert get_taint_origins(result) == ["custom"]
         assert '"tags": [1, 2, 3]' in result or '"tags":[1,2,3]' in result
 
@@ -608,7 +602,7 @@ class TestJsonEdgeCasesExtended:
 
         # Serialize and deserialize
         json_str = json.dumps(nested)
-        assert isinstance(json_str, TaintWrapper)
+        assert get_taint_origins(json_str) != []
         assert get_taint_origins(json_str) == ["deep"]
 
         parsed = json.loads(json_str)
@@ -618,7 +612,7 @@ class TestJsonEdgeCasesExtended:
         for i in range(9, -1, -1):  # Go from level_9 down to level_0
             current = current["level_" + str(i)]
 
-        assert isinstance(current, TaintWrapper)
+        assert get_taint_origins(current) != []
         assert current == "deep_value"
         assert get_taint_origins(current) == ["deep"]
 
@@ -670,7 +664,7 @@ class TestJsonEdgeCasesExtended:
         result = json.dumps(obj)
 
         # Should combine taint from both sources
-        assert isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) != []
         taint_origins = get_taint_origins(result)
         assert set(taint_origins) == {"user1", "user2"}
 
@@ -685,8 +679,8 @@ class TestJsonEdgeCasesExtended:
         result2 = json.dumps(obj, separators=(", ", ": "))
 
         # Both should be tainted
-        assert isinstance(result1, TaintWrapper)
-        assert isinstance(result2, TaintWrapper)
+        assert get_taint_origins(result1) != []
+        assert get_taint_origins(result2) != []
         assert get_taint_origins(result1) == ["sep_test"]
         assert get_taint_origins(result2) == ["sep_test"]
 
@@ -709,7 +703,7 @@ class TestJsonEdgeCasesExtended:
 
         # All should be tainted
         for result in [compact, indented, very_indented]:
-            assert isinstance(result, TaintWrapper)
+            assert get_taint_origins(result) != []
             assert get_taint_origins(result) == ["indent_test"]
 
         # Indented versions should be longer
@@ -736,8 +730,8 @@ class TestJsonEdgeCasesExtended:
         sorted_json = json.dumps(obj, sort_keys=True)
 
         # Both should be tainted
-        assert isinstance(unsorted, TaintWrapper)
-        assert isinstance(sorted_json, TaintWrapper)
+        assert get_taint_origins(unsorted) != []
+        assert get_taint_origins(sorted_json) != []
 
         # Should combine taint from both sources
         for result in [unsorted, sorted_json]:
@@ -758,7 +752,7 @@ class TestJsonEdgeCasesExtended:
         json_str = json.dumps(obj)
 
         # Should be tainted due to TaintStr values
-        assert isinstance(json_str, TaintWrapper)
+        assert get_taint_origins(json_str) != []
         taint_origins = get_taint_origins(json_str)
         assert set(taint_origins) == {"important", "other"}
 
@@ -783,8 +777,8 @@ class TestJsonEdgeCasesExtended:
         unicode_result = json.dumps(obj, ensure_ascii=False)
 
         # Both should be tainted
-        assert isinstance(ascii_result, TaintWrapper)
-        assert isinstance(unicode_result, TaintWrapper)
+        assert get_taint_origins(ascii_result) != []
+        assert get_taint_origins(unicode_result) != []
         assert get_taint_origins(ascii_result) == ["unicode_test"]
         assert get_taint_origins(unicode_result) == ["unicode_test"]
 
@@ -844,7 +838,7 @@ class TestJsonEdgeCasesExtended:
 
         # With skipkeys - should work and skip invalid keys
         result = json.dumps(obj, skipkeys=True)
-        assert isinstance(result, TaintWrapper)
+        assert get_taint_origins(result) != []
         assert get_taint_origins(result) == ["valid"]
         assert "valid_key" in result
         assert "valid_value" in result

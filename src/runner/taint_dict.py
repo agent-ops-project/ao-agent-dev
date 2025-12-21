@@ -1,74 +1,62 @@
 """
-Thread-safe wrapper around WeakKeyDictionary for TAINT_DICT.
+Thread-safe id-based taint dictionary.
 
-This module provides a thread-safe WeakKeyDictionary implementation
-that serves as the single source of truth for all taint information.
+This module provides a thread-safe dictionary for storing taint information
+using object ids as keys. The key insight is that by storing a reference
+to each object, we prevent garbage collection and can use id(obj) as a
+stable key.
 
-TAINT_DICT entries have the format:
-    {obj_or_wrapper: {"self": [origin_ids], "attr_name": [origin_ids], ...}}
+Structure: {id(obj): (obj, [origin_ids])}
 
 Where:
-- "self" stores the object's own taint origins
-- Built-in attribute names store attribute-specific taint
-- Non-built-in attributes get their own TAINT_DICT entries
+- id(obj) is the object's memory address (stable while we hold a reference)
+- obj is the actual object (kept alive to prevent id reuse)
+- [origin_ids] is the list of taint origin identifiers
 """
 
 import threading
-from weakref import WeakKeyDictionary
 
 
-class ThreadSafeWeakKeyDict:
+class ThreadSafeTaintDict:
     """
-    Thread-safe wrapper around WeakKeyDictionary for TAINT_DICT.
+    Thread-safe id-based taint dictionary.
 
-    Uses RLock to allow nested access (e.g., when add_to_taint_dict_and_return
-    recursively processes nested structures).
+    Uses object ids as keys and stores (obj, taint) tuples.
+    Keeping the object reference prevents garbage collection,
+    ensuring the id remains stable and unique.
     """
 
     def __init__(self):
-        self._dict = WeakKeyDictionary()
+        self._dict = {}  # id(obj) -> (obj, [origins])
         self._lock = threading.RLock()
 
-    def __contains__(self, key):
+    def add(self, obj, taint):
+        """Add object with taint origins, keeping reference alive."""
         with self._lock:
-            return key in self._dict
+            self._dict[id(obj)] = (obj, list(taint))
 
-    def __getitem__(self, key):
+    def get_taint(self, obj):
+        """Get taint origins for object. Returns [] if not found."""
         with self._lock:
-            return self._dict[key]
+            entry = self._dict.get(id(obj))
+            return list(entry[1]) if entry else []
 
-    def __setitem__(self, key, value):
+    def has_taint(self, obj):
+        """Check if object has a taint entry."""
         with self._lock:
-            self._dict[key] = value
+            return id(obj) in self._dict
 
-    def __delitem__(self, key):
+    def clear(self):
+        """Clear all taint entries."""
         with self._lock:
-            del self._dict[key]
-
-    def get(self, key, default=None):
-        with self._lock:
-            return self._dict.get(key, default)
-
-    def pop(self, key, *args):
-        with self._lock:
-            return self._dict.pop(key, *args)
-
-    def keys(self):
-        with self._lock:
-            return list(self._dict.keys())
-
-    def values(self):
-        with self._lock:
-            return list(self._dict.values())
-
-    def items(self):
-        with self._lock:
-            return list(self._dict.items())
+            self._dict.clear()
 
     def __len__(self):
+        """Return number of taint entries."""
         with self._lock:
             return len(self._dict)
 
-    def clear(self):
+    def __contains__(self, obj):
+        """Check if object has a taint entry (for 'in' operator)."""
         with self._lock:
-            self._dict.clear()
+            return id(obj) in self._dict

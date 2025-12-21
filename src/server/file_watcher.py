@@ -146,7 +146,6 @@ class FileWatcher:
 
     def _populate_initial_mtimes(self):
         """Initialize modification times for all tracked files."""
-        logger.debug(f"[FileWatcher] Initializing tracking for {len(self.module_to_file)} modules")
         for module_name, file_path in self.module_to_file.items():
             try:
                 if os.path.exists(file_path):
@@ -163,7 +162,6 @@ class FileWatcher:
         """Set up signal handlers for graceful shutdown."""
         signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
         signal.signal(signal.SIGINT, self._handle_shutdown_signal)
-        logger.debug(f"[FileWatcher] Signal handlers installed for pid {self.pid}")
 
     def _scan_for_python_files(self) -> Set[str]:
         """
@@ -260,7 +258,6 @@ class FileWatcher:
                 pyc_path = get_pyc_path(deleted_file)
                 if os.path.exists(pyc_path):
                     os.remove(pyc_path)
-                    logger.debug(f"[FileWatcher] Removed orphaned .pyc file: {pyc_path}")
             except OSError as e:
                 logger.warning(f"[FileWatcher] Could not remove .pyc file for {deleted_file}: {e}")
 
@@ -315,14 +312,12 @@ class FileWatcher:
         Returns:
             True if compilation succeeded, False otherwise
         """
-        # logger.debug(f"[FileWatcher] Starting compilation of {module_name}: {file_path}")
         try:
             # Read source code
             with open(file_path, "r", encoding="utf-8") as f:
                 source = f.read()
 
             # Apply AST rewrites and compile to code object
-            # logger.debug(f"[FileWatcher] Applying AST rewrites to {module_name}")
             debug_ast = os.environ.get("ACO_DEBUG_AST_REWRITES")
             if debug_ast and not ".aco_rewritten.py" in file_path:
                 code_object, tree = rewrite_source_to_code(
@@ -336,23 +331,19 @@ class FileWatcher:
                     rewritten_source = ast.unparse(tree)
                     with open(debug_path, "w", encoding="utf-8") as f:
                         f.write(rewritten_source)
-                    logger.debug(f"[FileWatcher] Wrote rewritten source to {debug_path}")
                 except Exception as e:
                     logger.error(f"[FileWatcher] Failed to write debug AST: {e}")
             else:
                 code_object = rewrite_source_to_code(
                     source, file_path, module_to_file=self.module_to_file
                 )
-            # logger.debug(f"[FileWatcher] AST rewrite successful for {module_name}")
 
             # Get target .pyc path
             pyc_path = get_pyc_path(file_path)
-            # logger.debug(f"[FileWatcher] Target .pyc path: {pyc_path}")
 
             # Ensure __pycache__ directory exists
             cache_dir = os.path.dirname(pyc_path)
             os.makedirs(cache_dir, exist_ok=True)
-            # logger.debug(f"[FileWatcher] Created cache directory: {cache_dir}")
 
             # Write compiled code to .pyc file
             # We need to write the .pyc file manually since py_compile.compile()
@@ -363,10 +354,6 @@ class FileWatcher:
 
             source_mtime = int(os.path.getmtime(file_path))
             source_size = os.path.getsize(file_path)
-
-            # logger.debug(
-            #     f"[FileWatcher] Writing .pyc file with mtime={source_mtime}, size={source_size}"
-            # )
 
             # .pyc file format: magic number + flags + timestamp + source size + marshaled code
             with open(pyc_path, "wb") as f:
@@ -386,13 +373,7 @@ class FileWatcher:
                 f.write(marshal.dumps(code_object))
 
             # Verify .pyc file was created
-            if os.path.exists(pyc_path):
-                pyc_size = os.path.getsize(pyc_path)
-                # logger.debug(f"[FileWatcher] ✓ Successfully compiled {module_name}")
-                # logger.debug(f"[FileWatcher]   Source: {file_path}")
-                # logger.debug(f"[FileWatcher]   Target: {pyc_path} ({pyc_size} bytes)")
-                # logger.debug(f"[FileWatcher]   Source mtime: {source_mtime}")
-            else:
+            if not os.path.exists(pyc_path):
                 logger.error(f"[FileWatcher] ✗ .pyc file was not created: {pyc_path}")
                 return False
 
@@ -434,8 +415,6 @@ class FileWatcher:
         This method runs until a shutdown signal is received, checking for
         file changes every FILE_POLL_INTERVAL seconds and recompiling changed files.
         """
-        logger.debug(f"[FileWatcher] Starting file watcher process")
-
         # Initial compilation of all files
         compiled_count = 0
         failed_count = 0

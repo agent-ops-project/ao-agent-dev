@@ -8,7 +8,7 @@ from aco.runner.monkey_patching.api_parser import (
     func_kwargs_to_json_str,
     api_obj_to_json_str,
 )
-from aco.runner.taint_wrappers import untaint_if_needed
+from aco.server.ast_helpers import untaint_if_needed
 
 # Global variable to track lost taint across function calls
 lost_taint = set()

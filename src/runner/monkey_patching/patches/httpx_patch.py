@@ -47,8 +47,6 @@ def patch_httpx_send(bound_obj, bound_cls):
         # 2. Get full input dict.
         input_dict = get_input_dict(original_function, *args, **kwargs)
 
-        logger.debug(f"[HTTPX] escrow val: {builtins.ACTIVE_TAINT.get()}")
-
         # 3. Get taint origins from ACTIVE_TAINT (set by exec_func)
         taint_origins = list(builtins.ACTIVE_TAINT.get())
 
