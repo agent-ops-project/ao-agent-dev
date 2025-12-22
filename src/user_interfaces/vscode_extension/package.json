@@ -70,7 +70,7 @@
         {
           "id": "graph-extension",
           "title": "Graph Extension",
-          "icon": "$(graph)"
+          "icon": "$(type-hierarchy)"
         }
       ]
     }
