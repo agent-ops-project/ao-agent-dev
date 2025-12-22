@@ -6,7 +6,6 @@ import os
 import sqlite3
 import threading
 import json
-import dill
 
 from ao.common.logger import logger
 from ao.common.constants import AO_DB_PATH

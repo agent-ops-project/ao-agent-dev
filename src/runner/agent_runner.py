@@ -15,6 +15,7 @@ import debugpy
 import signal
 import runpy
 import builtins
+from contextvars import ContextVar
 from typing import Optional, List
 
 from ao.common.logger import logger
@@ -26,16 +27,26 @@ from ao.common.constants import (
     SERVER_START_WAIT,
     MESSAGE_POLL_INTERVAL,
 )
-from ao.common.utils import MODULE2FILE, compute_code_hash
+from ao.common.utils import MODULES_TO_FILES, compute_code_hash
 from ao.cli.ao_server import launch_daemon_server
 from ao.runner.ast_rewrite_hook import install_patch_hook, set_module_to_user_file
 from ao.runner.context_manager import set_parent_session_id, set_server_connection
 from ao.runner.monkey_patching.apply_monkey_patches import apply_all_monkey_patches
-from ao.server.ast_transformer import (
+from ao.server.ast_helpers import (
     taint_fstring_join,
     taint_format_string,
     taint_percent_format,
+    taint_open,
     exec_func,
+    exec_setitem,
+    exec_delitem,
+    exec_inplace_binop,
+    taint_assign,
+    get_attr,
+    get_item,
+    set_attr,
+    add_to_taint_dict_and_return,
+    get_taint,
 )
 from ao.server.database_manager import DB
 
@@ -279,7 +290,7 @@ class AgentRunner:
             "environment": dict(os.environ),
             "process_id": self.process_id,
             "prev_session_id": os.getenv("AO_SESSION_ID"),
-            "module_to_file": MODULE2FILE,
+            "module_to_file": MODULES_TO_FILES,
             "code_hash": compute_code_hash(),
         }
 
@@ -325,15 +336,36 @@ class AgentRunner:
         if not os.environ.get("AO_SEED"):
             os.environ["AO_SEED"] = str(random.randint(0, 2**31 - 1))
 
+        # Enable taint tracking in AST-rewritten code
+        os.environ["AGENT_COPILOT_ENABLE_TRACING"] = "True"
+
         # Install AST hooks
-        set_module_to_user_file(MODULE2FILE)
+        set_module_to_user_file(MODULES_TO_FILES)
         install_patch_hook()
 
         # Register taint functions in builtins
         builtins.taint_fstring_join = taint_fstring_join
         builtins.taint_format_string = taint_format_string
         builtins.taint_percent_format = taint_percent_format
+        builtins.taint_open = taint_open
         builtins.exec_func = exec_func
+        builtins.exec_setitem = exec_setitem
+        builtins.exec_delitem = exec_delitem
+        builtins.exec_inplace_binop = exec_inplace_binop
+        builtins.taint_assign = taint_assign
+        builtins.get_attr = get_attr
+        builtins.get_item = get_item
+        builtins.set_attr = set_attr
+        builtins.add_to_taint_dict_and_return = add_to_taint_dict_and_return
+        builtins.get_taint = get_taint
+
+        # Register ACTIVE_TAINT (ContextVar) for passing taint through third-party code
+        builtins.ACTIVE_TAINT = ContextVar("active_taint", default=[])
+
+        # Register TAINT_DICT (id-based dict) as single source of truth for taint
+        from ao.runner.taint_dict import ThreadSafeTaintDict
+
+        builtins.TAINT_DICT = ThreadSafeTaintDict()
 
     def _apply_runtime_setup(self) -> None:
         """Apply runtime setup for the agent runner execution environment."""

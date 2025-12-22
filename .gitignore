@@ -1,5 +1,6 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+__ao_cache__/
 *.py[cod]
 *$py.class
 
@@ -241,5 +242,7 @@ ao
 # Claude local
 CLAUDE.local.md
 
+# Rewritten files
+*.ao_rewritten.py
 # Misc
 run_debug_examples.sh

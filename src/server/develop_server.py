@@ -10,7 +10,7 @@ import multiprocessing
 from datetime import datetime
 from typing import Optional, Dict
 
-from ao.common.utils import MODULE2FILE
+from ao.common.utils import MODULES_TO_FILES
 from ao.server.database_manager import DB
 from ao.common.logger import logger
 from ao.common.constants import AO_CONFIG, AO_LOG_PATH, HOST, PORT
@@ -46,7 +46,7 @@ class DevelopServer:
         self.session_graphs = {}  # session_id -> graph_data
         self.ui_connections = set()  # All UI connections (simplified)
         self.sessions = {}  # session_id -> Session (only for agent runner connections)
-        self.module_to_file = module_to_file or MODULE2FILE  # Module mapping for file watcher
+        self.module_to_file = module_to_file or MODULES_TO_FILES  # Module mapping for file watcher
         self.file_watcher_process = None  # Child process for file watching
         self.current_user_id = None  # Store the current authenticated user_id
         self.rerun_sessions = set()  # Track sessions being rerun to avoid clearing llm_calls

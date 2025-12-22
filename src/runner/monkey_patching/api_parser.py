@@ -32,7 +32,6 @@ from ao.runner.monkey_patching.api_parsers.genai_api_parser import (
     get_model_genai,
 )
 from ao.common.constants import EDIT_IO_EXCLUDE_PATTERNS
-from ao.common.logger import logger
 
 
 def flatten_to_show(inp):

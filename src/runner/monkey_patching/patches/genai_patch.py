@@ -2,7 +2,7 @@ from functools import wraps
 from ao.runner.monkey_patching.patching_utils import get_input_dict, send_graph_node_and_edges
 from ao.server.database_manager import DB
 from ao.common.logger import logger
-from ao.runner.taint_wrappers import get_taint_origins, taint_wrap
+from ao.server.ast_helpers import get_taint_origins
 from ao.common.utils import is_whitelisted_endpoint
 
 

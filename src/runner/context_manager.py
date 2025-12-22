@@ -1,10 +1,7 @@
 import contextvars
 from contextlib import contextmanager
 import json
-import threading
 import queue
-import os
-from ao.common.logger import logger
 from ao.server.database_manager import DB
 from ao.common.utils import send_to_server, send_to_server_and_receive, compute_code_hash
 

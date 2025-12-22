@@ -83,8 +83,6 @@ async def run_test(script_path: str, project_root: str):
     assert return_code == 0, f"First run failed with return_code {return_code}"
     assert session_id is not None, "Could not extract session_id from first run output"
 
-    print(f"~~~~ session_id {session_id}")
-
     # Query results from first run
     rows = DB.query_all(
         "SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=?",
@@ -130,7 +128,7 @@ def caching_asserts(run_data_obj: RunData):
     for old_row, new_row in zip(run_data_obj.rows, run_data_obj.new_rows):
         assert (
             old_row["node_id"] == new_row["node_id"]
-        ), "Node IDs of LLM calls don't match after re-run. Potential cache issue."
+        ), f"Node IDs of LLM calls don't match after re-run. Potential cache issue. {len(run_data_obj.rows)} vs {len(run_data_obj.new_rows)}"
 
     # Compare graph topology between runs
     assert len(run_data_obj.graph["nodes"]) == len(
