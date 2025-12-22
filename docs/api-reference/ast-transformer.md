@@ -64,7 +64,7 @@ Taint-aware replacement for `%` formatting:
 
 The main AST transformer class:
 
-::: aco.server.ast_transformer.TaintPropagationTransformer
+::: ao.server.ast_transformer.TaintPropagationTransformer
     options:
       show_root_heading: true
       show_source: false
