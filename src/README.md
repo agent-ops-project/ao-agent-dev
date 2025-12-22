@@ -1,4 +1,4 @@
-# Agent Ops
+# Building from source and developing
 
 See README's in src dirs for more details.
 
@@ -49,11 +49,6 @@ ao-record ./example_workflows/debug_examples/openai_add_numbers.py
 
 ![Running Example](/docs/media/execute_example.gif)
 
-## Further resources
-
- - [Join our discord server](https://discord.gg/fjsNSa6TAh)
- - [Read our docs](https://agent-ops-project.github.io/ao-agent-dev/)
-
 ## Development
 
 Please install the dependencies required for developing
@@ -91,6 +86,15 @@ These are the processes running.
 
 ![Processes overview](/docs/media/processes.png)
 
+## Further resources
+
+ - [Join our discord server](https://discord.gg/fjsNSa6TAh)
+ - [Read our docs](https://agent-ops-project.github.io/ao-agent-dev/)
+
+## Tests
+
+Our CI test suit comprises of ["non_billable"](/tests/non_billable) and ["billable"](/tests/billable) tests. Billable tests use third-party APIs and therefore incur costs. You should run both of these tests locally to make sure your code works as expected.  In our CI/CD, we run non-billable tests on every commit and, before a PR is merged, an admin will also run the billable tests on it. 
+
 ### Publishing
 
 #### pip package
@@ -99,9 +103,9 @@ These are the processes running.
 2. Install `pip install build twine` if you haven't already.
 3. Run `python -m build` in root dir. This wil create a `dist/` dir.
 4. Test locally: `pip install dist/agops_bird-0.0.2-py3-none-any.whl` (you need to check the name of the `.whl` file).
-5. Do a test upload, it's worth it. Publish to TestPyPI first: `python -m twine upload --repository testpypi dist/*`. Then try to install from TestPyPi. Ask Ferdi if you don't have the key to our TestPyPI account.
+5. Do a test upload, it's worth it. Publish to TestPyPI first: `python -m twine upload --repository testpypi dist/*`. Then try to install from TestPyPi. Ask Ferdi (ferdi.kossmann@gmail.com) if you don't have the key to our TestPyPI account.
 6. When installing from TestPyPI, do the following (just swap out the package name at the end of the command): `pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ agops-bird==0.0.6`
-7. Upload to PyPI: `python -m twine upload dist/*`. Ask Ferdi if you don't have the key to our PyPI account.
+7. Upload to PyPI: `python -m twine upload dist/*`. Ask Ferdi (ferdi.kossmann@gmail.com) if you don't have the key to our PyPI account.
 
 
 #### VS Code extension
@@ -110,7 +114,7 @@ These are the processes running.
 1. Install `npm install -g @vscode/vsce` if you haven't already.
 2. `cd src/user_interface`
 3. Create VSIX package: `vsce package` . If you get errors like `npm error extraneous`, you need to `rm -rf node_modules package-lock.json`
-4. `vsce publish`. Ask Ferdi for personal access token if you don't have it.
+4. `vsce publish`. Ask Ferdi (ferdi.kossmann@gmail.com) for personal access token if you don't have it.
 
 #### Web app
 
