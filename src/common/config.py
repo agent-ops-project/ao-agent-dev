@@ -140,7 +140,7 @@ def derive_project_root() -> str:
     for p in _walk_up(cur):
         # Highest priority: if this is the aco repo itself, use example_workflows subdirectory
         # to avoid AST-rewriting the aco source code (which causes import issues)
-        if p.name in ("agent-copilot", "agops-platform", "bird-bench"):
+        if p.name in ("agent-copilot", "agops-platform"):
             return str(p / "example_workflows")
 
         # Strong signal: repo/project markers at this directory
