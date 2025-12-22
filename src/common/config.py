@@ -138,8 +138,9 @@ def derive_project_root() -> str:
     last_good = cur
 
     for p in _walk_up(cur):
-        # Highest priority: if "agent-copilot" or "bird-bench" is in the path, use example_workflows
-        if p.name in ("agent-copilot", "bird-bench"):
+        # Highest priority: if this is the aco repo itself, use example_workflows subdirectory
+        # to avoid AST-rewriting the aco source code (which causes import issues)
+        if p.name in ("agent-copilot", "agops-platform", "bird-bench"):
             return str(p / "example_workflows")
 
         # Strong signal: repo/project markers at this directory
