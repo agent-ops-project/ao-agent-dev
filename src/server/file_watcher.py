@@ -252,6 +252,11 @@ class FileWatcher:
             if not os.path.exists(file_path):
                 return False
 
+            # Skip __init__.py files - they're loaded early during package initialization
+            # and injecting imports can cause circular import errors
+            if os.path.basename(file_path) == "__init__.py":
+                return False
+
             # Check if .pyc file exists
             pyc_path = get_pyc_path(file_path)
             if not os.path.exists(pyc_path):
@@ -388,10 +393,11 @@ class FileWatcher:
         for module_name, file_path in self.module_to_file.items():
             if self._shutdown:
                 return
-            if self._compile_file(file_path, module_name):
-                compiled_count += 1
-            else:
-                failed_count += 1
+            if self._needs_recompilation(file_path):
+                if self._compile_file(file_path, module_name):
+                    compiled_count += 1
+                else:
+                    failed_count += 1
 
         # Start polling loop
         try:
