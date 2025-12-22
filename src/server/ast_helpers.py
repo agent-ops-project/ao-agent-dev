@@ -12,7 +12,6 @@ No wrappers are used. Objects are stored directly in TAINT_DICT by their id.
 """
 
 from inspect import getsourcefile, iscoroutinefunction
-from aco.common.utils import get_aco_py_files
 import builtins
 
 
@@ -189,7 +188,7 @@ def _is_user_function(func):
 
     Handles decorated functions by unwrapping via __wrapped__ attribute.
     """
-    from aco.common.utils import MODULES_TO_FILES
+    from aco.common.utils import MODULES_TO_FILES, get_aco_py_files
 
     user_py_files = list(MODULES_TO_FILES.values()) + get_aco_py_files()
 
