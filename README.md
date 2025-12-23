@@ -54,8 +54,6 @@ cd my-agent
 python openai_example.py
 ```
 
-The output should be `88` (42 + 1 = 43, 42 + 2 = 44, 43 + 44 = 87... well, roughly 88 depending on the model).
-
 #### 2. Configure AO
 
 Run `ao-config` and set the project root to your `my-agent` folder:
@@ -86,3 +84,4 @@ See the [Installation Guide](https://agent-ops-project.github.io/ao-agent-dev/ge
 
 - [Join our Discord](https://discord.gg/fjsNSa6TAh)
 - [GitHub Issues](https://github.com/agent-ops-project/ao-agent-dev/issues)
+- We're just getting started on this tool and are eager to hear your feedback and resolve issues you ran into! We hope you enjoy it as much as we do.
