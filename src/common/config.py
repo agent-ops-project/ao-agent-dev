@@ -10,7 +10,6 @@ except ImportError:
 from typing import Any, Callable, Optional, Union
 import yaml
 
-
 from ao.common.logger import logger
 
 

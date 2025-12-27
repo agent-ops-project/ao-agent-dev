@@ -52,6 +52,8 @@ SERVER_START_TIMEOUT = 2
 PROCESS_TERMINATE_TIMEOUT = 5
 MESSAGE_POLL_INTERVAL = 0.1
 FILE_POLL_INTERVAL = 1  # Interval in seconds for polling file changes for AST recompilation
+ORPHAN_POLL_INTERVAL = 60  # Interval in seconds for checking if parent process died
+SERVER_INACTIVITY_TIMEOUT = 3600  # Shutdown server after 1 hour of inactivity
 SERVER_START_WAIT = 1
 SOCKET_TIMEOUT = 1
 SHUTDOWN_WAIT = 2
@@ -83,6 +85,18 @@ AO_CACHE = os.path.expandvars(
 )
 os.makedirs(AO_CACHE, exist_ok=True)
 
+# Git repository for code versioning (separate from user's git)
+default_git_path = os.path.join(AO_HOME, "git")
+AO_GIT_DIR = os.path.expandvars(
+    os.path.expanduser(
+        os.getenv(
+            "AO_GIT_DIR",
+            default_git_path,
+        )
+    )
+)
+# Note: Don't create the directory here - let GitVersioner handle initialization
+
 
 # the path to the folder where the experiments database is stored
 default_db_cache_path = os.path.join(AO_HOME, "db")
@@ -98,16 +112,18 @@ os.makedirs(AO_DB_PATH, exist_ok=True)
 
 # the path to the folder where the logs are stored
 default_log_path = os.path.join(AO_HOME, "logs")
-log_dir = os.path.expandvars(
+AO_LOG_DIR = os.path.expandvars(
     os.path.expanduser(
         os.getenv(
-            "AO_LOG_PATH",
+            "AO_LOG_DIR",
             default_log_path,
         )
     )
 )
-os.makedirs(log_dir, exist_ok=True)
-AO_LOG_PATH = os.path.join(log_dir, "server.log")
+os.makedirs(AO_LOG_DIR, exist_ok=True)
+AO_LOG_PATH = os.path.join(AO_LOG_DIR, "server.log")  # Legacy, used by develop_server
+AO_DEVELOP_SERVER_LOG = os.path.join(AO_LOG_DIR, "develop_server.log")
+AO_FILE_WATCHER_LOG = os.path.join(AO_LOG_DIR, "file_watcher.log")
 
 default_attachment_cache = os.path.join(AO_CACHE, "attachments")
 AO_ATTACHMENT_CACHE = os.path.expandvars(

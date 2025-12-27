@@ -3,6 +3,9 @@
 import builtins
 import sys
 import os
+import time as _time
+
+_import_start = _time.time()
 
 # Add current directory to path to import modules directly
 current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -28,7 +31,17 @@ import time
 import subprocess
 from argparse import ArgumentParser
 from ao.common.logger import logger
-from ao.common.constants import AO_LOG_PATH, HOST, PORT, SOCKET_TIMEOUT, SHUTDOWN_WAIT
+
+from ao.common.constants import (
+    AO_LOG_PATH,
+    AO_DEVELOP_SERVER_LOG,
+    AO_FILE_WATCHER_LOG,
+    HOST,
+    PORT,
+    SOCKET_TIMEOUT,
+    SHUTDOWN_WAIT,
+)
+
 from ao.server.develop_server import DevelopServer, send_json
 
 
@@ -56,14 +69,14 @@ def launch_daemon_server() -> None:
 
 def server_command_parser():
     parser = ArgumentParser(
-        usage="ao-server {start, stop, restart, clear, logs, clear-logs}",
+        usage="ao-server {start, stop, restart, clear, logs, fw-logs, clear-logs}",
         description="Server utilities.",
         allow_abbrev=False,
     )
 
     parser.add_argument(
         "command",
-        choices=["start", "stop", "restart", "clear", "logs", "clear-logs", "_serve"],
+        choices=["start", "stop", "restart", "clear", "logs", "fw-logs", "clear-logs", "_serve"],
         help="The command to execute for the server.",
     )
     return parser
@@ -128,33 +141,48 @@ def execute_server_command(args):
         return
 
     elif args.command == "logs":
-        # Print the contents of the server log file
+        # Print the contents of the develop server log file
         try:
-            with open(AO_LOG_PATH, "r") as log_file:
+            with open(AO_DEVELOP_SERVER_LOG, "r") as log_file:
                 print(log_file.read(), end="")
         except FileNotFoundError:
-            print(f"Log file not found at {AO_LOG_PATH}")
+            logger.error(f"Log file not found at {AO_DEVELOP_SERVER_LOG}")
         except Exception as e:
-            print(f"Error reading log file: {e}")
+            logger.error(f"Error reading log file: {e}")
+        return
+
+    elif args.command == "fw-logs":
+        # Print the contents of the file watcher log file
+        try:
+            with open(AO_FILE_WATCHER_LOG, "r") as log_file:
+                print(log_file.read(), end="")
+        except FileNotFoundError:
+            logger.error(f"Log file not found at {AO_FILE_WATCHER_LOG}")
+        except Exception as e:
+            logger.error(f"Error reading log file: {e}")
         return
 
     elif args.command == "clear-logs":
-        # Clear the contents of the server log file
-        try:
-            # Ensure log directory exists
-            os.makedirs(os.path.dirname(AO_LOG_PATH), exist_ok=True)
-            # Clear the log file by opening in write mode
-            with open(AO_LOG_PATH, "w") as log_file:
-                pass  # Opening in 'w' mode truncates the file
-            logger.info("Server log file cleared.")
-        except Exception as e:
-            logger.error(f"Error clearing log file: {e}")
-            sys.exit(1)
+        # Clear all server log files
+        log_files = [AO_LOG_PATH, AO_DEVELOP_SERVER_LOG, AO_FILE_WATCHER_LOG]
+        for log_path in log_files:
+            try:
+                os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                with open(log_path, "w"):
+                    pass  # Opening in 'w' mode truncates the file
+            except Exception as e:
+                logger.error(f"Error clearing log file {log_path}: {e}")
+        logger.info("Server log files cleared.")
         return
 
     elif args.command == "_serve":
         # Internal: run the server loop (not meant to be called by users directly)
+        import time as _time
+
+        _start = _time.time()
+        logger.info(f"[ao_server] _serve command started at {_start}")
         server = DevelopServer()
+        logger.info(f"[ao_server] DevelopServer created in {_time.time() - _start:.2f}s")
         server.run_server()
 
 

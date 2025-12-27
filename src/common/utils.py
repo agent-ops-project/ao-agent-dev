@@ -11,23 +11,6 @@ from ao.common.constants import AO_INSTALL_DIR, AO_PROJECT_ROOT, COMPILED_ENDPOI
 from ao.common.logger import logger
 
 
-def compute_code_hash() -> str:
-    """Compute 8-digit hash on the files in the project root."""
-    num_py_files = 0
-    hash = hashlib.sha256()
-    for dirpath, _, dirfiles in os.walk(AO_PROJECT_ROOT):
-        for file in dirfiles:
-            if not file.endswith(".py"):
-                continue
-            num_py_files += 1
-            with open(os.path.join(dirpath, file), "r") as f:
-                content = f.read()
-            hash.update(content.encode("utf-8"))
-    if num_py_files > 0:
-        return hash.hexdigest()[:8]
-    return "0" * 8
-
-
 def is_whitelisted_endpoint(path: str) -> bool:
     """Check if a path matches any of the whitelist regex patterns."""
     return any(pattern.search(path) for pattern in COMPILED_ENDPOINT_PATTERNS)

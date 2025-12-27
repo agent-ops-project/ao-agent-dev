@@ -193,6 +193,10 @@ function App() {
 
         case "graph_update":
           if (msg.payload) {
+            console.log('[App] graph_update received:', {
+              nodes: msg.payload.nodes?.length,
+              edges: msg.payload.edges?.map((e: any) => e.id)
+            });
             setGraphData(msg.payload);
           }
           break;
