@@ -124,6 +124,7 @@ AO_LOG_DIR = os.path.expandvars(
 os.makedirs(AO_LOG_DIR, exist_ok=True)
 AO_DEVELOP_SERVER_LOG = os.path.join(AO_LOG_DIR, "develop_server.log")
 AO_FILE_WATCHER_LOG = os.path.join(AO_LOG_DIR, "file_watcher.log")
+AO_GIT_VERSIONER_LOG = os.path.join(AO_LOG_DIR, "git_versioner.log")
 
 default_attachment_cache = os.path.join(AO_CACHE, "attachments")
 AO_ATTACHMENT_CACHE = os.path.expandvars(

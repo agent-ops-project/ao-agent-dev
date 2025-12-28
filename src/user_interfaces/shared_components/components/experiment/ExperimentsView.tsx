@@ -310,7 +310,6 @@ export const ExperimentsView: React.FC<ExperimentsViewProps> = ({
       cursor: 'ns-resize',
       backgroundColor: 'transparent',
       borderTop: `1px solid ${isDarkTheme ? '#2b2b2b' : '#e5e5e5'}`,
-      borderBottom: `1px solid ${isDarkTheme ? '#2b2b2b' : '#e5e5e5'}`,
       transition: 'background-color 0.1s',
     };
 

@@ -36,6 +36,7 @@ from ao.common.logger import logger, create_file_logger
 from ao.common.constants import (
     AO_DEVELOP_SERVER_LOG,
     AO_FILE_WATCHER_LOG,
+    AO_GIT_VERSIONER_LOG,
     HOST,
     PORT,
     SOCKET_TIMEOUT,
@@ -69,14 +70,24 @@ def launch_daemon_server() -> None:
 
 def server_command_parser():
     parser = ArgumentParser(
-        usage="ao-server {start, stop, restart, clear, logs, fw-logs, clear-logs}",
+        usage="ao-server {start, stop, restart, clear, logs, rewrite-logs, git-logs, clear-logs}",
         description="Server utilities.",
         allow_abbrev=False,
     )
 
     parser.add_argument(
         "command",
-        choices=["start", "stop", "restart", "clear", "logs", "fw-logs", "clear-logs", "_serve"],
+        choices=[
+            "start",
+            "stop",
+            "restart",
+            "clear",
+            "logs",
+            "rewrite-logs",
+            "git-logs",
+            "clear-logs",
+            "_serve",
+        ],
         help="The command to execute for the server.",
     )
     return parser
@@ -151,7 +162,7 @@ def execute_server_command(args):
             logger.error(f"Error reading log file: {e}")
         return
 
-    elif args.command == "fw-logs":
+    elif args.command == "rewrite-logs":
         # Print the contents of the file watcher log file
         try:
             with open(AO_FILE_WATCHER_LOG, "r") as log_file:
@@ -162,9 +173,20 @@ def execute_server_command(args):
             logger.error(f"Error reading log file: {e}")
         return
 
+    elif args.command == "git-logs":
+        # Print the contents of the git versioner log file
+        try:
+            with open(AO_GIT_VERSIONER_LOG, "r") as log_file:
+                print(log_file.read(), end="")
+        except FileNotFoundError:
+            logger.error(f"Log file not found at {AO_GIT_VERSIONER_LOG}")
+        except Exception as e:
+            logger.error(f"Error reading log file: {e}")
+        return
+
     elif args.command == "clear-logs":
         # Clear all server log files
-        log_files = [AO_DEVELOP_SERVER_LOG, AO_FILE_WATCHER_LOG]
+        log_files = [AO_DEVELOP_SERVER_LOG, AO_FILE_WATCHER_LOG, AO_GIT_VERSIONER_LOG]
         for log_path in log_files:
             try:
                 os.makedirs(os.path.dirname(log_path), exist_ok=True)

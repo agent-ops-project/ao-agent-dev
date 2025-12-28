@@ -11,8 +11,10 @@ import shutil
 from datetime import datetime
 from typing import Optional
 
-from ao.common.logger import logger
-from ao.common.constants import AO_PROJECT_ROOT, AO_GIT_DIR
+from ao.common.logger import create_file_logger
+from ao.common.constants import AO_PROJECT_ROOT, AO_GIT_DIR, AO_GIT_VERSIONER_LOG
+
+logger = create_file_logger("AO.GitVersioner", AO_GIT_VERSIONER_LOG)
 
 
 class GitVersioner:
