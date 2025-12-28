@@ -19,7 +19,7 @@ def main():
     sum_prompt = f"Add these two numbers together and just output the result: {response1.output_text} + {response2.output_text}"
 
     final_sum = client.responses.create(model="gpt-3.5-turbo", input=sum_prompt, temperature=0)
-    print(f"Final sum: {final_sum}")
+    print(f"Final sum: {final_sum.output_text}")
 
 
 if __name__ == "__main__":
