@@ -8,3 +8,10 @@ debug-billable:
           echo "Is PR: ${{ github.event.issue.pull_request }}"
           echo "Comment body: ${{ github.event.comment.body }}"
           echo "Contains trigger: ${{ contains(github.event.comment.body, '/run-billable-tests') }}"
+
+billable-permission-check:
+    name: Billable Tests / Permission Check
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, '/run-billable-tests')
