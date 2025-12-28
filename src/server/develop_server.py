@@ -50,6 +50,8 @@ class DevelopServer:
     """Manages the development server for LLM call visualization."""
 
     def __init__(self, module_to_file: Optional[Dict[str, str]] = None):
+        _init_start = time.time()
+        logger.info(f"[DevelopServer] __init__ starting...")
         self.server_sock = None
         self.lock = threading.Lock()
         self.conn_info = {}  # conn -> {role, session_id}
@@ -895,6 +897,8 @@ class DevelopServer:
 
     def run_server(self) -> None:
         """Main server loop: accept clients and spawn handler threads."""
+        _run_start = time.time()
+        logger.info(f"[DevelopServer] run_server starting...")
 
         # Set up signal handlers to ensure clean shutdown (especially FileWatcher cleanup)
         def shutdown_handler(signum, frame):
@@ -904,10 +908,14 @@ class DevelopServer:
         signal.signal(signal.SIGTERM, shutdown_handler)
         signal.signal(signal.SIGINT, shutdown_handler)
 
+        logger.info(f"[DevelopServer] Creating socket... ({time.time() - _run_start:.2f}s)")
         self.server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         # Try binding with retry logic and better error handling
+        logger.info(
+            f"[DevelopServer] Binding to {HOST}:{PORT}... ({time.time() - _run_start:.2f}s)"
+        )
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -924,16 +932,21 @@ class DevelopServer:
                     raise
 
         self.server_sock.listen()
-        logger.info(f"[DevelopServer] Develop server listening on {HOST}:{PORT}")
+        logger.info(
+            f"[DevelopServer] Develop server listening on {HOST}:{PORT} ({time.time() - _run_start:.2f}s)"
+        )
 
         # Start file watcher process for AST recompilation
+        logger.info(f"[DevelopServer] Starting file watcher... ({time.time() - _run_start:.2f}s)")
         self.start_file_watcher()
 
         # Start inactivity monitor (shuts down after 1 hour of no messages)
         self._start_inactivity_monitor()
 
         # Load finished runs on startup
+        logger.info(f"[DevelopServer] Loading finished runs... ({time.time() - _run_start:.2f}s)")
         self.load_finished_runs()
+        logger.info(f"[DevelopServer] Server fully ready! ({time.time() - _run_start:.2f}s)")
 
         try:
             while True:
