@@ -11,9 +11,9 @@ Manually start, stop, restart server:
 
 Some basics: 
 
- - To check if the server process is still running: `ps aux | grep develop_server.py` or check which processes are holding the port: `lsof -i :5959`
+ - To check if the server process is still running: `ps aux | grep main_server.py` or check which processes are holding the port: `lsof -i :5959`
 
- - When you make changes to `develop_server.py`, remember to restart the server to see them take effect.
+ - When you make changes to `main_server.py`, remember to restart the server to see them take effect.
 
 
 ## Editing and caching LLM calls
@@ -85,7 +85,7 @@ Also see [here](/src/runner/README.md) on how the whole taint propagation proces
 [ec2-user@ip-172-31-42-109 ~]$ docker ps -a
 ```
 
-Should be 3. (auth (proxy), develop_server (backend), frontend (frontend)). E.g.:
+Should be 3. (auth (proxy), main_server (backend), frontend (frontend)). E.g.:
 
 ```
 CONTAINER ID   IMAGE                                                                             COMMAND                  CREATED        STATUS        PORTS                                                           NAMES
@@ -100,7 +100,7 @@ a0b7e5115b81   853766430252.dkr.ecr.us-east-1.amazonaws.com/workflow-extension-p
 docker logs XXX
 ```
 
-`XXX`: `workflow-backend` for develop_server, `workflow-proxy` for auth server. `workflow-frontend` is not interesting, should do Right click -> Inspect -> Console
+`XXX`: `workflow-backend` for main_server, `workflow-proxy` for auth server. `workflow-frontend` is not interesting, should do Right click -> Inspect -> Console
 
 ### Debugging
 

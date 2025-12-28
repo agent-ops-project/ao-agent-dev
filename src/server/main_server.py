@@ -15,7 +15,7 @@ from ao.common.utils import MODULES_TO_FILES
 from ao.common.logger import create_file_logger
 from ao.common.constants import (
     AO_CONFIG,
-    AO_DEVELOP_SERVER_LOG,
+    MAIN_SERVER_LOG,
     HOST,
     PORT,
     SERVER_INACTIVITY_TIMEOUT,
@@ -24,16 +24,16 @@ from ao.server.database_manager import DB
 from ao.server.file_watcher import run_file_watcher_process
 from ao.server.git_versioner import GitVersioner
 
-logger = create_file_logger("AO.DevelopServer", AO_DEVELOP_SERVER_LOG)
+logger = create_file_logger("AO.MainServer", MAIN_SERVER_LOG)
 
 
 def send_json(conn: socket.socket, msg: dict) -> None:
     try:
         msg_type = msg.get("type", "unknown")
-        logger.debug(f"[DevelopServer] Sent message type: {msg_type}")
+        logger.debug(f"[MainServer] Sent message type: {msg_type}")
         conn.sendall((json.dumps(msg) + "\n").encode("utf-8"))
     except Exception as e:
-        logger.error(f"[DevelopServer] Error sending JSON: {e}")
+        logger.error(f"[MainServer] Error sending JSON: {e}")
 
 
 class Session:
@@ -46,12 +46,12 @@ class Session:
         self.lock = threading.Lock()
 
 
-class DevelopServer:
+class MainServer:
     """Manages the development server for LLM call visualization."""
 
     def __init__(self, module_to_file: Optional[Dict[str, str]] = None):
         _init_start = time.time()
-        logger.info(f"[DevelopServer] __init__ starting...")
+        logger.info(f"[MainServer] __init__ starting...")
         self.server_sock = None
         self.lock = threading.Lock()
         self.conn_info = {}  # conn -> {role, session_id}
@@ -72,11 +72,11 @@ class DevelopServer:
     def start_file_watcher(self) -> None:
         """Start the file watcher process if module mapping is available."""
         if not self.module_to_file:
-            logger.warning("[DevelopServer] No module mapping provided, skipping file watcher")
+            logger.warning("[MainServer] No module mapping provided, skipping file watcher")
             return
 
         if self.file_watcher_process and self.file_watcher_process.is_alive():
-            logger.warning("[DevelopServer] File watcher process is already running")
+            logger.warning("[MainServer] File watcher process is already running")
             return
 
         try:
@@ -90,13 +90,13 @@ class DevelopServer:
             # Give it a moment to start
             time.sleep(0.1)
             if not self.file_watcher_process.is_alive():
-                logger.error(f"[DevelopServer] File watcher process died immediately")
+                logger.error(f"[MainServer] File watcher process died immediately")
 
         except Exception as e:
-            logger.error(f"[DevelopServer] ✗ Failed to start file watcher process: {e}")
+            logger.error(f"[MainServer] ✗ Failed to start file watcher process: {e}")
             import traceback
 
-            logger.error(f"[DevelopServer] Traceback: {traceback.format_exc()}")
+            logger.error(f"[MainServer] Traceback: {traceback.format_exc()}")
 
     def stop_file_watcher(self) -> None:
         """Stop the file watcher process if it's running."""
@@ -109,7 +109,7 @@ class DevelopServer:
                     self.file_watcher_process.kill()
                     self.file_watcher_process.join()
             except Exception as e:
-                logger.error(f"[DevelopServer] Error stopping file watcher process: {e}")
+                logger.error(f"[MainServer] Error stopping file watcher process: {e}")
             finally:
                 self.file_watcher_process = None
 
@@ -125,7 +125,7 @@ class DevelopServer:
                 time.sleep(60)  # Check every minute
                 elapsed = time.time() - self._last_activity_time
                 if elapsed >= SERVER_INACTIVITY_TIMEOUT:
-                    logger.info(f"[DevelopServer] No activity for {elapsed:.0f}s, shutting down...")
+                    logger.info(f"[MainServer] No activity for {elapsed:.0f}s, shutting down...")
                     self.handle_shutdown()
                     return
 
@@ -140,13 +140,13 @@ class DevelopServer:
         """Broadcast a message to all UI connections."""
         msg_type = msg.get("type", "unknown")
         logger.debug(
-            f"[DevelopServer] broadcast_to_all_uis: type={msg_type}, num_ui_connections={len(self.ui_connections)}"
+            f"[MainServer] broadcast_to_all_uis: type={msg_type}, num_ui_connections={len(self.ui_connections)}"
         )
         for ui_conn in list(self.ui_connections):
             try:
                 send_json(ui_conn, msg)
             except Exception as e:
-                logger.error(f"[DevelopServer] Error broadcasting to UI: {e}")
+                logger.error(f"[MainServer] Error broadcasting to UI: {e}")
                 self.ui_connections.discard(ui_conn)
 
     def broadcast_graph_update(self, session_id: str) -> None:
@@ -154,7 +154,7 @@ class DevelopServer:
         if session_id in self.session_graphs:
             graph = self.session_graphs[session_id]
             logger.info(
-                f"[DevelopServer] broadcast_graph_update: session={session_id}, nodes={len(graph.get('nodes', []))}, edges={[e['id'] for e in graph.get('edges', [])]}"
+                f"[MainServer] broadcast_graph_update: session={session_id}, nodes={len(graph.get('nodes', []))}, edges={[e['id'] for e in graph.get('edges', [])]}"
             )
             self.broadcast_to_all_uis(
                 {
@@ -287,7 +287,7 @@ class DevelopServer:
         try:
             cwd, command, environment = DB.get_exec_command(session_id)
             logger.debug(
-                f"[DevelopServer] Rerunning finished session {session_id} with cwd={cwd} and command={command}"
+                f"[MainServer] Rerunning finished session {session_id} with cwd={cwd} and command={command}"
             )
 
             # Mark this session as being rerun to avoid clearing llm_calls
@@ -298,7 +298,7 @@ class DevelopServer:
             env["AO_SESSION_ID"] = session_id
             env.update(environment)
             logger.debug(
-                f"[DevelopServer] Restored {len(environment)} environment variables for session {session_id}"
+                f"[MainServer] Restored {len(environment)} environment variables for session {session_id}"
             )
 
             # Spawn the process
@@ -313,7 +313,7 @@ class DevelopServer:
                 self.broadcast_experiment_list_to_uis()
 
         except Exception as e:
-            logger.error(f"[DevelopServer] Failed to rerun finished session: {e}")
+            logger.error(f"[MainServer] Failed to rerun finished session: {e}")
 
     # ============================================================
     # Handle message types.
@@ -408,12 +408,12 @@ class DevelopServer:
                     full_edge = {"id": edge_id, "source": source, "target": target}
                     graph["edges"].append(full_edge)
                     existing_edge_ids.add(edge_id)  # Track newly added edge
-                    logger.info(f"[DevelopServer] Added edge {edge_id} in session {sid}")
+                    logger.info(f"[MainServer] Added edge {edge_id} in session {sid}")
                 else:
-                    logger.debug(f"[DevelopServer] Skipping duplicate edge {edge_id}")
+                    logger.debug(f"[MainServer] Skipping duplicate edge {edge_id}")
             else:
                 logger.debug(
-                    f"[DevelopServer] Skipping edge from non-existent node {source} to {node['id']}"
+                    f"[MainServer] Skipping edge from non-existent node {source} to {node['id']}"
                 )
 
         # Update color preview in database
@@ -468,7 +468,7 @@ class DevelopServer:
         value = msg.get("value")
 
         if not all([session_id, node_id, field]):
-            logger.error(f"[DevelopServer] Missing required fields in updateNode message: {msg}")
+            logger.error(f"[MainServer] Missing required fields in updateNode message: {msg}")
             return
 
         if session_id in self.session_graphs:
@@ -482,7 +482,7 @@ class DevelopServer:
             DB.update_graph_topology(session_id, self.session_graphs[session_id])
             self.broadcast_graph_update(session_id)
         else:
-            logger.warning(f"[DevelopServer] Session {session_id} not found in session_graphs")
+            logger.warning(f"[MainServer] Session {session_id} not found in session_graphs")
 
     def handle_log(self, msg: dict) -> None:
         session_id = msg["session_id"]
@@ -500,7 +500,7 @@ class DevelopServer:
             self.broadcast_experiment_list_to_uis()
         else:
             logger.error(
-                f"[DevelopServer] handle_update_run_name: Missing required fields: session_id={session_id}, run_name={run_name}"
+                f"[MainServer] handle_update_run_name: Missing required fields: session_id={session_id}, run_name={run_name}"
             )
 
     def handle_update_result(self, msg: dict) -> None:
@@ -511,7 +511,7 @@ class DevelopServer:
             self.broadcast_experiment_list_to_uis()
         else:
             logger.error(
-                f"[DevelopServer] handle_update_result: Missing required fields: session_id={session_id}, result={result}"
+                f"[MainServer] handle_update_result: Missing required fields: session_id={session_id}, result={result}"
             )
 
     def handle_update_notes(self, msg: dict) -> None:
@@ -522,7 +522,7 @@ class DevelopServer:
             self.broadcast_experiment_list_to_uis()
         else:
             logger.error(
-                f"[DevelopServer] handle_update_notes: Missing required fields: session_id={session_id}, notes={notes}"
+                f"[MainServer] handle_update_notes: Missing required fields: session_id={session_id}, notes={notes}"
             )
 
     def handle_update_command(self, msg: dict) -> None:
@@ -637,7 +637,7 @@ class DevelopServer:
         session_id = msg.get("session_id")
         parent_session_id = DB.get_parent_session_id(session_id)
         if not parent_session_id:
-            logger.error("[DevelopServer] Restart message missing session_id. Ignoring.")
+            logger.error("[MainServer] Restart message missing session_id. Ignoring.")
             return
         # Clear UI state (updates both memory and database atomically)
         self._clear_session_ui(session_id)
@@ -649,15 +649,15 @@ class DevelopServer:
             if session.shim_conn:
                 restart_msg = {"type": "restart", "session_id": parent_session_id}
                 logger.debug(
-                    f"[DevelopServer] Session running...Sending restart for session_id: {parent_session_id}"
+                    f"[MainServer] Session running...Sending restart for session_id: {parent_session_id}"
                 )
                 try:
                     send_json(session.shim_conn, restart_msg)
                 except Exception as e:
-                    logger.error(f"[DevelopServer] Error sending restart: {e}")
+                    logger.error(f"[MainServer] Error sending restart: {e}")
                 return
             else:
-                logger.warning(f"[DevelopServer] No shim_conn for session_id: {parent_session_id}")
+                logger.warning(f"[MainServer] No shim_conn for session_id: {parent_session_id}")
         elif session and session.status == "finished":
             # Rerun for finished session: spawn new process with same session_id
             self._spawn_session_process(parent_session_id, session_id)
@@ -671,7 +671,7 @@ class DevelopServer:
 
     def handle_shutdown(self) -> None:
         """Handle shutdown command by closing all connections."""
-        logger.info("[DevelopServer] Shutdown command received. Closing all connections.")
+        logger.info("[MainServer] Shutdown command received. Closing all connections.")
         # Stop file watcher process first
         self.stop_file_watcher()
         # Close all client sockets
@@ -679,7 +679,7 @@ class DevelopServer:
             try:
                 s.close()
             except Exception as e:
-                logger.error(f"[DevelopServer] Error closing socket: {e}")
+                logger.error(f"[MainServer] Error closing socket: {e}")
         os._exit(0)
 
     def handle_clear(self):
@@ -695,7 +695,7 @@ class DevelopServer:
         """Handle database mode switching from UI dropdown."""
         mode = msg.get("mode")  # "local" or "remote"
         if mode not in ["local", "remote"]:
-            logger.error(f"[DevelopServer] Invalid database mode: {mode}")
+            logger.error(f"[MainServer] Invalid database mode: {mode}")
             return
 
         try:
@@ -710,7 +710,7 @@ class DevelopServer:
                 self.broadcast_experiment_list_to_uis()
 
         except Exception as e:
-            logger.error(f"[DevelopServer] Failed to switch database mode: {e}")
+            logger.error(f"[MainServer] Failed to switch database mode: {e}")
 
     # ============================================================
     # Message rounting logic.
@@ -759,7 +759,7 @@ class DevelopServer:
         elif msg_type == "update_command":
             self.handle_update_command(msg)
         else:
-            logger.error(f"[DevelopServer] Unknown message type. Message:\n{msg}")
+            logger.error(f"[MainServer] Unknown message type. Message:\n{msg}")
 
     def handle_client(self, conn: socket.socket) -> None:
         """Handle a new client connection in a separate thread."""
@@ -833,7 +833,7 @@ class DevelopServer:
                     self.stop_file_watcher()
                     self.start_file_watcher()
                 else:
-                    logger.warning(f"[DevelopServer] No module mapping received from agent-runner")
+                    logger.warning(f"[MainServer] No module mapping received from agent-runner")
 
             elif role == "ui":
                 # Always reload finished runs from the DB before sending experiment list
@@ -862,12 +862,12 @@ class DevelopServer:
                     try:
                         msg = json.loads(line.strip())
                     except Exception as e:
-                        logger.error(f"[DevelopServer] Error parsing JSON: {e}")
+                        logger.error(f"[MainServer] Error parsing JSON: {e}")
                         continue
 
                     # Print message type.
                     msg_type = msg.get("type", "unknown")
-                    logger.debug(f"[DevelopServer] Received message type: {msg_type}")
+                    logger.debug(f"[MainServer] Received message type: {msg_type}")
 
                     if "session_id" not in msg:
                         msg["session_id"] = session_id
@@ -893,29 +893,27 @@ class DevelopServer:
             try:
                 conn.close()
             except Exception as e:
-                logger.error(f"[DevelopServer] Error closing connection: {e}")
+                logger.error(f"[MainServer] Error closing connection: {e}")
 
     def run_server(self) -> None:
         """Main server loop: accept clients and spawn handler threads."""
         _run_start = time.time()
-        logger.info(f"[DevelopServer] run_server starting...")
+        logger.info(f"[MainServer] run_server starting...")
 
         # Set up signal handlers to ensure clean shutdown (especially FileWatcher cleanup)
         def shutdown_handler(signum, frame):
-            logger.info(f"[DevelopServer] Received signal {signum}")
+            logger.info(f"[MainServer] Received signal {signum}")
             self.handle_shutdown()
 
         signal.signal(signal.SIGTERM, shutdown_handler)
         signal.signal(signal.SIGINT, shutdown_handler)
 
-        logger.info(f"[DevelopServer] Creating socket... ({time.time() - _run_start:.2f}s)")
+        logger.info(f"[MainServer] Creating socket... ({time.time() - _run_start:.2f}s)")
         self.server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         # Try binding with retry logic and better error handling
-        logger.info(
-            f"[DevelopServer] Binding to {HOST}:{PORT}... ({time.time() - _run_start:.2f}s)"
-        )
+        logger.info(f"[MainServer] Binding to {HOST}:{PORT}... ({time.time() - _run_start:.2f}s)")
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -924,7 +922,7 @@ class DevelopServer:
             except OSError as e:
                 if e.errno == 48 and attempt < max_retries - 1:  # Address already in use
                     logger.warning(
-                        f"[DevelopServer] Port {PORT} in use, retrying in 2 seconds... (attempt {attempt + 1}/{max_retries})"
+                        f"[MainServer] Port {PORT} in use, retrying in 2 seconds... (attempt {attempt + 1}/{max_retries})"
                     )
                     time.sleep(2)
                     continue
@@ -933,20 +931,20 @@ class DevelopServer:
 
         self.server_sock.listen()
         logger.info(
-            f"[DevelopServer] Develop server listening on {HOST}:{PORT} ({time.time() - _run_start:.2f}s)"
+            f"[MainServer] Develop server listening on {HOST}:{PORT} ({time.time() - _run_start:.2f}s)"
         )
 
         # Start file watcher process for AST recompilation
-        logger.info(f"[DevelopServer] Starting file watcher... ({time.time() - _run_start:.2f}s)")
+        logger.info(f"[MainServer] Starting file watcher... ({time.time() - _run_start:.2f}s)")
         self.start_file_watcher()
 
         # Start inactivity monitor (shuts down after 1 hour of no messages)
         self._start_inactivity_monitor()
 
         # Load finished runs on startup
-        logger.info(f"[DevelopServer] Loading finished runs... ({time.time() - _run_start:.2f}s)")
+        logger.info(f"[MainServer] Loading finished runs... ({time.time() - _run_start:.2f}s)")
         self.load_finished_runs()
-        logger.info(f"[DevelopServer] Server fully ready! ({time.time() - _run_start:.2f}s)")
+        logger.info(f"[MainServer] Server fully ready! ({time.time() - _run_start:.2f}s)")
 
         try:
             while True:
@@ -959,8 +957,8 @@ class DevelopServer:
             # Stop file watcher process
             self.stop_file_watcher()
             self.server_sock.close()
-            logger.info("[DevelopServer] Develop server stopped.")
+            logger.info("[MainServer] Develop server stopped.")
 
 
 if __name__ == "__main__":
-    DevelopServer().run_server()
+    MainServer().run_server()

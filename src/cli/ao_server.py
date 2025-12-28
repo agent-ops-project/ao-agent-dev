@@ -34,19 +34,19 @@ from argparse import ArgumentParser
 from ao.common.logger import logger, create_file_logger
 
 from ao.common.constants import (
-    AO_DEVELOP_SERVER_LOG,
-    AO_FILE_WATCHER_LOG,
-    AO_GIT_VERSIONER_LOG,
+    MAIN_SERVER_LOG,
+    FILE_WATCHER_LOG,
+    GIT_VERSIONER_LOG,
     HOST,
     PORT,
     SOCKET_TIMEOUT,
     SHUTDOWN_WAIT,
 )
 
-from ao.server.develop_server import DevelopServer, send_json
+from ao.server.main_server import MainServer, send_json
 
 # Create file logger for server startup timing (only used in _serve command)
-_server_logger = create_file_logger("AO.ServerStartup", AO_DEVELOP_SERVER_LOG)
+_server_logger = create_file_logger("AO.ServerStartup", MAIN_SERVER_LOG)
 
 
 def launch_daemon_server() -> None:
@@ -54,10 +54,10 @@ def launch_daemon_server() -> None:
     Launch the develop server as a detached daemon process with proper stdio handling.
     """
     # Ensure log directory exists
-    os.makedirs(os.path.dirname(AO_DEVELOP_SERVER_LOG), exist_ok=True)
+    os.makedirs(os.path.dirname(MAIN_SERVER_LOG), exist_ok=True)
 
-    # Open log file for the daemon (all logs go to develop_server.log)
-    with open(AO_DEVELOP_SERVER_LOG, "a+") as log_f:
+    # Open log file for the daemon (all logs go to main_server.log)
+    with open(MAIN_SERVER_LOG, "a+") as log_f:
         subprocess.Popen(
             [sys.executable, "-m", "ao.cli.ao_server", "_serve"],
             close_fds=True,
@@ -154,10 +154,10 @@ def execute_server_command(args):
     elif args.command == "logs":
         # Print the contents of the develop server log file
         try:
-            with open(AO_DEVELOP_SERVER_LOG, "r") as log_file:
+            with open(MAIN_SERVER_LOG, "r") as log_file:
                 print(log_file.read(), end="")
         except FileNotFoundError:
-            logger.error(f"Log file not found at {AO_DEVELOP_SERVER_LOG}")
+            logger.error(f"Log file not found at {MAIN_SERVER_LOG}")
         except Exception as e:
             logger.error(f"Error reading log file: {e}")
         return
@@ -165,10 +165,10 @@ def execute_server_command(args):
     elif args.command == "rewrite-logs":
         # Print the contents of the file watcher log file
         try:
-            with open(AO_FILE_WATCHER_LOG, "r") as log_file:
+            with open(FILE_WATCHER_LOG, "r") as log_file:
                 print(log_file.read(), end="")
         except FileNotFoundError:
-            logger.error(f"Log file not found at {AO_FILE_WATCHER_LOG}")
+            logger.error(f"Log file not found at {FILE_WATCHER_LOG}")
         except Exception as e:
             logger.error(f"Error reading log file: {e}")
         return
@@ -176,17 +176,17 @@ def execute_server_command(args):
     elif args.command == "git-logs":
         # Print the contents of the git versioner log file
         try:
-            with open(AO_GIT_VERSIONER_LOG, "r") as log_file:
+            with open(GIT_VERSIONER_LOG, "r") as log_file:
                 print(log_file.read(), end="")
         except FileNotFoundError:
-            logger.error(f"Log file not found at {AO_GIT_VERSIONER_LOG}")
+            logger.error(f"Log file not found at {GIT_VERSIONER_LOG}")
         except Exception as e:
             logger.error(f"Error reading log file: {e}")
         return
 
     elif args.command == "clear-logs":
         # Clear all server log files
-        log_files = [AO_DEVELOP_SERVER_LOG, AO_FILE_WATCHER_LOG, AO_GIT_VERSIONER_LOG]
+        log_files = [MAIN_SERVER_LOG, FILE_WATCHER_LOG, GIT_VERSIONER_LOG]
         for log_path in log_files:
             try:
                 os.makedirs(os.path.dirname(log_path), exist_ok=True)
@@ -215,8 +215,8 @@ def execute_server_command(args):
             _server_logger.warning(f"[ao_server] Could not save python_executable: {e}")
 
         _start = _time.time()
-        server = DevelopServer()
-        _server_logger.info(f"[ao_server] DevelopServer created in {_time.time() - _start:.2f}s")
+        server = MainServer()
+        _server_logger.info(f"[ao_server] MainServer created in {_time.time() - _start:.2f}s")
         server.run_server()
 
 

@@ -8,7 +8,7 @@ import threading
 import json
 
 from ao.common.logger import logger
-from ao.common.constants import AO_DB_PATH
+from ao.common.constants import DB_PATH
 from ao.common.utils import hash_input
 
 
@@ -34,7 +34,7 @@ def get_conn():
         with _db_lock:
             # Double-check pattern to avoid race condition during initialization
             if _shared_conn is None:
-                db_path = os.path.join(AO_DB_PATH, "experiments.sqlite")
+                db_path = os.path.join(DB_PATH, "experiments.sqlite")
                 # Ensure the directory exists with proper permissions
                 os.makedirs(os.path.dirname(db_path), exist_ok=True)
                 _shared_conn = sqlite3.connect(

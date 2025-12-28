@@ -4,7 +4,7 @@ The development server is the core of AO. It receives events from user processes
 
 ## Overview
 
-The server (`develop_server.py`) handles:
+The server (`main_server.py`) handles:
 
 - TCP socket communication with runner processes
 - Session and run management
@@ -41,7 +41,7 @@ ao-server logs
 Check if the server is running:
 
 ```bash
-ps aux | grep develop_server.py
+ps aux | grep main_server.py
 ```
 
 Check which processes are using the port:

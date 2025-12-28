@@ -7,7 +7,7 @@ The VSCode extension supports Google authentication so experiments can be filter
 
 1. **Google OAuth Credentials**: Make sure you have OAuth credentials configured in Google Cloud Console.
 2. **Auth Server**: The authentication server (`auth_app.py`) must be running (either locally or deployed on AWS): `uvicorn ao.server.auth_app:app --host 0.0.0.0 --port 5958 --reload`
-3. **Python Develop Server**: The develop server (`develop_server.py`) must be running and reachable from VSCode. 
+3. **Python Develop Server**: The develop server (`main_server.py`) must be running and reachable from VSCode. 
 
 ## Google Cloud Console configuration
 
@@ -175,7 +175,7 @@ If you prefer commands, they are still available:
     "user_id": "123456789"  // or undefined on logout
   }
   ```
-- The Python server (`develop_server.py`) filters experiments by `user_id` (same behavior as web_app).
+- The Python server (`main_server.py`) filters experiments by `user_id` (same behavior as web_app).
 - Only experiments where `experiments.user_id = <current_user>` are shown.
 
 ## Differences vs Web App
@@ -230,7 +230,7 @@ Fix:
 Cause: `user_id` is not being sent to the Python server
 
 Fix:
-- Ensure the Python server (`develop_server.py`) is running and reachable
+- Ensure the Python server (`main_server.py`) is running and reachable
 - Check Python server logs for the handshake and look for `"user_id"` in the message
 - Verify `pythonServerHost` and `pythonServerPort` settings
 - Test connectivity:
@@ -317,7 +317,7 @@ To test authentication locally:
 
 2. **Start the develop server:**
    ```powershell
-   python -m ao.server.develop_server
+   python -m ao.server.main_server
    ```
 
 3. **Configure VSCode for local:**
@@ -474,7 +474,7 @@ For deeper authentication debugging:
 
 4. **Python server logs:**
    ```python
-   # In develop_server.py, add detailed logging
+   # In main_server.py, add detailed logging
    logger.info(f"Handshake received: {message}")
    logger.info(f"User ID from handshake: {conn_info.get('user_id')}")
    ```
@@ -518,7 +518,7 @@ For deeper authentication debugging:
               │ (localhost:3456 callback)                │
               ▼                                          ▼
     ┌──────────────────┐                    ┌────────────────────┐
-    │  auth_app.py     │                    │ develop_server.py  │
+    │  auth_app.py     │                    │ main_server.py  │
     │  (Port 5958)     │                    │ (Port 5959)        │
     │                  │                    │                    │
     │  - /auth/google/ │                    │ - WebSocket server │

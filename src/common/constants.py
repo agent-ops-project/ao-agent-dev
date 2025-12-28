@@ -88,10 +88,10 @@ os.makedirs(AO_CACHE, exist_ok=True)
 
 # Git repository for code versioning (separate from user's git)
 default_git_path = os.path.join(AO_HOME, "git")
-AO_GIT_DIR = os.path.expandvars(
+GIT_DIR = os.path.expandvars(
     os.path.expanduser(
         os.getenv(
-            "AO_GIT_DIR",
+            "GIT_DIR",
             default_git_path,
         )
     )
@@ -101,15 +101,15 @@ AO_GIT_DIR = os.path.expandvars(
 
 # the path to the folder where the experiments database is stored
 default_db_cache_path = os.path.join(AO_HOME, "db")
-AO_DB_PATH = os.path.expandvars(
+DB_PATH = os.path.expandvars(
     os.path.expanduser(
         os.getenv(
-            "AO_DB_PATH",
+            "DB_PATH",
             default_db_cache_path,
         )
     )
 )
-os.makedirs(AO_DB_PATH, exist_ok=True)
+os.makedirs(DB_PATH, exist_ok=True)
 
 # the path to the folder where the logs are stored
 default_log_path = os.path.join(AO_HOME, "logs")
@@ -122,20 +122,20 @@ AO_LOG_DIR = os.path.expandvars(
     )
 )
 os.makedirs(AO_LOG_DIR, exist_ok=True)
-AO_DEVELOP_SERVER_LOG = os.path.join(AO_LOG_DIR, "develop_server.log")
-AO_FILE_WATCHER_LOG = os.path.join(AO_LOG_DIR, "file_watcher.log")
-AO_GIT_VERSIONER_LOG = os.path.join(AO_LOG_DIR, "git_versioner.log")
+MAIN_SERVER_LOG = os.path.join(AO_LOG_DIR, "main_server.log")
+FILE_WATCHER_LOG = os.path.join(AO_LOG_DIR, "file_watcher.log")
+GIT_VERSIONER_LOG = os.path.join(AO_LOG_DIR, "git_versioner.log")
 
 default_attachment_cache = os.path.join(AO_CACHE, "attachments")
-AO_ATTACHMENT_CACHE = os.path.expandvars(
+ATTACHMENT_CACHE = os.path.expandvars(
     os.path.expanduser(
         os.getenv(
-            "AO_ATTACHMENT_CACHE",
+            "ATTACHMENT_CACHE",
             default_attachment_cache,
         )
     )
 )
-os.makedirs(AO_ATTACHMENT_CACHE, exist_ok=True)
+os.makedirs(ATTACHMENT_CACHE, exist_ok=True)
 
 # Path to the ao package directory
 # Computed from this file's location: ao/common/constants.py -> ao/

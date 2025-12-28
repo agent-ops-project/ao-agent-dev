@@ -81,7 +81,7 @@ ao-server logs
 Check if the server process is running:
 
 ```bash
-ps aux | grep develop_server.py
+ps aux | grep main_server.py
 ```
 
 Check which processes are using the server port:

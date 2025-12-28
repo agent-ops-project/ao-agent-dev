@@ -33,14 +33,14 @@ jobs:
     - name: Launch shim server
       run: |
         export PATH="$HOME/miniconda/bin:$PATH"
-        export AO_DB_PATH="$HOME/.cache/ao/tests/non-billable"
+        export DB_PATH="$HOME/.cache/ao/tests/non-billable"
         export PYTHON_PORT=5959
         source $HOME/miniconda/bin/activate ao
         ao-server start
 
     - name: Run tests
       env:
-        AO_DB_PATH: ~/.cache/ao/tests/non-billable
+        DB_PATH: ~/.cache/ao/tests/non-billable
         PYTHON_PORT: 5959
       run: |
         export PATH="$HOME/miniconda/bin:$PATH"
@@ -131,14 +131,14 @@ jobs:
     - name: Launch shim server
       run: |
         export PATH="$HOME/miniconda/bin:$PATH"
-        export AO_DB_PATH="$HOME/.cache/ao/tests/debug-examples"
+        export DB_PATH="$HOME/.cache/ao/tests/debug-examples"
         export PYTHON_PORT=5960
         source $HOME/miniconda/bin/activate ao
         ao-server start
 
     - name: Run tests
       env:
-        AO_DB_PATH: ~/.cache/ao/tests/debug-examples
+        DB_PATH: ~/.cache/ao/tests/debug-examples
         PYTHON_PORT: 5960
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -180,14 +180,14 @@ jobs:
     - name: Launch shim server
       run: |
         export PATH="$HOME/miniconda/bin:$PATH"
-        export AO_DB_PATH="$HOME/.cache/ao/tests/caching-edit"
+        export DB_PATH="$HOME/.cache/ao/tests/caching-edit"
         export PYTHON_PORT=5962
         source $HOME/miniconda/bin/activate ao
         ao-server start
 
     - name: Run tests
       env:
-        AO_DB_PATH: ~/.cache/ao/tests/caching-edit
+        DB_PATH: ~/.cache/ao/tests/caching-edit
         PYTHON_PORT: 5962
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

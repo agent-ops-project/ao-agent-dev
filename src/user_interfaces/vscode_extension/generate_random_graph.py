@@ -94,7 +94,7 @@ def generate_random_dag(num_nodes: int, num_edges: int, seed: int = None) -> Dic
     return {"nodes": nodes, "edges": edges}
 
 
-def connect_to_develop_server(host="127.0.0.1", port=5959):
+def connect_to_main_server(host="127.0.0.1", port=5959):
     """Connect to the develop server and return the connection."""
     try:
         conn = socket.create_connection((host, port), timeout=5)
@@ -127,7 +127,7 @@ def receive_message(conn: socket.socket) -> dict:
 
 def send_graph_to_ui(graph: Dict, graph_name: str = "Random Graph"):
     """Send a generated graph to the develop server to display in the UI."""
-    conn = connect_to_develop_server()
+    conn = connect_to_main_server()
     if not conn:
         print("Could not connect to develop server")
         return None

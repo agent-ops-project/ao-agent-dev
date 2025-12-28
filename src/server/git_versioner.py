@@ -12,9 +12,9 @@ from datetime import datetime
 from typing import Optional
 
 from ao.common.logger import create_file_logger
-from ao.common.constants import AO_PROJECT_ROOT, AO_GIT_DIR, AO_GIT_VERSIONER_LOG
+from ao.common.constants import AO_PROJECT_ROOT, GIT_DIR, GIT_VERSIONER_LOG
 
-logger = create_file_logger("AO.GitVersioner", AO_GIT_VERSIONER_LOG)
+logger = create_file_logger("AO.GitVersioner", GIT_VERSIONER_LOG)
 
 
 class GitVersioner:
@@ -26,9 +26,9 @@ class GitVersioner:
     """
 
     def __init__(self):
-        """Initialize the GitVersioner using AO_PROJECT_ROOT and AO_GIT_DIR."""
+        """Initialize the GitVersioner using AO_PROJECT_ROOT and GIT_DIR."""
         self.project_root = os.path.abspath(AO_PROJECT_ROOT)
-        self.git_dir = os.path.abspath(AO_GIT_DIR)
+        self.git_dir = os.path.abspath(GIT_DIR)
         self._git_available: Optional[bool] = None
         self._initialized = False
 
@@ -62,6 +62,7 @@ class GitVersioner:
         return subprocess.run(
             cmd,
             env=env,
+            cwd=self.project_root,
             check=check,
             capture_output=capture_output,
             text=True,
@@ -145,7 +146,8 @@ class GitVersioner:
             return version_str
 
         except subprocess.SubprocessError as e:
-            logger.error(f"[GitVersioner] Git operation failed: {e}")
+            stderr = getattr(e, "stderr", None)
+            logger.error(f"[GitVersioner] Git operation failed: {e}, stderr: {stderr}")
             return None
         except subprocess.TimeoutExpired:
             logger.error("[GitVersioner] Git operation timed out")

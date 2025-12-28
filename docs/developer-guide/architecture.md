@@ -94,7 +94,7 @@ src/
 │       ├── apply_monkey_patches.py
 │       └── patches/        # Per-API patches
 ├── server/                 # Core server
-│   ├── develop_server.py   # Main server logic
+│   ├── main_server.py   # Main server logic
 │   ├── ast_transformer.py  # AST rewriting
 │   ├── file_watcher.py     # File monitoring
 │   └── database_manager.py # Caching/storage

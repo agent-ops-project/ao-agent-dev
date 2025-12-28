@@ -30,7 +30,7 @@ ao/
 └── server/                 # Core server
     ├── ast_transformer.py  # AST rewriting
     ├── file_watcher.py     # File monitoring
-    └── develop_server.py   # Main server
+    └── main_server.py   # Main server
 ```
 
 ## Using the API

@@ -26,10 +26,10 @@ from ao.common.constants import (
     FILE_POLL_INTERVAL,
     ORPHAN_POLL_INTERVAL,
     AO_PROJECT_ROOT,
-    AO_FILE_WATCHER_LOG,
+    FILE_WATCHER_LOG,
 )
 
-logger = create_file_logger("AO.FileWatcher", AO_FILE_WATCHER_LOG)
+logger = create_file_logger("AO.FileWatcher", FILE_WATCHER_LOG)
 from ao.server.ast_transformer import TaintPropagationTransformer
 from ao.common.utils import MODULES_TO_FILES
 

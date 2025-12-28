@@ -69,10 +69,10 @@ class DatabaseManager:
         self._backend_module = None
 
         # Check if and where to cache attachments.
-        from ao.common.constants import AO_ATTACHMENT_CACHE
+        from ao.common.constants import ATTACHMENT_CACHE
 
         self.cache_attachments = True
-        self.attachment_cache_dir = AO_ATTACHMENT_CACHE
+        self.attachment_cache_dir = ATTACHMENT_CACHE
 
         logger.info(f"DatabaseManager initialized with backend: {self.get_current_mode()}")
 

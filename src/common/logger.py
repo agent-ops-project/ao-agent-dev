@@ -27,7 +27,7 @@ def create_file_logger(name: str, log_file: str) -> logging.Logger:
     Create a logger with file handler for server components.
 
     Args:
-        name: Logger name (e.g., "AO.DevelopServer")
+        name: Logger name (e.g., "AO.MainServer")
         log_file: Path to the log file
 
     Returns:
