@@ -17,6 +17,7 @@ from ao.common.logger import logger
 class Config:
     project_root: str
     database_url: str = None
+    python_executable: str = None  # Auto-populated when ao-server runs
 
     @classmethod
     def from_yaml_file(cls, yaml_file: str) -> "Config":

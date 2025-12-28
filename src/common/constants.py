@@ -53,7 +53,7 @@ PROCESS_TERMINATE_TIMEOUT = 5
 MESSAGE_POLL_INTERVAL = 0.1
 FILE_POLL_INTERVAL = 1  # Interval in seconds for polling file changes for AST recompilation
 ORPHAN_POLL_INTERVAL = 60  # Interval in seconds for checking if parent process died
-SERVER_INACTIVITY_TIMEOUT = 3600  # Shutdown server after 1 hour of inactivity
+SERVER_INACTIVITY_TIMEOUT = 1200  # Shutdown server after 20 min of inactivity
 SERVER_START_WAIT = 1
 SOCKET_TIMEOUT = 1
 SHUTDOWN_WAIT = 2
@@ -64,12 +64,13 @@ DEFAULT_LOG = "No entries"
 DEFAULT_SUCCESS = ""
 SUCCESS_STRING = {True: "Satisfactory", False: "Failed", None: ""}
 
+CERTAINTY_UNKNOWN = "#000000"
 CERTAINTY_GREEN = "#7fc17b"  # Matches restart/rerun button
-CERTAINTY_YELLOW = "#d4a825"  # Matches tag icon
+CERTAINTY_YELLOW = "#d4a825"  # Matches tag icon; currently unused
 CERTAINTY_RED = "#e05252"  # Matches erase button
 SUCCESS_COLORS = {
     "Satisfactory": CERTAINTY_GREEN,
-    "": CERTAINTY_YELLOW,
+    "": CERTAINTY_UNKNOWN,
     "Failed": CERTAINTY_RED,
 }
 

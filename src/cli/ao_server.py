@@ -178,6 +178,20 @@ def execute_server_command(args):
     elif args.command == "_serve":
         # Internal: run the server loop (not meant to be called by users directly)
         _server_logger.info(f"[ao_server] Imports completed in {_time.time() - _import_start:.2f}s")
+
+        # Save Python executable path to config for VS Code extension to use
+        from ao.common.constants import AO_CONFIG
+        from ao.common.config import Config
+
+        try:
+            config = Config.from_yaml_file(AO_CONFIG)
+            if config.python_executable != sys.executable:
+                config.python_executable = sys.executable
+                config.to_yaml_file(AO_CONFIG)
+                _server_logger.info(f"[ao_server] Saved python_executable: {sys.executable}")
+        except Exception as e:
+            _server_logger.warning(f"[ao_server] Could not save python_executable: {e}")
+
         _start = _time.time()
         server = DevelopServer()
         _server_logger.info(f"[ao_server] DevelopServer created in {_time.time() - _start:.2f}s")
