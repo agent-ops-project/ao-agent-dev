@@ -23,7 +23,7 @@ def restart_server():
     time.sleep(1)
 
 
-def _run_script_with_ao_launch(script_path: str, project_root: str, env: dict) -> tuple[int, str]:
+def _run_script_with_ao_record(script_path: str, env: dict) -> tuple[int, str]:
     """
     Run a script using ao-record and return (return_code, session_id).
 
@@ -31,7 +31,7 @@ def _run_script_with_ao_launch(script_path: str, project_root: str, env: dict) -
     """
     env["AO_NO_DEBUG_MODE"] = "True"
     proc = subprocess.Popen(
-        [sys.executable, "-m", "ao.cli.ao_record", "--project-root", project_root, script_path],
+        [sys.executable, "-m", "ao.cli.ao_record", script_path],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -55,7 +55,7 @@ def _run_script_with_ao_launch(script_path: str, project_root: str, env: dict) -
     return proc.returncode, session_id
 
 
-async def run_test(script_path: str, project_root: str):
+async def run_test(script_path: str):
     """
     Run a test script twice using ao-record and return data for caching validation.
 
@@ -79,7 +79,7 @@ async def run_test(script_path: str, project_root: str):
     DB.switch_mode("local")
 
     # First run
-    return_code, session_id = _run_script_with_ao_launch(script_path, project_root, env)
+    return_code, session_id = _run_script_with_ao_record(script_path, env)
     assert return_code == 0, f"First run failed with return_code {return_code}"
     assert session_id is not None, "Could not extract session_id from first run output"
 
@@ -101,7 +101,7 @@ async def run_test(script_path: str, project_root: str):
     # Second run (should use cached results)
     # Pass the same session_id so it reuses the cache
     env["AO_SESSION_ID"] = session_id
-    returncode_rerun, _ = _run_script_with_ao_launch(script_path, project_root, env)
+    returncode_rerun, _ = _run_script_with_ao_record(script_path, env)
     assert returncode_rerun == 0, f"Re-run failed with return_code {returncode_rerun}"
 
     # Query results from second run

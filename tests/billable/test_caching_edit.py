@@ -87,7 +87,7 @@ def find_row_and_get_edit_msg(script_path: str, rows: list):
     return msg
 
 
-def _run_script_with_ao_launch(script_path: str, project_root: str, env: dict) -> tuple[int, str]:
+def _run_script_with_ao_record(script_path: str, env: dict) -> tuple[int, str]:
     """
     Run a script using ao-record and return (return_code, session_id).
 
@@ -95,7 +95,7 @@ def _run_script_with_ao_launch(script_path: str, project_root: str, env: dict) -
     """
     env["AO_NO_DEBUG_MODE"] = "True"
     proc = subprocess.Popen(
-        [sys.executable, "-m", "ao.cli.ao_record", "--project-root", project_root, script_path],
+        [sys.executable, "-m", "ao.cli.ao_record", script_path],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -141,7 +141,7 @@ def send_message_to_server(msg: dict) -> None:
         conn.close()
 
 
-async def run_test(script_path: str, project_root: str):
+async def run_test(script_path: str):
     # Restart server to ensure clean state for this test
     restart_server()
 
@@ -154,7 +154,7 @@ async def run_test(script_path: str, project_root: str):
     DB.switch_mode("local")
 
     # First run
-    return_code, session_id = _run_script_with_ao_launch(script_path, project_root, env)
+    return_code, session_id = _run_script_with_ao_record(script_path, env)
     assert return_code == 0, f"First run failed with return_code {return_code}"
     assert session_id is not None, "Could not extract session_id from first run output"
 
@@ -179,7 +179,7 @@ async def run_test(script_path: str, project_root: str):
     # Second run (rerun with edit applied)
     # Pass the same session_id so it reuses the cache but applies the edit
     env["AO_SESSION_ID"] = session_id
-    returncode_rerun, _ = _run_script_with_ao_launch(script_path, project_root, env)
+    returncode_rerun, _ = _run_script_with_ao_record(script_path, env)
     assert returncode_rerun == 0, f"Re-run failed with return_code {returncode_rerun}"
 
     graph_topology = DB.query_one(
@@ -206,7 +206,7 @@ async def run_test(script_path: str, project_root: str):
     time.sleep(1)
 
     # Third run without editing (should use cached results including the edit)
-    returncode_third, _ = _run_script_with_ao_launch(script_path, project_root, env)
+    returncode_third, _ = _run_script_with_ao_record(script_path, env)
     assert returncode_third == 0, f"Third run failed with return_code {returncode_third}"
 
     new_graph_topology = DB.query_one(
@@ -233,7 +233,7 @@ async def run_test(script_path: str, project_root: str):
     ],
 )
 def test_debug_examples(script_path: str):
-    asyncio.run(run_test(script_path=script_path, project_root="."))
+    asyncio.run(run_test(script_path=script_path))
 
 
 if __name__ == "__main__":

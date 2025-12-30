@@ -155,45 +155,6 @@ def get_module_file_path(module_name: str) -> str | None:
     return None
 
 
-def scan_user_py_files_and_modules(root_dir):
-    """
-    Scan a directory for all .py files and return:
-      - module_to_file: mapping from module name to file path (relative to root_dir)
-
-    Excludes ao package directories (except example_workflows) and common non-code dirs.
-
-    NOTE: We intentionally don't use find_spec() to check for shorter module names
-    because find_spec() can trigger imports of parent packages, which can execute
-    code in modules that lack `if __name__ == "__main__":` guards.
-    """
-    module_to_file = dict()
-
-    # Standard directories to exclude
-    exclude_dirs = {".git", ".venv", "__pycache__", "__ao_cache__", ".pytest_cache", "node_modules"}
-
-    for dirpath, dirnames, filenames in os.walk(root_dir):
-        # Check if we're inside ao directory
-        if os.path.commonpath([dirpath, AO_INSTALL_DIR]) == AO_INSTALL_DIR:
-            # We're inside ao, only include example_workflows
-            rel_to_agent = os.path.relpath(dirpath, AO_INSTALL_DIR)
-            if not rel_to_agent.startswith("example_workflows"):
-                continue
-
-        # Filter out excluded directories
-        dirnames[:] = [d for d in dirnames if d not in exclude_dirs]
-        for filename in filenames:
-            if filename.endswith(".py"):
-                abs_path = os.path.abspath(os.path.join(dirpath, filename))
-                # Compute module name relative to root_dir
-                rel_path = os.path.relpath(abs_path, root_dir)
-                mod_name = rel_path[:-3].replace(os.sep, ".")  # strip .py, convert / to .
-                if mod_name.endswith(".__init__"):
-                    mod_name = mod_name[:-9]  # remove .__init__
-                module_to_file[mod_name] = abs_path
-
-    return module_to_file
-
-
 # ==============================================================================
 # Communication with server.
 # ==============================================================================
@@ -548,11 +509,3 @@ def save_io_stream(stream, filename, dest_dir):
             return new_path
 
         counter += 1
-
-
-# Mapping that maps module to file name
-MODULES_TO_FILES = scan_user_py_files_and_modules(AO_PROJECT_ROOT)
-packages_in_project_root = find_additional_packages_in_project_root(project_root=AO_PROJECT_ROOT)
-for additional_package in packages_in_project_root:
-    additional_package_module_to_file = scan_user_py_files_and_modules(additional_package)
-    MODULES_TO_FILES = {**MODULES_TO_FILES, **additional_package_module_to_file}

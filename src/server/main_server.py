@@ -21,7 +21,6 @@ from ao.common.constants import (
 )
 from ao.server.database_manager import DB
 from ao.server.file_watcher import run_file_watcher_process
-from ao.server.git_versioner import GitVersioner
 
 logger = create_file_logger(MAIN_SERVER_LOG)
 
@@ -55,13 +54,13 @@ class MainServer:
         self.lock = threading.Lock()
         self.conn_info = {}  # conn -> {role, session_id}
         self.session_graphs = {}  # session_id -> graph_data
-        self.ui_connections = set()  # All UI connections (simplified)
+        self.ui_connections = set()
         self.sessions = {}  # session_id -> Session (only for agent runner connections)
         self.file_watcher_process = None  # Child process for file watching
-        self.file_watch_queue = multiprocessing.Queue()  # IPC queue for watch_file messages
+        self.file_watch_queue = multiprocessing.Queue()  # MainServer → FileWatcher
+        self.file_watch_response_queue = multiprocessing.Queue()  # FileWatcher → MainServer
         # self.current_user_id = None  # Store the current authenticated user_id (auth disabled)
         self.rerun_sessions = set()  # Track sessions being rerun to avoid clearing llm_calls
-        self.git_versioner = GitVersioner()
         self._last_activity_time = time.time()  # Track last message received for inactivity timeout
         self._project_root = None  # Workspace root from VS Code UI
 
@@ -83,7 +82,7 @@ class MainServer:
 
             self.file_watcher_process = multiprocessing.Process(
                 target=run_file_watcher_process,
-                args=(project_root, self.file_watch_queue),
+                args=(project_root, self.file_watch_queue, self.file_watch_response_queue),
                 daemon=True,  # Dies when parent process dies
             )
             self.file_watcher_process.start()
@@ -131,6 +130,32 @@ class MainServer:
                     return
 
         thread = threading.Thread(target=monitor_inactivity, daemon=True)
+        thread.start()
+
+    def _start_response_queue_monitor(self) -> None:
+        """Start a daemon thread that polls the FileWatcher response queue."""
+        import queue
+
+        def monitor_response_queue():
+            while True:
+                try:
+                    msg = self.file_watch_response_queue.get(timeout=1.0)
+                    msg_type = msg.get("type")
+                    if msg_type == "version_result":
+                        # FileWatcher completed git commit, update DB and broadcast
+                        session_id = msg.get("session_id")
+                        version_date = msg.get("version_date")
+                        if session_id and version_date:
+                            DB.update_experiment_version_date(session_id, version_date)
+                        self.broadcast_experiment_list_to_uis()
+                    else:
+                        logger.warning(f"Unknown response queue message type: {msg_type}")
+                except queue.Empty:
+                    continue
+                except Exception as e:
+                    logger.error(f"Error processing response queue: {e}")
+
+        thread = threading.Thread(target=monitor_response_queue, daemon=True)
         thread.start()
 
     # ============================================================
@@ -201,7 +226,7 @@ class MainServer:
                 success = row["success"]
                 notes = row["notes"]
                 log = row["log"]
-                code_hash = row["code_hash"]
+                version_date = row["version_date"]
 
                 # Parse color_preview from database
                 color_preview = []
@@ -217,7 +242,7 @@ class MainServer:
                         "status": status,
                         "timestamp": timestamp,
                         "color_preview": color_preview,
-                        "code_hash": code_hash,
+                        "version_date": version_date,
                         "run_name": run_name,
                         "result": success,
                         "notes": notes,
@@ -605,7 +630,7 @@ class MainServer:
             # if user_id is None:
             #     user_id = self.current_user_id
 
-            code_hash = self.git_versioner.commit_and_get_version()
+            # Create experiment with version_date=None, request async versioning
             DB.add_experiment(
                 session_id,
                 name,
@@ -615,8 +640,10 @@ class MainServer:
                 environment,
                 parent_session_id,
                 None,  # user_id disabled
-                code_hash,
+                None,  # version_date will be set async by FileWatcher
             )
+            # Request async git versioning from FileWatcher
+            self.file_watch_queue.put({"type": "request_version", "session_id": session_id})
         # Insert session if not present.
         with self.lock:
             if session_id not in self.sessions:
@@ -684,12 +711,17 @@ class MainServer:
         logger.info("Shutdown command received. Closing all connections.")
         # Stop file watcher process first
         self.stop_file_watcher()
-        # Close the multiprocessing queue to release semaphores
+        # Close the multiprocessing queues to release semaphores
         try:
             self.file_watch_queue.close()
             self.file_watch_queue.join_thread()
         except Exception as e:
             logger.debug(f"Error closing file_watch_queue: {e}")
+        try:
+            self.file_watch_response_queue.close()
+            self.file_watch_response_queue.join_thread()
+        except Exception as e:
+            logger.debug(f"Error closing file_watch_response_queue: {e}")
         # Close all client sockets
         for s in list(self.conn_info.keys()):
             try:
@@ -729,7 +761,7 @@ class MainServer:
             logger.error(f"Failed to switch database mode: {e}")
 
     # ============================================================
-    # Message rounting logic.
+    # Message routing logic.
     # ============================================================
 
     def process_message(self, msg: dict, conn: socket.socket) -> None:
@@ -810,7 +842,7 @@ class MainServer:
                     if not name:
                         run_index = DB.get_next_run_index()
                         name = f"Run {run_index}"
-                    code_hash = self.git_versioner.commit_and_get_version()
+                    # Create experiment with version_date=None, request async versioning
                     DB.add_experiment(
                         session_id,
                         name,
@@ -820,9 +852,10 @@ class MainServer:
                         environment,
                         None,
                         None,  # user_id disabled
-                        code_hash,
+                        None,  # version_date will be set async by FileWatcher
                     )
-                    logger.info(f"[GitVersioner] code version is {code_hash}")
+                    # Request async git versioning from FileWatcher
+                    self.file_watch_queue.put({"type": "request_version", "session_id": session_id})
                 # Insert session if not present.
                 with self.lock:
                     if session_id not in self.sessions:
@@ -882,7 +915,6 @@ class MainServer:
                         logger.error(f"Error parsing JSON: {e}")
                         continue
 
-                    # Print message type.
                     msg_type = msg.get("type", "unknown")
                     logger.debug(f"Received message type: {msg_type}")
 
@@ -955,6 +987,9 @@ class MainServer:
 
         # Start inactivity monitor (shuts down after 1 hour of no messages)
         self._start_inactivity_monitor()
+
+        # Start response queue monitor (handles FileWatcher responses)
+        self._start_response_queue_monitor()
 
         # Load finished runs on startup
         logger.info(f"Loading finished runs... ({time.time() - _run_start:.2f}s)")

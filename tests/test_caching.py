@@ -29,13 +29,12 @@ class RunData:
     new_graph: list
 
 
-def run_script_via_ao_launch(script_path: str, project_root: str) -> str:
+def run_script_via_ao_record(script_path: str) -> str:
     """
-    Run a script using ao-launch and return the session_id.
+    Run a script using ao-record and return the session_id.
 
     Args:
         script_path: Path to the script to run
-        project_root: Project root directory
 
     Returns:
         The session_id from the experiment record
@@ -43,14 +42,12 @@ def run_script_via_ao_launch(script_path: str, project_root: str) -> str:
     env = os.environ.copy()
     env["ao_DATABASE_MODE"] = "local"
 
-    # Run the script via ao-launch
+    # Run the script via ao-record
     result = subprocess.run(
         [
             sys.executable,
             "-m",
-            "ao.cli.ao_launch",
-            "--project-root",
-            project_root,
+            "ao.cli.ao_record",
             script_path,
         ],
         env=env,
@@ -73,7 +70,7 @@ def run_script_via_ao_launch(script_path: str, project_root: str) -> str:
     return experiment["session_id"]
 
 
-def run_test(script_path: str, project_root: str) -> RunData:
+def run_test(script_path: str) -> RunData:
     """
     Run a script twice and collect data for comparison.
 
@@ -90,7 +87,7 @@ def run_test(script_path: str, project_root: str) -> RunData:
     DB.switch_mode("local")
 
     # First run
-    session_id = run_script_via_ao_launch(script_path, project_root)
+    session_id = run_script_via_ao_record(script_path)
 
     rows = DB.query_all(
         "SELECT node_id, input_overwrite, output FROM llm_calls WHERE session_id=?",
@@ -113,9 +110,7 @@ def run_test(script_path: str, project_root: str) -> RunData:
         [
             sys.executable,
             "-m",
-            "ao.cli.ao_launch",
-            "--project-root",
-            project_root,
+            "ao.cli.ao_record",
             script_path,
         ],
         env=env,
@@ -202,7 +197,6 @@ def _deepresearch_asserts(run_data_obj: RunData):
 def test_deepresearch():
     run_data_obj = run_test(
         script_path="./example_workflows/miroflow_deep_research/single_task.py",
-        project_root="./example_workflows/miroflow_deep_research",
     )
     _caching_asserts(run_data_obj)
     _deepresearch_asserts(run_data_obj)
@@ -236,9 +230,7 @@ def test_deepresearch():
     ],
 )
 def test_debug_examples(script_path: str):
-    run_data_obj = run_test(
-        script_path=script_path, project_root="./example_workflows/debug_examples"
-    )
+    run_data_obj = run_test(script_path=script_path)
     _caching_asserts(run_data_obj)
 
 

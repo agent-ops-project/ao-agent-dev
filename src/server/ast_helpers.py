@@ -189,9 +189,10 @@ def _is_user_function(func):
 
     Handles decorated functions by unwrapping via __wrapped__ attribute.
     """
-    from ao.common.utils import MODULES_TO_FILES, get_ao_py_files
+    from ao.runner.ast_rewrite_hook import get_user_module_files
+    from ao.common.utils import get_ao_py_files
 
-    user_py_files = list(MODULES_TO_FILES.values()) + get_ao_py_files()
+    user_py_files = get_user_module_files() + get_ao_py_files()
 
     if not user_py_files:
         return False
@@ -251,7 +252,7 @@ def _is_type_annotation_access(obj, _key):
 # =============================================================================
 
 
-# Methods that store values - don't unwrap args to preserve taint on stored items
+# Methods that store values - call directly so stored items retain their id in TAINT_DICT
 STORING_METHODS = {"append", "extend", "insert", "add", "update", "setdefault"}
 
 

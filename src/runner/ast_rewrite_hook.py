@@ -8,14 +8,19 @@ from ao.server.file_watcher import rewrite_source_to_code, get_pyc_path
 from ao.common.utils import should_rewrite
 
 
-_module_to_user_file = dict()
+_module_to_user_file = dict()  # Populated on-demand as modules are discovered
 _notified_files = set()  # Track files we've already notified FileWatcher about
 _skip_modules = set()  # Cache of modules we've determined shouldn't be rewritten
 
 
-def set_module_to_user_file(module_to_user_file: dict):
-    global _module_to_user_file
-    _module_to_user_file = module_to_user_file
+def get_user_module_files() -> list:
+    """
+    Return list of user module file paths.
+
+    Used by ast_helpers._is_user_function() to check if a function is user code.
+    This dict is populated dynamically as modules are imported via the import hook.
+    """
+    return list(_module_to_user_file.values())
 
 
 def _find_module_file(fullname: str, path) -> str | None:
@@ -109,7 +114,7 @@ class ASTImportLoader(SourceLoader):
         # Skip .pyc loading for __init__.py - file_watcher doesn't compile them
         # to avoid circular import issues from injected taint imports
         if os.path.basename(path) == "__init__.py":
-            return rewrite_source_to_code(data, path, module_to_file=_module_to_user_file)
+            return rewrite_source_to_code(data, path, user_files=set(_module_to_user_file.values()))
 
         # Try to load from cache
         try:
@@ -123,7 +128,9 @@ class ASTImportLoader(SourceLoader):
             pass  # Cache miss - compile below
 
         # Cache miss - compile on demand
-        code_object = rewrite_source_to_code(data, path, module_to_file=_module_to_user_file)
+        code_object = rewrite_source_to_code(
+            data, path, user_files=set(_module_to_user_file.values())
+        )
 
         # Notify FileWatcher about this file (if not already notified)
         _notify_file_watcher(path)
