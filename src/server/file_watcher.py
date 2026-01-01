@@ -20,10 +20,12 @@ import time
 import signal
 import glob
 import hashlib
+import hashlib
 import threading
 import queue
 import subprocess
 import shutil
+import traceback
 from datetime import datetime
 from typing import Dict, Set, Optional
 from ao.common.logger import create_file_logger
@@ -443,8 +445,6 @@ class FileWatcher:
 
         except Exception as e:
             logger.error(f"✗ Failed to compile {file_path}: {e}")
-            import traceback
-
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
@@ -470,8 +470,6 @@ class FileWatcher:
                 self.check_and_recompile()
                 time.sleep(FILE_POLL_INTERVAL)
         except Exception:
-            import traceback
-
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
         finally:
@@ -515,5 +513,4 @@ def get_pyc_path(py_file_path: str) -> str:
     path_hash = hashlib.md5(py_file_path.encode()).hexdigest()[:16]
     base_name = os.path.splitext(os.path.basename(py_file_path))[0]
     pyc_name = f"{base_name}.{path_hash}.{_VERSION_TAG}.pyc"
-
     return os.path.join(AO_CACHE_DIR, pyc_name)

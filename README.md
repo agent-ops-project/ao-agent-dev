@@ -74,14 +74,14 @@ The VS Code extension will display the dataflow graph showing how data flows bet
 
 ## Documentation
 
-For complete documentation, installation guides, and tutorials, visit our **[Documentation Site](https://agent-ops-project.github.io/ao-agent-dev/)**.
+For complete documentation, installation guides, and tutorials, visit our **[Documentation Site](https://ao-agent-ops.github.io/ao-dev/)**.
 
 ## Building from source and developing
 
-See the [Installation Guide](https://agent-ops-project.github.io/ao-agent-dev/getting-started/installation/#developer-installation) for development setup and the [Developer Guide](https://agent-ops-project.github.io/ao-agent-dev/developer-guide/architecture/) for architecture details.
+See the [Installation Guide](https://ao-agent-ops.github.io/ao-dev/getting-started/installation/) for development setup and the [Developer Guide](https://ao-agent-ops.github.io/ao-dev/developer-guide/architecture/) for architecture details.
 
 ## Community
 
 - [Join our Discord](https://discord.gg/fjsNSa6TAh)
-- [GitHub Issues](https://github.com/agent-ops-project/ao-agent-dev/issues)
+- [GitHub Issues](https://github.com/agent-ops-project/ao-dev/issues)
 - We're just getting started on this tool and are eager to hear your feedback and resolve issues you ran into! We hope you enjoy it as much as we do.

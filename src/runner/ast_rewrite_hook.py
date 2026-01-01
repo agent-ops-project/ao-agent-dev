@@ -92,6 +92,75 @@ def _notify_file_watcher(file_path: str) -> None:
         logger.debug(f"[ASTHook] Failed to notify FileWatcher about {file_path}: {e}")
 
 
+def _find_module_file(fullname: str, path) -> str | None:
+    """
+    Find the source file for a module without importing it.
+
+    Args:
+        fullname: Fully qualified module name (e.g., 'mypackage.mymodule')
+        path: Search path (from find_spec)
+
+    Returns:
+        Absolute path to the .py file, or None if not found
+    """
+    parts = fullname.split(".")
+    module_file = parts[-1] + ".py"
+    package_init = os.path.join(*parts, "__init__.py") if len(parts) > 1 else None
+
+    # Search in provided path first, then sys.path
+    search_paths = []
+    if path:
+        search_paths.extend(path)
+    search_paths.extend(sys.path)
+
+    for base in search_paths:
+        if not base or not os.path.isdir(base):
+            continue
+
+        # Try as a module file
+        candidate = (
+            os.path.join(base, *parts[:-1], module_file)
+            if len(parts) > 1
+            else os.path.join(base, module_file)
+        )
+        if os.path.isfile(candidate):
+            return os.path.abspath(candidate)
+
+        # Try as a package (__init__.py)
+        if package_init:
+            candidate = os.path.join(base, package_init)
+            if os.path.isfile(candidate):
+                return os.path.abspath(candidate)
+
+        # Try as a single-level package
+        candidate = os.path.join(base, *parts, "__init__.py")
+        if os.path.isfile(candidate):
+            return os.path.abspath(candidate)
+
+    return None
+
+
+def _notify_file_watcher(file_path: str) -> None:
+    """
+    Notify FileWatcher about a newly discovered file to monitor.
+
+    Sends a 'watch_file' message to the server, which forwards it to FileWatcher.
+    Only notifies once per file per session.
+    """
+    global _notified_files
+    if file_path in _notified_files:
+        return
+    _notified_files.add(file_path)
+
+    try:
+        from ao.common.utils import send_to_server
+
+        send_to_server({"type": "watch_file", "path": file_path})
+    except Exception as e:
+        # Don't fail the import if notification fails
+        logger.debug(f"[ASTHook] Failed to notify FileWatcher about {file_path}: {e}")
+
+
 class ASTImportLoader(SourceLoader):
     def __init__(self, fullname, path):
         self.fullname = fullname
