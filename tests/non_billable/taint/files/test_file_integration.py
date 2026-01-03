@@ -18,7 +18,7 @@
 #         tmp.seek(0)
 
 #         # Test wrapping a file object
-#         wrapped = taint_wrap(tmp, taint_origin="file_input")
+#         wrapped = taint(tmp, ["file_input"])
 #         print(f"Wrapped file type: {type(wrapped)}")
 #         print(f"Is TaintFile: {isinstance(wrapped, TaintFile)}")
 
@@ -30,7 +30,7 @@
 #             print(f"Content: {content!r}")
 #             print(f"Is tainted: {is_tainted(content)}")
 #             if is_tainted(content):
-#                 print(f"Taint origins: {get_taint_origins(content)}")
+#                 print(f"Taint origins: {get_taint(content)}")
 
 #     os.unlink(tmp_path)
 #     print("✓ File wrapping works!")
@@ -47,12 +47,12 @@
 
 #     try:
 #         # Read file with taint tracking
-#         with open_with_taint(tmp_path, "r", taint_origin="sensitive_file") as f:
+#         with open_with_taint(tmp_path, "r","sensitive_file") as f:
 #             file_content = f.read()
 
 #         print(f"File content type: {type(file_content)}")
 #         print(f"Is tainted: {is_tainted(file_content)}")
-#         print(f"Taint origins: {get_taint_origins(file_content)}")
+#         print(f"Taint origins: {get_taint(file_content)}")
 
 #         # Simulate using in LLM call
 #         messages = [
@@ -63,7 +63,7 @@
 #         # Check that the content in the message is still tainted
 #         user_content = messages[1]["content"]
 #         print(f"Message content is tainted: {is_tainted(user_content)}")
-#         print(f"Message taint origins: {get_taint_origins(user_content)}")
+#         print(f"Message taint origins: {get_taint(user_content)}")
 
 #         # This would go to an LLM API call, which should preserve the taint
 #         # by wrapping the response with the same or additional taint origins

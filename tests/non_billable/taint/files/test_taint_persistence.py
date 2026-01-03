@@ -12,7 +12,7 @@
 # import os
 # import sys
 # from pathlib import Path
-# from ao.runner.taint_wrappers import taint_wrap, get_taint_origins
+# from ao.runner.taint_wrappers import taint_wrap, get_taint
 # from ao.server.ast_transformer import taint_open
 
 # # Add utils path for test helpers
@@ -31,18 +31,18 @@
 #     setup_test_session("session-001", name="Session 1 - Writer")
 
 #     # Create some tainted data with node IDs as taint origins
-#     tainted_data1 = taint_wrap("This is line 1 with secret data\n", taint_origin="node-001")
-#     tainted_data2 = taint_wrap("This is line 2 with more secrets\n", taint_origin="node-002")
-#     tainted_data3 = taint_wrap(
-#         "This is line 3 with combined data\n", taint_origin=["node-001", "node-003"]
+#     tainted_data1 = taint("This is line 1 with secret data\n", ["node-001"])
+#     tainted_data2 = taint("This is line 2 with more secrets\n", ["node-002"])
+#     tainted_data3 = taint(
+#         "This is line 3 with combined data\n",["node-001", "node-003"]
 #     )
 
-#     print(f"Tainted data 1 origins: {get_taint_origins(tainted_data1)}")
-#     print(f"Tainted data 2 origins: {get_taint_origins(tainted_data2)}")
-#     print(f"Tainted data 3 origins: {get_taint_origins(tainted_data3)}")
+#     print(f"Tainted data 1 origins: {get_taint(tainted_data1)}")
+#     print(f"Tainted data 2 origins: {get_taint(tainted_data2)}")
+#     print(f"Tainted data 3 origins: {get_taint(tainted_data3)}")
 
 #     # Write to a file using taint_open
-#     with taint_open("test_taint_data.txt", "w") as f:
+#     with taint_open("test_taint_data.txt", ["w"]) as f:
 #         f.write(tainted_data1)
 #         f.write(tainted_data2)
 #         f.write(tainted_data3)
@@ -68,15 +68,15 @@
 #         line3 = f.readline()
 
 #     print(f"Line 1: {line1.strip()}")
-#     print(f"Line 1 taint origins: {get_taint_origins(line1)}")
+#     print(f"Line 1 taint origins: {get_taint(line1)}")
 #     print()
 
 #     print(f"Line 2: {line2.strip()}")
-#     print(f"Line 2 taint origins: {get_taint_origins(line2)}")
+#     print(f"Line 2 taint origins: {get_taint(line2)}")
 #     print()
 
 #     print(f"Line 3: {line3.strip()}")
-#     print(f"Line 3 taint origins: {get_taint_origins(line3)}")
+#     print(f"Line 3 taint origins: {get_taint(line3)}")
 #     print()
 
 

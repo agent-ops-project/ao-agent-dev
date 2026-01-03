@@ -69,14 +69,14 @@
 #             assert tf.mode == "r"
 #             content = tf.read()
 #             assert isinstance(content, TaintStr)
-#             assert get_taint_origins(content) == [f"file:{tmp_path}"]
+#             assert get_taint(content) == [f"file:{tmp_path}"]
 #             tf.close()
 
 #             # Test opening with custom taint
 #             tf = TaintFile.open(tmp_path, "r", taint_origin="custom_source")
 #             assert tf._taint_origin == ["custom_source"]
 #             content = tf.read()
-#             assert get_taint_origins(content) == ["custom_source"]
+#             assert get_taint(content) == ["custom_source"]
 #             tf.close()
 
 #         finally:
@@ -94,7 +94,7 @@
 #             assert tf._taint_origin == ["convenience"]
 #             content = tf.read()
 #             assert isinstance(content, TaintStr)
-#             assert get_taint_origins(content) == ["convenience"]
+#             assert get_taint(content) == ["convenience"]
 #             tf.close()
 
 #         finally:
@@ -114,25 +114,25 @@
 #                 content = tf.read()
 #                 assert isinstance(content, TaintStr)
 #                 assert str(content) == test_content
-#                 assert get_taint_origins(content) == ["read_test"]
+#                 assert get_taint(content) == ["read_test"]
 
 #             # Test read() with size limit
 #             with open_with_taint(tmp_path, "r", taint_origin="read_limit") as tf:
 #                 partial = tf.read(10)
 #                 assert isinstance(partial, TaintStr)
 #                 assert str(partial) == "Line 1: He"
-#                 assert get_taint_origins(partial) == ["read_limit"]
+#                 assert get_taint(partial) == ["read_limit"]
 
 #             # Test readline()
 #             with open_with_taint(tmp_path, "r", taint_origin="readline_test") as tf:
 #                 line1 = tf.readline()
 #                 assert isinstance(line1, TaintStr)
 #                 assert str(line1) == "Line 1: Hello\n"
-#                 assert get_taint_origins(line1) == ["readline_test"]
+#                 assert get_taint(line1) == ["readline_test"]
 
 #                 line2 = tf.readline()
 #                 assert str(line2) == "Line 2: World\n"
-#                 assert get_taint_origins(line2) == ["readline_test"]
+#                 assert get_taint(line2) == ["readline_test"]
 
 #             # Test readlines()
 #             with open_with_taint(tmp_path, "r", taint_origin="readlines_test") as tf:
@@ -142,7 +142,7 @@
 #                 assert str(lines[0]) == "Line 1: Hello\n"
 #                 assert str(lines[1]) == "Line 2: World\n"
 #                 assert str(lines[2]) == "Line 3: Test\n"
-#                 assert all(get_taint_origins(line) == ["readlines_test"] for line in lines)
+#                 assert all(get_taint(line) == ["readlines_test"] for line in lines)
 
 #         finally:
 #             os.unlink(tmp_path)
@@ -206,7 +206,7 @@
 #                 assert str(lines[0]) == "Line 1\n"
 #                 assert str(lines[1]) == "Line 2\n"
 #                 assert str(lines[2]) == "Line 3\n"
-#                 assert all(get_taint_origins(line) == ["iter_test"] for line in lines)
+#                 assert all(get_taint(line) == ["iter_test"] for line in lines)
 
 #         finally:
 #             os.unlink(tmp_path)
@@ -223,7 +223,7 @@
 #                 assert not tf.closed
 #                 content = tf.read()
 #                 assert isinstance(content, TaintStr)
-#                 assert get_taint_origins(content) == ["context_test"]
+#                 assert get_taint(content) == ["context_test"]
 
 #             # File should be closed after context exit
 #             assert tf.closed
@@ -252,7 +252,7 @@
 #                 data = tf.read(3)
 #                 assert isinstance(data, TaintStr)
 #                 assert str(data) == "567"
-#                 assert get_taint_origins(data) == ["position_test"]
+#                 assert get_taint(data) == ["position_test"]
 #                 assert tf.tell() == 8
 
 #                 # Seek to end
@@ -406,7 +406,7 @@
 #             with open_with_taint(tmp_path, "r", taint_origin="read_session") as tf:
 #                 content = tf.read()
 #                 # Should have taint from read session (file-level taint)
-#                 assert get_taint_origins(content) == ["read_session"]
+#                 assert get_taint(content) == ["read_session"]
 
 #                 # The original user_input taint is not preserved in the file
 #                 # (that would require a separate metadata system)
