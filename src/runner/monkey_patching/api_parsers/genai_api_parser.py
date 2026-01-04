@@ -69,26 +69,21 @@ def json_str_to_api_obj_genai(new_output_text: str) -> Any:
 
 
 def get_model_genai(input_dict: Dict[str, Any]) -> str:
-    """
-    Extract the model name from the input dictionary.
-    For genai, the model is typically in the path or request_dict.
-    """
+    """Extract the model name from the input dictionary."""
     try:
         # Try to extract from request_dict
         request_dict = input_dict.get("request_dict", {})
         if "model" in request_dict:
-            return request_dict["model"]
+            return str(request_dict["model"])
 
         # Fallback: try to extract model name from URL path
-        # Pattern: /v1/models/{model_name}:generateContent or similar
         import re
 
         path = input_dict.get("path", "")
-        # Match patterns like models/gemini-2.5-flash:generateContent
         match = re.search(r"models/([^/:]+)", path)
         if match:
             return match.group(1)
-    except (AttributeError, KeyError):
+    except (AttributeError, KeyError, TypeError):
         pass
 
     return "undefined"

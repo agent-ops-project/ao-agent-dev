@@ -20,7 +20,7 @@ class TestJsonLoads:
         assert get_taint(result) != []
         assert get_taint(result) == ["user_input"]
 
-        # Check that string values are TaintStr
+        # Check that string values are tainted
         assert get_taint(result["name"]) != []
         assert get_taint(result["name"]) == ["user_input"]
 
@@ -41,7 +41,7 @@ class TestJsonLoads:
         assert get_taint(result) != []
         assert get_taint(result) == ["user_input"]
 
-        # Check that string values are TaintStr
+        # Check that string values are tainted
         assert get_taint(result["name"]) != []
         assert get_taint(result["name"]) == ["user_input"]
 
@@ -126,7 +126,7 @@ class TestJsonLoads:
     def test_loads_with_tainted_json(self):
         """Test that taint is preserved through json.loads."""
 
-        # Create TaintStr with taint
+        # Create tainted string
         json_str = taint('{"secret": "password123"}', ["user"])
         result = json.loads(json_str)
 
@@ -147,7 +147,7 @@ class TestJsonDumps:
 
         result = json.dumps(obj)
 
-        # Result should be a TaintStr
+        # Result should be tainted
         assert get_taint(result) != []
         assert get_taint(result) == ["user_input"]
 

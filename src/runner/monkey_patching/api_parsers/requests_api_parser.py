@@ -46,18 +46,16 @@ def json_str_to_api_obj_requests(new_output_text: str) -> None:
 
 
 def get_model_requests(input_dict: Dict[str, Any]) -> str:
+    """Extract model name from requests request."""
     try:
-        # For requests, extract body from request object
         json_str = input_dict["request"].body.decode("utf-8")
         return json.loads(json_str)["model"]
-    except KeyError:
+    except (KeyError, json.JSONDecodeError, UnicodeDecodeError, AttributeError, TypeError):
         # Fallback: try to extract model name from URL path
-        # Pattern: /v1/models/{model_name}:generateContent or similar
         try:
             import re
 
             path = input_dict["request"].url.path
-            # Match patterns like /v1/models/gemini-2.5-flash:generateContent
             match = re.search(r"/models/([^/]+?)(?::|$)", path)
             if match:
                 return match.group(1)

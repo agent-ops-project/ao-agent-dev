@@ -12,7 +12,7 @@ class TestTaintFloat:
     """Test suite for taint tracking (float) functionality."""
 
     def test_creation(self):
-        """Test taint_wrap creation with various taint origins."""
+        """Test taint creation with various taint origins."""
         # Test with no taint
         f1 = 3.14  # No wrapping for no taint
         assert get_taint(f1) == []

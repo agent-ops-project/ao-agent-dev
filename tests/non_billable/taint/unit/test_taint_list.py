@@ -1,4 +1,4 @@
-"""Unit tests for TaintWrapper (list) functionality."""
+"""Unit tests for taint tracking (list) functionality."""
 
 import pytest
 
@@ -8,10 +8,10 @@ from ....utils import with_ast_rewriting_class
 
 @with_ast_rewriting_class
 class TestTaintList:
-    """Test suite for TaintWrapper (list) functionality."""
+    """Test suite for taint tracking (list) functionality."""
 
     def test_creation(self):
-        """Test TaintWrapper creation with various taint origins."""
+        """Test taint creation with various taint origins."""
         # Test with no taint
         l1 = [1, 2, 3]  # No wrapping for no taint
         assert list(l1) == [1, 2, 3]
@@ -328,7 +328,7 @@ class TestTaintList:
         assert get_taint(inner_list[-1]) == ["added"]
 
     def test_comparison_with_regular_lists(self):
-        """Test that TaintWrapper behaves like regular list in comparisons."""
+        """Test that tainted lists behave like regular lists in comparisons."""
         l1 = taint([1, 2, 3], ["source1"])
         l2 = [1, 2, 3]
         l3 = taint([1, 2, 3], ["source2"])

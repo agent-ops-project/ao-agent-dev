@@ -7,8 +7,6 @@ track data flow (taint) through program execution.
 Core concepts:
 - TAINT_DICT: id-based dict storing {id(obj): (obj, [origins])}
 - ACTIVE_TAINT: ContextVar for passing taint through third-party code boundaries
-
-No wrappers are used. Objects are stored directly in TAINT_DICT by their id.
 """
 
 from inspect import getsourcefile, iscoroutinefunction
@@ -25,41 +23,51 @@ def _is_taintable(obj):
     return not isinstance(obj, bool) and obj is not None and not isinstance(obj, type)
 
 
+def _de_intern_string(s):
+    """Create a copy of string s with a unique id (not interned)."""
+    return s.encode("utf-8").decode("utf-8")
+
+
 def _de_intern(obj, _seen=None):
     """
     Create a copy of obj with all strings de-interned (unique ids).
 
-    Python interns short strings, meaning different occurrences of "hello"
-    may share the same id. This causes issues with id-based taint tracking
-    because tainting one "hello" would taint all of them.
-
-    The bytes encode/decode roundtrip creates a new string object with a
-    unique id, solving this problem.
-
-    Objects already in TAINT_DICT are preserved as-is since they already
-    have unique ids from a previous de-interning.
+    Python interns short strings, so different occurrences of "hello" may
+    share the same id. This breaks id-based taint tracking. De-interning
+    creates new string objects with unique ids. Handles cycles correctly.
     """
     if _seen is None:
-        _seen = set()
+        _seen = {}  # Maps old object id -> new object
 
     obj_id = id(obj)
     if obj_id in _seen:
-        return obj  # Avoid infinite recursion on cycles
+        return _seen[obj_id]  # Return the NEW object for cycles
 
     # If object is already in TAINT_DICT, it's already de-interned.
     if builtins.TAINT_DICT.has_taint(obj):
         return obj
 
     if isinstance(obj, str):
-        return obj.encode("utf-8").decode("utf-8")
+        return _de_intern_string(obj)
     elif isinstance(obj, dict):
-        _seen.add(obj_id)
-        return {_de_intern(k, _seen): _de_intern(v, _seen) for k, v in obj.items()}
+        # Pre-create empty dict and register BEFORE recursing
+        new_dict = {}
+        _seen[obj_id] = new_dict
+        for k, v in obj.items():
+            new_dict[_de_intern(k, _seen)] = _de_intern(v, _seen)
+        return new_dict
     elif isinstance(obj, list):
-        _seen.add(obj_id)
-        return [_de_intern(item, _seen) for item in obj]
+        # Pre-create empty list and register BEFORE recursing
+        new_list = []
+        _seen[obj_id] = new_list
+        for item in obj:
+            new_list.append(_de_intern(item, _seen))
+        return new_list
     elif isinstance(obj, tuple):
-        _seen.add(obj_id)
+        # Tuples are immutable so we can't pre-create. Register original
+        # so cycles back to this tuple return the original (acceptable
+        # since tuples rarely form cycle roots due to immutability).
+        _seen[obj_id] = obj
         return tuple(_de_intern(item, _seen) for item in obj)
 
     return obj
@@ -421,10 +429,6 @@ def _finalize_taint(result):
     """
     Add taint from ACTIVE_TAINT to third-party function result.
 
-    De-interns once at the container level for efficiency, then registers
-    all items. This avoids calling add_to_taint_dict_and_return on each
-    item, which would de-intern each one individually.
-
     Also propagates taint to container elements so unpacking works
     correctly (e.g., `before, sep, after = s.partition(',')`).
     """
@@ -479,13 +483,16 @@ def get_attr(obj, attr):
     """Get obj.attr with taint propagation."""
     result = getattr(obj, attr)
 
-    # Use result's own taint or inherit from parent
+    # If result has its own taint, preserve it
     result_taint = get_taint(result)
     if result_taint:
         return result
 
-    # Inherit parent's taint. Items inside result (if it's a container)
-    # get tainted lazily when accessed via get_item or iteration.
+    # De-intern strings to get unique id for taint tracking
+    if isinstance(result, str):
+        result = _de_intern_string(result)
+
+    # Inherit parent's taint
     parent_taint = get_taint(obj)
     return add_to_taint_dict_and_return(result, parent_taint)
 
@@ -494,13 +501,16 @@ def get_item(obj, key):
     """Get obj[key] with taint propagation."""
     result = obj[key]
 
-    # If item already has taint, preserve it
+    # If item has its own taint, preserve it
     item_taint = get_taint(result)
     if item_taint:
         return result
 
-    # Inherit parent's taint. Items inside result (if it's a container)
-    # get tainted lazily when accessed via get_item or iteration.
+    # De-intern strings to get unique id for taint tracking
+    if isinstance(result, str):
+        result = _de_intern_string(result)
+
+    # Inherit parent's taint
     parent_taint = get_taint(obj)
     return add_to_taint_dict_and_return(result, parent_taint)
 

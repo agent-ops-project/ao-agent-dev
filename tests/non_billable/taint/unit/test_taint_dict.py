@@ -1,4 +1,4 @@
-"""Unit tests for TaintWrapper (dict) functionality."""
+"""Unit tests for taint tracking (dict) functionality."""
 
 import pytest
 
@@ -8,10 +8,10 @@ from ....utils import with_ast_rewriting_class
 
 @with_ast_rewriting_class
 class TestTaintDict:
-    """Test suite for TaintWrapper (dict) functionality."""
+    """Test suite for taint tracking (dict) functionality."""
 
     def test_creation(self):
-        """Test taint_wrap with dicts and various taint origins."""
+        """Test taint with dicts and various taint origins."""
         # Test with no taint
         d1 = {"a": 1, "b": 2}  # No wrapping for no taint
         assert dict(d1) == {"a": 1, "b": 2}
@@ -286,7 +286,7 @@ class TestTaintDict:
         assert "outer" in get_taint(outer)
 
     def test_comparison_with_regular_dicts(self):
-        """Test that TaintWrapper behaves like regular dict in comparisons."""
+        """Test that tainted dicts behave like regular dicts in comparisons."""
         d1 = taint({"a": 1, "b": 2}, ["source1"])
         d2 = {"a": 1, "b": 2}
         d3 = taint({"a": 1, "b": 2}, ["source2"])

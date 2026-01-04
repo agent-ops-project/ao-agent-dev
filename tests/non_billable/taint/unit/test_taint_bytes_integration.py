@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Integration tests for tainted bytes with other taint types.
 
-Tests the unified TaintWrapper's handling of bytes objects.
+Tests the id-based taint tracking's handling of bytes objects.
 """
 
 from ao.server.ast_helpers import add_to_taint_dict_and_return as taint, get_taint
@@ -13,7 +13,7 @@ class TestTaintBytesIntegration:
     """Integration tests for tainted bytes."""
 
     def test_taint_bytes_with_taint():
-        """Test that taint_wrap correctly handles bytes."""
+        """Test that taint correctly handles bytes."""
         # Wrap plain bytes
         b = b"hello"
         tb = taint(b, ["source1"])

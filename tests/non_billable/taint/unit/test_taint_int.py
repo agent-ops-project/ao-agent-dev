@@ -11,7 +11,7 @@ class TestTaintInt:
     """Test suite for taint tracking (int) functionality."""
 
     def test_creation(self):
-        """Test taint_wrap creation with various taint origins."""
+        """Test taint creation with various taint origins."""
         # Test with no taint
         i1 = 42  # No wrapping for no taint
         assert int(i1) == 42

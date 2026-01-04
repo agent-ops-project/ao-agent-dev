@@ -43,7 +43,7 @@ def setup_test_session(session_id, name="Test Session", parent_session_id=None):
        - Server creates experiment record
        - Server responds with acknowledgment
     3. Use the actual monkey-patched flow for LLM calls
-    4. File operations go through TaintFile which communicates with server
+    4. File operations go through taint_open which communicates with server
 
     That approach would test the entire integration including server message
     handling, protocol, and session management, but would be more complex

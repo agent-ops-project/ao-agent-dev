@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test the TaintWrapper (bytes) functionality."""
+"""Test taint tracking (bytes) functionality."""
 
 import pytest
 from ao.server.ast_helpers import add_to_taint_dict_and_return as taint, get_taint
@@ -8,10 +8,10 @@ from ....utils import with_ast_rewriting_class
 
 @with_ast_rewriting_class
 class TestTaintBytes:
-    """Test suite for TaintWrapper (bytes) functionality."""
+    """Test suite for taint tracking (bytes) functionality."""
 
     def test_basic_creation(self):
-        """Test basic TaintWrapper creation with bytes."""
+        """Test basic taint creation with bytes."""
         # Create from bytes
         tb1 = taint(b"hello", ["source1"])
         assert tb1 == b"hello", f"{tb1}"

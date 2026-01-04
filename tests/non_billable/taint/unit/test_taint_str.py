@@ -37,17 +37,17 @@ class TestTaintStr:
         s1 = taint("hello", ["source1"])
         s2 = taint(" world", ["source2"])
 
-        # TaintWrapper + TaintWrapper
+        # tainted string + tainted string
         result = s1 + s2
         assert str(result) == "hello world"
         assert set(get_taint(result)) == {"source1", "source2"}
 
-        # TaintWrapper + str
+        # tainted string + str
         result = s1 + " there"
         assert str(result) == "hello there"
         assert get_taint(result) == ["source1"]
 
-        # str + TaintWrapper (radd)
+        # str + tainted string (radd)
         result = "Hi " + s2
         assert str(result) == "Hi  world"
         assert get_taint(result) == ["source2"]
@@ -249,7 +249,7 @@ class TestTaintStr:
         s = taint("hello", ["source1"])
 
         assert str(s) == "hello"
-        # repr returns TaintWrapper repr
+        # repr returns the string's repr
         assert "hello" in repr(s)
 
     def test_get_raw(self):

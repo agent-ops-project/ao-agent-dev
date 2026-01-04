@@ -1,6 +1,5 @@
 import json
 from typing import Any, Dict, List, Tuple
-from ao.common.logger import logger
 
 
 def func_kwargs_to_json_str_mcp(
@@ -46,4 +45,8 @@ def json_str_to_original_inp_dict_mcp(json_str: str, input_dict: dict) -> dict:
 
 
 def get_model_mcp(input_dict: Dict[str, Any]) -> str:
-    return input_dict["request"].root.method + ":" + input_dict["request"].root.params.name
+    """Extract tool name from MCP request."""
+    try:
+        return input_dict["request"].root.params.name
+    except (AttributeError, KeyError, TypeError):
+        return "unknown"

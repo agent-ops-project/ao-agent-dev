@@ -1,6 +1,6 @@
 import inspect
 from ao.runner.context_manager import get_session_id
-from ao.common.constants import CERTAINTY_YELLOW
+from ao.common.constants import CERTAINTY_UNKNOWN
 from ao.common.utils import send_to_server
 from ao.common.logger import logger
 from ao.runner.monkey_patching.api_parser import (
@@ -8,6 +8,41 @@ from ao.runner.monkey_patching.api_parser import (
     func_kwargs_to_json_str,
     api_obj_to_json_str,
 )
+
+MAX_LABEL_LENGTH = 20
+NO_LABEL = "No Label"
+
+
+def sanitize_label(name: str) -> str:
+    """
+    Sanitize a model/tool name for display as a node label.
+    - Take last part after "/" or ":"
+    - Replace "_" with space
+    - Return "No Label" if empty, malformed, or too long
+    """
+    if not name or name == "undefined":
+        return NO_LABEL
+
+    # Detect malformed input (XML tags or JSON)
+    if "<" in name or "{" in name:
+        logger.warning(f"[Label] Malformed name detected: {name[:50]}...")
+        return NO_LABEL
+
+    # Take last part after ":" or "/"
+    if ":" in name:
+        name = name.rsplit(":", 1)[-1]
+    if "/" in name:
+        name = name.rsplit("/", 1)[-1]
+
+    # Replace underscores and hyphens with spaces, then title case
+    name = name.replace("_", " ").replace("-", " ").title()
+
+    # Too long means likely wrong
+    if len(name) > MAX_LABEL_LENGTH:
+        logger.warning(f"[Label] Name too long: {name[:50]}...")
+        return NO_LABEL
+
+    return name
 
 
 # ===========================================================
@@ -80,6 +115,7 @@ def send_graph_node_and_edges(node_id, input_dict, output_obj, source_node_ids, 
     input_string, attachments = func_kwargs_to_json_str(input_dict, api_type)
     output_string = api_obj_to_json_str(output_obj, api_type)
     model = get_model_name(input_dict, api_type)
+    label = sanitize_label(model)
 
     # Send node
     node_msg = {
@@ -89,8 +125,8 @@ def send_graph_node_and_edges(node_id, input_dict, output_obj, source_node_ids, 
             "id": node_id,
             "input": input_string,
             "output": output_string,
-            "border_color": CERTAINTY_YELLOW,  # TODO: Set based on certainty.
-            "label": model,  # TODO: Later label with LLM.
+            "border_color": CERTAINTY_UNKNOWN,
+            "label": label,
             "codeLocation": codeLocation,
             "model": model,
             "attachments": attachments,
