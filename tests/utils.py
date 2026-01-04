@@ -43,7 +43,7 @@ def setup_test_session(session_id, name="Test Session", parent_session_id=None):
        - Server creates experiment record
        - Server responds with acknowledgment
     3. Use the actual monkey-patched flow for LLM calls
-    4. File operations go through TaintFile which communicates with server
+    4. File operations go through taint_open which communicates with server
 
     That approach would test the entire integration including server message
     handling, protocol, and session management, but would be more complex
@@ -84,7 +84,7 @@ def with_ast_rewriting(test_func):
         def test_something(self):
             # Test code here will be executed with AST rewriting
             result = json.loads(tainted_data)
-            assert get_taint_origins(result) != []
+            assert get_taint(result) != []
     """
 
     def wrapper(*args, **kwargs):

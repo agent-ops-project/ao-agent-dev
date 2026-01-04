@@ -80,8 +80,8 @@
 #             )
 
 #             # The response should be tainted with the writer node ID
-#             tainted_content = taint_wrap(
-#                 response.choices[0].message.content, taint_origin=[writer_node_id]
+#             tainted_content = taint(
+#                 response.choices[0].message.content,[writer_node_id]
 #             )
 
 #             # Write to file (this should store taint info)
@@ -143,7 +143,7 @@
 
 #                 if prev_session_id and taint_nodes:
 #                     # Create tainted string with previous session's taint
-#                     tainted_input = taint_wrap(original_content, taint_origin=taint_nodes)
+#                     tainted_input = taint(original_content,taint_nodes)
 #                     print(
 #                         f"✅ Retrieved taint from previous session: {prev_session_id}, nodes: {taint_nodes}"
 #                     )
@@ -168,7 +168,7 @@
 #             # This is the key test: when we create a TaintWrapper from the LLM response,
 #             # it should include both the reader node ID and the writer node IDs from the input
 #             expected_taint = [reader_node_id] + (taint_nodes if taint_nodes else [])
-#             tainted_response = taint_wrap(additional_content, taint_origin=expected_taint)
+#             tainted_response = taint(additional_content,expected_taint)
 
 #             # Write extended content
 #             print(f"Writing extended content to {extended_file}")

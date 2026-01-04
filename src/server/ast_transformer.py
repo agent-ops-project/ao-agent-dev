@@ -556,9 +556,7 @@ class TaintPropagationTransformer(ast.NodeTransformer):
         return node
 
     # NOTE: visit_Name is intentionally NOT implemented for Load context.
-    # Variable reads don't need transformation - variables already hold wrappers from assignment.
-    # When we do `x = value`, visit_Assign rewrites it to `x = taint_assign(value)`
-    # which wraps the value. Later reading `x` just returns that wrapper directly.
+    # Assignments are rewritten to `x = taint_assign(value)` which registers in TAINT_DICT.
 
     def _inject_taint_imports(self, tree):
         """Inject import statements for taint functions if needed."""
