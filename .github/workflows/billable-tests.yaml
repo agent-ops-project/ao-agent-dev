@@ -1,6 +1,8 @@
 name: Billable Tests
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
 
@@ -8,8 +10,29 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
+  statuses: write
 
 jobs:
+  # Set pending status on PR open/update to remind about billable tests
+  gate:
+    name: Gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set pending status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: 'pending',
+              context: 'Billable Tests',
+              description: 'Waiting for /run-billable-tests comment',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
+
   permission-check:
     name: Permission Check
     if: |
@@ -184,11 +207,24 @@ jobs:
           script: |
             const editsResult = '${{ needs.edits.result }}';
             const cachingResult = '${{ needs.caching.result }}';
+            const sha = '${{ needs.permission-check.outputs.ref }}';
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
             const allPassed = editsResult === 'success' && cachingResult === 'success';
             const reaction = allPassed ? 'rocket' : '-1';
 
+            // Update commit status (for branch protection)
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: sha,
+              state: allPassed ? 'success' : 'failure',
+              context: 'Billable Tests',
+              description: allPassed ? 'All billable tests passed' : 'Billable tests failed',
+              target_url: runUrl
+            });
+
+            // Add reaction to comment
             await github.rest.reactions.createForIssueComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -196,6 +232,7 @@ jobs:
               content: reaction
             });
 
+            // Post result comment
             const status = allPassed
               ? `✅ All billable tests passed! [View logs](${runUrl})`
               : `❌ Billable tests failed ([View logs](${runUrl})):\n- Edits: ${editsResult}\n- Caching: ${cachingResult}`;
