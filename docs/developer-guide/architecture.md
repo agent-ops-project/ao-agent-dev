@@ -57,8 +57,8 @@ AO tracks data flow using a "taint" system:
 
 1. **Monkey Patching** - Intercepts LLM API calls to:
    - Record inputs and outputs
-   - Read `ACTIVE_TAINT` to discover input origins (graph edges)
-   - Set `ACTIVE_TAINT` to the current node ID for outputs
+   - Call `TAINT_STACK.read()` to discover input origins (graph edges)
+   - Call `TAINT_STACK.update()` to set the current node ID for outputs
 
 2. **AST Rewriting** - Rewrites Python code to propagate taint through:
    - All function and method calls

@@ -42,8 +42,8 @@ def patch_genai_async_request(bound_obj, bound_cls):
         # Get full input dict
         input_dict = get_input_dict(original_function, *args, **kwargs)
 
-        # Get taint origins from ACTIVE_TAINT (set by exec_func)
-        taint_origins = list(builtins.ACTIVE_TAINT.get())
+        # Get taint origins from TAINT_STACK (set by exec_func)
+        taint_origins = builtins.TAINT_STACK.read()
 
         # Check if this endpoint should be patched
         path = input_dict.get("path", "")
@@ -68,7 +68,7 @@ def patch_genai_async_request(bound_obj, bound_cls):
         )
 
         # Set the new taint in escrow for exec_func to wrap with
-        builtins.ACTIVE_TAINT.set([cache_output.node_id])
+        builtins.TAINT_STACK.update([cache_output.node_id])
         return cache_output.output  # No wrapping here, exec_func will wrap
 
     bound_obj.async_request = patched_function.__get__(bound_obj, bound_cls)

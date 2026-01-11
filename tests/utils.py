@@ -113,14 +113,10 @@ def with_ast_rewriting(test_func):
 
         # Set up the taint environment (normally done by agent_runner)
         import builtins
-        from contextvars import ContextVar
-        from ao.runner.taint_dict import ThreadSafeTaintDict
+        from ao.runner.taint_dict import ThreadSafeTaintDict, TaintStack
 
-        # Initialize ACTIVE_TAINT (ContextVar) for passing taint through third-party code
-        if not hasattr(builtins, "ACTIVE_TAINT"):
-            builtins.ACTIVE_TAINT = ContextVar("active_taint", default=[])
-        else:
-            builtins.ACTIVE_TAINT.set([])  # Clear for fresh test
+        # Initialize TAINT_STACK for passing taint through third-party code
+        builtins.TAINT_STACK = TaintStack()
 
         # Initialize TAINT_DICT (id-based dict) as single source of truth
         # Always create fresh TAINT_DICT for each test to avoid cross-test contamination

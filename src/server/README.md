@@ -52,13 +52,13 @@ We track which variables were produced by LLM calls using an **id-based approach
    - `obj.attr` → `get_attr(obj, "attr")`
    - `x = value` → `x = taint_assign(value)`
 
-4. **Third-party code boundary**: Third-party code (e.g., `os.path.join`) isn't rewritten, so we can't track taint inside it. Instead, `exec_func` uses `ACTIVE_TAINT` as an "escrow":
-   - Before call: collect taint from inputs → store in `ACTIVE_TAINT`
-   - After call: read `ACTIVE_TAINT` → apply to outputs
+4. **Third-party code boundary**: Third-party code (e.g., `os.path.join`) isn't rewritten, so we can't track taint inside it. Instead, `exec_func` uses `TAINT_STACK`:
+   - Before call: push collected input taint onto stack
+   - After call: pop stack → apply result to outputs
 
-   For regular third-party calls, `ACTIVE_TAINT` passes through unchanged (inputs → outputs). But monkey-patched LLM calls can *replace* it with their own node_id, so the output carries the LLM's taint instead of the inputs'.
+   For regular third-party calls, taint passes through unchanged (inputs → outputs). But monkey-patched LLM calls can `update()` the stack with their own node_id, so the output carries the LLM's taint instead.
 
-5. **Monkey patches replace ACTIVE_TAINT**: When an LLM patch (e.g., httpx) intercepts a call, it reads `ACTIVE_TAINT` to discover input origins (→ graph edges), then sets `ACTIVE_TAINT` to its own node_id. When control returns to `exec_func`, this new taint is applied to the result.
+5. **Monkey patches update TAINT_STACK**: When an LLM patch (e.g., httpx) intercepts a call, it calls `read()` to discover input origins (→ graph edges), then `update()` to set its own node_id. When control returns to `exec_func`, this new taint is applied to the result. We use a stack to handle nested calls (e.g., LangChain calling user tools between LLM calls), and task-keyed storage to avoid ContextVar isolation issues. See [taint-tracking.md](/docs/developer-guide/taint-tracking.md#why-a-stack-langchain-example) for a detailed example.
 
 **Compilation flow**: The [File Watcher](/src/server/file_watcher.py) polls user files, applies AST rewrites, and stores compiled `.pyc` files in `~/.cache/ao/pyc`. An import hook ensures these pre-compiled files are loaded at runtime.
 

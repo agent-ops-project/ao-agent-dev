@@ -14,7 +14,6 @@ import signal
 import runpy
 import builtins
 
-from contextvars import ContextVar
 from typing import Optional, List
 
 from ao.common.logger import logger
@@ -47,6 +46,7 @@ from ao.server.ast_helpers import (
     get_taint,
 )
 from ao.server.database_manager import DB
+from ao.runner.taint_dict import TaintStack
 
 
 def _log_error(context: str, exception: Exception) -> None:
@@ -425,9 +425,7 @@ class AgentRunner:
         builtins.set_attr = set_attr
         builtins.add_to_taint_dict_and_return = add_to_taint_dict_and_return
         builtins.get_taint = get_taint
-
-        # Register ACTIVE_TAINT (ContextVar) for passing taint through third-party code
-        builtins.ACTIVE_TAINT = ContextVar("active_taint", default=[])
+        builtins.TAINT_STACK = TaintStack()
 
         # Register TAINT_DICT (id-based dict) as single source of truth for taint
         from ao.runner.taint_dict import ThreadSafeTaintDict

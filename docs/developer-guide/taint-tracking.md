@@ -42,18 +42,65 @@ d = llm_call(c)
 
 Its functions and operations (e.g., `+`) will be wrapped such that taint is propagated: `a`, `b`, `c` and `d` will all have an entry in `TAINT_DICT`. `a`'s entry will record that `a` was produced by the first LLM call, `b` by the second, `c`'s entry will be a list with both origins, etc.
 
-### ACTIVE_TAINT (ContextVar)
+### TAINT_STACK
 
-`ACTIVE_TAINT` is a ContextVar used to pass taint through third-party code boundaries. It is ONLY used for communication between `exec_func` and monkey-patched code.
+`TAINT_STACK` passes taint through third-party code boundaries. It's used for communication between `exec_func` and monkey-patched code.
 
 We don't rewrite "third-party functions" (e.g., `llm_call()`) for performance reasons. Instead:
 
-1. `exec_func` collects taint from all arguments → stores in `ACTIVE_TAINT`
+1. `exec_func` collects taint from all arguments → pushes onto `TAINT_STACK`
 2. Calls the (un-rewritten) third-party function
-3. If the function is monkey-patched (e.g., LLM call), the patch reads `ACTIVE_TAINT` to know input origins, then sets `ACTIVE_TAINT` to its own node ID
-4. After the function returns, `exec_func` reads `ACTIVE_TAINT` and applies it to the outputs
+3. If the function is monkey-patched (e.g., LLM call), the patch calls `read()` to get input origins, then `update()` to set its own node ID
+4. After the function returns, `exec_func` pops the stack and applies taint to the outputs
 
-This mirrors: Outputs produced by a third-party function either carry the same taint that was passed to the function, or they carry the taint set by the patch.
+#### Why a Stack? LangChain Example
+
+Consider a LangChain agent with a user-defined tool:
+
+```python
+@tool
+def get_weather(city: str) -> str:
+    data = requests.get(f"https://weather.api/{city}").json()  # third-party call
+    return f"Weather in {city}: {data['temp']}"
+
+agent = create_react_agent(llm, [get_weather])
+agent.invoke("What's the weather in SF?")
+```
+
+The execution flow:
+```
+1. exec_func(agent.invoke) → push []
+   Stack: [()]
+
+2. LangChain calls LLM #1 (decides to use tool)
+   → httpx patch: read()=[], update([n1])
+   Stack: [([n1],)]
+
+3. LangChain calls user's get_weather (AST-rewritten, called directly)
+   Inside get_weather, requests.get triggers:
+   → exec_func(requests.get) → push []
+   Stack: [([n1],), ()]
+   → exec_func pops
+   Stack: [([n1],)]  ← n1 preserved!
+
+4. LangChain calls LLM #2 (formats final answer)
+   → httpx patch: read()=[n1] ✓ (edge n1→n2 created!)
+   → update([n2])
+   Stack: [([n2],)]
+
+5. exec_func(agent.invoke) pops
+   Stack: []
+```
+
+**What the stack solves:** Nested `exec_func` calls (step 3) don't overwrite the outer taint context. Each level has its own stack entry.
+
+**What the stack doesn't solve:** ContextVar isolation. LangChain uses `copy_context().run()` to execute each step, which discards ContextVar changes when it returns. We solve this with task-keyed storage (keyed by `asyncio.current_task()` or thread ID) instead of ContextVar.
+
+**Current limitations (TODOs):**
+
+1. **User tool taint not propagated to TAINT_STACK:** If the user's tool returns a tainted variable (e.g., from a nested LLM call), that taint is stored in `TAINT_DICT` but not reflected in `TAINT_STACK`. From the third-party framework's perspective, user tool calls are "taint in = taint out" - the output carries the same taint as the inputs, not the tool's internal taint.
+
+2. **User tools not logged as graph nodes:** When LangChain calls a user-defined tool, we don't create a node in the dataflow graph for it, even though it's semantically a tool call. Only LLM calls currently appear as nodes.
 
 ## AST Rewriting
 
@@ -77,10 +124,9 @@ For **user code** (AST-rewritten): Calls directly. The AST rewrites handle taint
 
 For **third-party code**:
 1. Collect taint from parent object (for methods) and all arguments
-2. Set `ACTIVE_TAINT` to the collected taint
+2. Push taint onto `TAINT_STACK`
 3. Call the function
-4. Add collected taint to the result
-5. Reset `ACTIVE_TAINT` to `[]`
+4. Pop stack and apply taint to result
 
 ## String De-interning
 

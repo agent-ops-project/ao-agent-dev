@@ -36,17 +36,18 @@ content = response.content   # content inherits taint ["llm:123"]
 first_char = content[0]      # first_char inherits taint ["llm:123"]
 ```
 
-### ACTIVE_TAINT (ContextVar)
+### TAINT_STACK
 
-`ACTIVE_TAINT` is a ContextVar used to pass taint through third-party code boundaries. It is ONLY used for communication between `exec_func` and monkey-patched code. Regular taint propagation code should NOT read from ACTIVE_TAINT.
+`TAINT_STACK` passes taint through third-party code boundaries. It's used for communication between `exec_func` and monkey-patched code.
 
 Flow:
 1. `exec_func` collects taint from all arguments
-2. Sets `ACTIVE_TAINT` to the collected taint
+2. Pushes taint onto `TAINT_STACK`
 3. Calls the third-party function
-4. Third-party code (or monkey patches) can read `ACTIVE_TAINT`
-5. `exec_func` adds taint to the result via `add_to_taint_dict_and_return`
-6. Resets `ACTIVE_TAINT` to `[]` in a finally block
+4. Monkey patches call `read()` to get input taint, `update()` to set their node_id
+5. `exec_func` pops the stack and applies taint to the result
+
+We use a stack (not a single value) to handle nested calls correctly (e.g., LangChain calling user tools between LLM calls). We use task-keyed storage (not ContextVar) because frameworks like LangChain use `copy_context().run()` which isolates ContextVar changes.
 
 ## Core Functions
 
@@ -61,7 +62,7 @@ def add_to_taint_dict_and_return(obj, taint):
     return obj
 ```
 
-**Important:** The `taint` argument is REQUIRED. We never read from ACTIVE_TAINT here to avoid accidentally using stale values.
+**Important:** The `taint` argument is REQUIRED. We never read from TAINT_STACK here to avoid accidentally using stale values.
 
 ### get_taint(obj)
 
@@ -118,10 +119,9 @@ For **user code** (AST-rewritten code): Call directly. The AST rewrites handle t
 
 For **third-party code**:
 1. Collect taint from parent object (for methods) and all arguments
-2. Set `ACTIVE_TAINT` to the collected taint
+2. Push taint onto `TAINT_STACK`
 3. Call the function
-4. Add collected taint to the result
-5. Reset `ACTIVE_TAINT` to `[]`
+4. Pop stack and apply taint to result
 
 ```python
 def exec_func(func_or_obj, args, kwargs, method_name=None):
@@ -138,17 +138,18 @@ def exec_func(func_or_obj, args, kwargs, method_name=None):
     if _is_user_function(func) or method_name in STORING_METHODS:
         return func(*args, **kwargs)
 
-    # Third-party: track taint through ACTIVE_TAINT
+    # Third-party: track taint through TAINT_STACK
     all_origins = set(obj_taint)
     all_origins.update(_collect_taint_from_args(args, kwargs))
     taint = list(all_origins)
 
-    ACTIVE_TAINT.set(taint)
+    TAINT_STACK.push(taint)
     try:
         result = func(*args, **kwargs)
-        return add_to_taint_dict_and_return(result, taint=taint)
+        active_taint = TAINT_STACK.read()
+        return add_to_taint_dict_and_return(result, taint=active_taint)
     finally:
-        ACTIVE_TAINT.set([])
+        TAINT_STACK.pop()
 ```
 
 **Storing methods** (append, extend, insert, add, update, setdefault) are called directly to preserve taint on items being stored in collections.
@@ -174,7 +175,7 @@ The AST transformer rewrites user code to track taint:
 The system distinguishes between user code and third-party code:
 
 - **User code:** Python files in the user's project. AST-rewritten to handle taint propagation automatically.
-- **Third-party code:** Libraries, built-ins, etc. Taint is passed through via `ACTIVE_TAINT`.
+- **Third-party code:** Libraries, built-ins, etc. Taint is passed through via `TAINT_STACK`.
 
 The `_is_user_function(func)` helper determines which category a function belongs to by checking its source file against the list of user module files.
 
@@ -193,10 +194,10 @@ Items stored in collections retain their individual taint. When retrieved, `get_
 ## Invariants
 
 - `TAINT_DICT` is the single source of truth for taint
-- `ACTIVE_TAINT` is only for communicating taint through third-party code boundaries
-- All taint *propagation* is handled through AST-rewrittes. *Reading and adding* taint is done through monkey patches.
+- `TAINT_STACK` is only for communicating taint through third-party code boundaries
+- All taint *propagation* is handled through AST-rewrites. *Reading and adding* taint is done through monkey patches.
 
 ## Concurrency Considerations
 
-- **ACTIVE_TAINT:** Uses ContextVar for async-safe taint propagation across await boundaries
+- **TAINT_STACK:** Uses task-keyed storage (keyed by `asyncio.current_task()` or thread ID) for async-safe taint propagation
 - **TAINT_DICT:** Uses `threading.RLock` for thread-safe access

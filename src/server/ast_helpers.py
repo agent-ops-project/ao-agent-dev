@@ -6,7 +6,7 @@ track data flow (taint) through program execution.
 
 Core concepts:
 - TAINT_DICT: id-based dict storing {id(obj): (obj, [origins])}
-- ACTIVE_TAINT: ContextVar for passing taint through third-party code boundaries
+- TAINT_STACK: Stack-based context for passing taint through third-party code boundaries
 """
 
 from inspect import getsourcefile, iscoroutinefunction
@@ -348,7 +348,7 @@ def exec_func(func_or_obj, args, kwargs, method_name=None):
     - User code: already AST-rewritten to handle taint
     - Storing methods: need to preserve taint on items being stored
 
-    Otherwise track taint through ACTIVE_TAINT.
+    Otherwise track taint through TAINT_STACK.
     """
 
     # Resolve the actual function and collect object taint
@@ -374,7 +374,7 @@ def exec_func(func_or_obj, args, kwargs, method_name=None):
             return wrapper()
         return func(*args, **kwargs)
 
-    # Third-party: track taint through ACTIVE_TAINT
+    # Third-party: track taint through TAINT_STACK
     if iscoroutinefunction(func):
         return _exec_third_party(func, args, kwargs, obj_taint, is_async=True)
     return _exec_third_party(func, args, kwargs, obj_taint, is_async=False)
@@ -395,16 +395,16 @@ def _exec_third_party(func, args, kwargs, obj_taint, is_async):
     if is_async:
 
         async def async_call():
-            builtins.ACTIVE_TAINT.set(taint)
+            builtins.TAINT_STACK.push(taint)
             try:
                 result = await func(*args, **kwargs)
                 return _finalize_taint(result)
             finally:
-                builtins.ACTIVE_TAINT.set([])
+                builtins.TAINT_STACK.pop()
 
         return async_call()
     else:
-        builtins.ACTIVE_TAINT.set(taint)
+        builtins.TAINT_STACK.push(taint)
         try:
             # Handle type annotations specially
             if hasattr(func, "__name__") and func.__name__ == "getitem" and len(args) >= 2:
@@ -422,12 +422,12 @@ def _exec_third_party(func, args, kwargs, obj_taint, is_async):
 
             return _finalize_taint(result)
         finally:
-            builtins.ACTIVE_TAINT.set([])
+            builtins.TAINT_STACK.pop()
 
 
 def _finalize_taint(result):
     """
-    Add taint from ACTIVE_TAINT to third-party function result.
+    Add taint from TAINT_STACK to third-party function result.
 
     Also propagates taint to container elements so unpacking works
     correctly (e.g., `before, sep, after = s.partition(',')`).
@@ -439,7 +439,7 @@ def _finalize_taint(result):
     if get_taint(result):
         return result
 
-    active_taint = list(builtins.ACTIVE_TAINT.get())
+    active_taint = builtins.TAINT_STACK.read()
     if not active_taint:
         return result
 
@@ -460,12 +460,12 @@ def _finalize_taint(result):
 
 async def _wrap_coroutine_with_taint(coro, taint):
     """Wrap coroutine to set taint context when awaited."""
-    builtins.ACTIVE_TAINT.set(taint)
+    builtins.TAINT_STACK.push(taint)
     try:
         result = await coro
         return _finalize_taint(result)
     finally:
-        builtins.ACTIVE_TAINT.set([])
+        builtins.TAINT_STACK.pop()
 
 
 # =============================================================================
