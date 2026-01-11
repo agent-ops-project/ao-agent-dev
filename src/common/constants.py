@@ -66,7 +66,6 @@ SUCCESS_STRING = {True: "Satisfactory", False: "Failed", None: ""}
 
 
 # Node label constants
-MAX_LABEL_LENGTH = 20
 NO_LABEL = "No Label"
 
 CERTAINTY_UNKNOWN = "#000000"
@@ -275,23 +274,68 @@ COMPILED_URL_PATTERN_TO_NODE_NAME = [
 
 # Exact match patterns for known models -> clean display names
 # These are matched against the raw model name before cleanup rules are applied
+# Order matters: more specific patterns should come before general ones
 MODEL_NAME_PATTERNS = [
-    # OpenAI
-    (r"^gpt-4o-mini$", "GPT-4o Mini"),
-    (r"^gpt-4o$", "GPT-4o"),
-    (r"^gpt-4-turbo$", "GPT-4 Turbo"),
-    (r"^gpt-4$", "GPT-4"),
-    (r"^gpt-3\.5-turbo$", "GPT-3.5 Turbo"),
-    (r"^o1-preview$", "O1 Preview"),
-    (r"^o1-mini$", "O1 Mini"),
-    # Anthropic
+    # OpenAI - GPT-5 series
+    (r"^(openai/)?gpt-5-mini", "GPT-5 Mini"),
+    (r"^(openai/)?gpt-5-nano", "GPT-5 Nano"),
+    (r"^(openai/)?gpt-5", "GPT-5"),
+    # OpenAI - GPT-4.1 series
+    (r"^(openai/)?gpt-4\.1-mini", "GPT-4.1 Mini"),
+    (r"^(openai/)?gpt-4\.1-nano", "GPT-4.1 Nano"),
+    (r"^(openai/)?gpt-4\.1", "GPT-4.1"),
+    # OpenAI - GPT-4o series
+    (r"^gpt-4o-mini-audio", "GPT-4o Mini Audio"),
+    (r"^gpt-4o-mini-search", "GPT-4o Mini Search"),
+    (r"^gpt-4o-mini-tts", "GPT-4o Mini TTS"),
+    (r"^gpt-4o-mini", "GPT-4o Mini"),
+    (r"^gpt-4o-audio", "GPT-4o Audio"),
+    (r"^gpt-4o-search", "GPT-4o Search"),
+    (r"^(chatgpt-)?gpt-4o", "GPT-4o"),
+    # OpenAI - GPT-4 series
+    (r"^gpt-4-turbo", "GPT-4 Turbo"),
+    (r"^gpt-4", "GPT-4"),
+    # OpenAI - GPT-3.5 series
+    (r"^gpt-3\.5-turbo", "GPT-3.5 Turbo"),
+    # OpenAI - O-series reasoning models
+    (r"^(openai/)?o4-mini", "o4 Mini"),
+    (r"^(openai/)?o3-pro", "o3 Pro"),
+    (r"^(openai/)?o3-mini", "o3 Mini"),
+    (r"^(openai/)?o3", "o3"),
+    (r"^o1-pro", "o1 Pro"),
+    (r"^o1-preview", "o1 Preview"),
+    (r"^o1-mini", "o1 Mini"),
+    (r"^o1", "o1"),
+    # Anthropic - Claude 4.5 series
+    (r"^claude-opus-4-5", "Claude Opus 4.5"),
     (r"^claude-sonnet-4-5", "Claude Sonnet 4.5"),
+    (r"^claude-haiku-4-5", "Claude Haiku 4.5"),
+    # Anthropic - Claude 4.1 series
+    (r"^claude-opus-4-1", "Claude Opus 4.1"),
+    # Anthropic - Claude 4 series
+    (r"^claude-opus-4", "Claude Opus 4"),
+    (r"^claude-sonnet-4", "Claude Sonnet 4"),
+    # Anthropic - Claude 3.7 series
+    (r"^claude-3-7-sonnet", "Claude 3.7 Sonnet"),
+    # Anthropic - Claude 3.5 series
     (r"^claude-3-5-sonnet", "Claude 3.5 Sonnet"),
     (r"^claude-3-5-haiku", "Claude 3.5 Haiku"),
+    # Anthropic - Claude 3 series
     (r"^claude-3-opus", "Claude 3 Opus"),
-    # Google
-    (r"^gemini-2\.0-flash", "Gemini 2.0 Flash"),
+    (r"^claude-3-sonnet", "Claude 3 Sonnet"),
+    (r"^claude-3-haiku", "Claude 3 Haiku"),
+    # Google - Gemini 3 series
+    (r"^gemini-3-pro-image", "Gemini 3 Pro Image"),
+    (r"^gemini-3-pro", "Gemini 3 Pro"),
+    (r"^gemini-3-flash", "Gemini 3 Flash"),
+    # Google - Gemini 2.5 series
+    (r"^gemini-2\.5-pro", "Gemini 2.5 Pro"),
+    (r"^gemini-2\.5-flash-lite", "Gemini 2.5 Flash Lite"),
     (r"^gemini-2\.5-flash", "Gemini 2.5 Flash"),
+    # Google - Gemini 2.0 series
+    (r"^gemini-2\.0-flash-lite", "Gemini 2.0 Flash Lite"),
+    (r"^gemini-2\.0-flash", "Gemini 2.0 Flash"),
+    # Google - Gemini 1.5 series
     (r"^gemini-1\.5-pro", "Gemini 1.5 Pro"),
     (r"^gemini-1\.5-flash", "Gemini 1.5 Flash"),
 ]
