@@ -144,7 +144,14 @@ class TaintStack:
 
     def update(self, taint):
         """Replace top element with new taint."""
+        import traceback
+
         current = self._get_stack()
+        print(f"[TAINT_STACK] update({taint}) - current stack: {current}")
+        print(f"[TAINT_STACK] task_key: {_get_context_key()}")
+        # print first 3 stack frames to see who's calling
+        for line in traceback.format_stack()[-4:-1]:
+            print(line.strip())
         if current:
             self._set_stack(current[:-1] + (tuple(taint),))
         else:

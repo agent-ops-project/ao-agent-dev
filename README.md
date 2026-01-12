@@ -17,7 +17,7 @@ pip install ao-dev
 
 **Then, give it a spin:**
 
-1. Create a folder called `my-agent` and add a file with some LM program. For example, in the video above we use `openai_example.py` with the following content:
+1. Create some little agent program that you want to run (or use your existing agent!). In the video above we use the little OpenAI example below (you can find many further example scripts in our [examples folder](/example_workflows/debug_examples/)):
 
 ```python
 from openai import OpenAI
@@ -50,17 +50,16 @@ if __name__ == "__main__":
 2. Run the script with python to verify it works (keys are set correctly, etc.):
 
 ```bash
-cd my-agent
 python openai_example.py
 ```
 
-3. Run the script using ao-record.
+3. Run the script using `ao-record`.
 
 ```bash
 ao-record openai_example.py
 ```
 
-This should show you the example's graph (like in the video above) where you can edit inputs and outputs and rerun.
+This should show you the agent's trajectory graph like in the video above. You can edit inputs and outputs in the graph and rerun.
 
 ## Documentation
 
