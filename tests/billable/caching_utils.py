@@ -46,6 +46,7 @@ def _run_script_with_ao_record(script_path: str, env: dict) -> tuple[int, str]:
     Parses the session_id from the runner's output.
     """
     env["AO_NO_DEBUG_MODE"] = "True"
+    
     env["PYTHONUNBUFFERED"] = "1"  # Ensure output isn't buffered
 
     # Extract directory and script name for uv run
