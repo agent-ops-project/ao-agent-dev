@@ -3,6 +3,8 @@ site_description: A development tool for LLM call visualization and debugging
 site_url: https://ao-agent-ops.github.io/ao-dev/
 repo_url: https://github.com/ao-agent-ops/ao-dev
 repo_name: ao-dev
+docs_dir: .
+site_dir: ../site
 
 theme:
   name: material
