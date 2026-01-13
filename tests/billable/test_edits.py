@@ -10,6 +10,7 @@ import os
 import select
 import socket
 import subprocess
+import sys
 import threading
 import time
 
@@ -173,12 +174,8 @@ def run_and_measure_node_timing(
     if session_id:
         env["AO_SESSION_ID"] = session_id
 
-    # Extract directory and script name for uv run
-    script_dir = os.path.dirname(os.path.abspath(script_path))
-    script_name = os.path.basename(script_path)
-
     result = subprocess.run(
-        ["uv", "run", "--directory", script_dir, "ao-record", script_name],
+        [sys.executable, "-m", "ao.cli.ao_record", script_path],
         env=env,
         capture_output=True,
         text=True,
@@ -208,7 +205,7 @@ def test_cache_edit_timing():
     - Run 2: All cached - should be ≤10% of T
     - Run 3: Edit last node - should be ~1/3 of T (between 1/9 and 5/9)
     """
-    script_path = "./example_workflows/debug_examples/anthropic/anthropic_debate.py"
+    script_path = "./example_workflows/debug_examples/anthropic_debate.py"
 
     restart_server()
     DB.switch_mode("local")

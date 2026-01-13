@@ -15,12 +15,6 @@ Simply download (1) our [VS Code Extension](https://marketplace.visualstudio.com
 pip install ao-dev
 ```
 
-Or if you use [uv](https://docs.astral.sh/uv/):
-
-```bash
-uv add ao-dev
-```
-
 **Then, give it a spin:**
 
 1. Create some little agent program that you want to run (or use your existing agent!). For example, you can try this little OpenAI example below (or find many further example scripts in our [examples folder](/example_workflows/debug_examples/)):
@@ -77,13 +71,7 @@ python openai_example.py
 ao-record openai_example.py
 ```
 
-Or with uv:
-
-```bash
-uv run ao-record openai_example.py
-```
-
-This should show you the agent's trajectory graph. You can edit inputs and outputs in the graph and rerun.
+This should show you the agent's trajectory graph like in the video above. You can edit inputs and outputs in the graph and rerun.
 
 ## Documentation
 
