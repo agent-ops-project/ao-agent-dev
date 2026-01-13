@@ -10,6 +10,7 @@ import os
 import select
 import socket
 import subprocess
+import sys
 import threading
 import time
 
@@ -101,7 +102,7 @@ class NodeTimingListener:
     def send_edit(self):
         """Send edit_input message to server for the last node.
 
-        Finds the field containing "Add these two numbers together" and replaces it
+        Finds the field containing "Consider the following two paragraphs:" and replaces it
         with "EDITED PROMPT" to trigger a cache miss.
         """
         with self._lock:
@@ -115,14 +116,14 @@ class NodeTimingListener:
             def edit_prompt_field(obj):
                 if isinstance(obj, dict):
                     for key, value in obj.items():
-                        if isinstance(value, str) and "Add these two numbers together" in value:
+                        if isinstance(value, str) and "Consider the following two paragraphs:" in value:
                             obj[key] = "EDITED PROMPT"
                             return True
                         if isinstance(value, (dict, list)) and edit_prompt_field(value):
                             return True
                 elif isinstance(obj, list):
                     for i, item in enumerate(obj):
-                        if isinstance(item, str) and "Add these two numbers together" in item:
+                        if isinstance(item, str) and "Consider the following two paragraphs:" in item:
                             obj[i] = "EDITED PROMPT"
                             return True
                         if isinstance(item, (dict, list)) and edit_prompt_field(item):
@@ -173,12 +174,8 @@ def run_and_measure_node_timing(
     if session_id:
         env["AO_SESSION_ID"] = session_id
 
-    # Extract directory and script name for uv run
-    script_dir = os.path.dirname(os.path.abspath(script_path))
-    script_name = os.path.basename(script_path)
-
     result = subprocess.run(
-        ["uv", "run", "--directory", script_dir, "ao-record", script_name],
+        [sys.executable, "-m", "ao.cli.ao_record", script_path],
         env=env,
         capture_output=True,
         text=True,
@@ -208,7 +205,7 @@ def test_cache_edit_timing():
     - Run 2: All cached - should be ≤10% of T
     - Run 3: Edit last node - should be ~1/3 of T (between 1/9 and 5/9)
     """
-    script_path = "./example_workflows/debug_examples/anthropic/add_numbers.py"
+    script_path = "./example_workflows/debug_examples/anthropic/debate.py"
 
     restart_server()
     DB.switch_mode("local")

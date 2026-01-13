@@ -10,7 +10,7 @@ import uuid
 import json
 import random
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Optional, Any, List, Dict
 
 from ao.common.logger import logger
 
@@ -151,14 +151,6 @@ class DatabaseManager:
     def execute(self, query, params=None):
         """Execute query without returning results."""
         return self.backend.execute(query, params or ())
-
-    def store_taint_info(self, session_id, file_path, line_number, taint_nodes):
-        """Store taint tracking information."""
-        return self.backend.store_taint_info(session_id, file_path, line_number, taint_nodes)
-
-    def get_taint_info(self, file_path, line_number):
-        """Retrieve taint tracking information."""
-        return self.backend.get_taint_info(file_path, line_number)
 
     # NOTE: Auth disabled - user management methods commented out
     # def upsert_user(self, google_id, email, name, picture):

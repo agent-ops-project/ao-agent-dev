@@ -42,11 +42,11 @@ Open this project in a new VS Code window. Select the "Run Extension" option fro
 
 
 ### Try an example
-In the new window, you can now open any project that you are working on. We will run the `openai_add_numbers.py` example from our [examples](/example_workflows/debug_examples/) folder. Note that this example depends on the OpenAI API, which you might need to install before running the example (`pip install openai`). 
+In the new window, you can now open any project that you are working on. We will run the `openai_debate.py` example from our [examples](/example_workflows/debug_examples/) folder. Note that this example depends on the OpenAI API, which you might need to install before running the example (`pip install openai`).
 
 If you run the following command, you should see the result in the video:
 ```bash
-ao-record ./example_workflows/debug_examples/openai_add_numbers.py
+ao-record ./example_workflows/debug_examples/openai_debate.py
 ```
 
 ![Run example](/docs/media/run_example.gif)
@@ -70,7 +70,7 @@ ln -s src ao
 
 Our code base is structured into the following components:
 
-1. Run user program (green): The users launch processes of their program by running `ao-record their_script.py` which feels exactly like running their script normally with `python their_script.py`. Under the hood the `ao-record` command installs monkey patches for certain functions and rewrites the user program's AST in order to log events like LLM calls to the `main server`. Monkey patches are installed to detect events like LLM calls, AST rewrites happen in order to trace dataflow ("taint") between LLM calls. [Code](/src/runner/)
+1. Run user program (green): The users launch processes of their program by running `ao-record their_script.py` which feels exactly like running their script normally with `python their_script.py`. Under the hood the `ao-record` command installs monkey patches to intercept LLM calls and log them to the `main server`. Dataflow between LLM calls is detected using content-based matching: we check if previous LLM outputs appear as substrings in new LLM inputs. User code runs completely unmodified. [Code](/src/runner/)
 2. Develop server (blue): The `main server` is the core of the system and responsbible for all analysis. It receives the logs from the user process and updates the UI according to its analyses. All communication to/from the `main server` happens over one TCP socket (default: 5959). [Code](/src/server/)
 3. UI (red): We currently implement the UI as VS Code extension and web app, where most webview components between the two are shared. The UI gets updated by the `main server`. [Code](/src/user_interfaces/)
 
@@ -90,11 +90,10 @@ Upon running `ao-record` or actions in the UI, the server will be started automa
 
 If you want to clear all recorded runs and cached LLM calls (i.e., clear the DB), do `ao-server clear`.
 
-The server spawns a [file watcher](/src/server/file_watcher.py) process that AST-rewrites user files, compiles the rewritten files and stores them in `~/.cache/ao/logs`. The file watcher also performs git versioning on the files, so we can display fine-grained file versions to the user (upon them changing files, not only upon them committing using their own git). To see logs of the three, use these commands:
+The server spawns a [file watcher](/src/server/file_watcher.py) process that handles git versioning of user files, so we can display fine-grained file versions to the user (upon them changing files, not only upon them committing using their own git). To see logs, use these commands:
 
  - Logs of the main server: `ao-server logs`
- - Logs of the file watcher: `ao-server rewrite-logs`
- - Logs of the git versioning: `ao-server git-logs`
+ - Logs of the file watcher (git versioning): `ao-server git-logs`
 
 Note that all server logs are printed to files and not visible from any terminal.
 
@@ -111,7 +110,7 @@ Our CI test suit comprises of ["non_billable"](/tests/non_billable) and ["billab
 3. ‼️ Set the `logger` level (not `server_logger`) to `CRITICAL` [here](/src/common/logger.py). The server_logger can stay at `DEBUG`.
 4. Install `pip install build twine` if you haven't already.
 5. Run `python -m build` in root dir. This wil create a `dist/` dir.
-6. Test install locally: `pip install dist/ao-dev-0.0.1-py3-none-any.whl` (you need to check the name of the `.whl` file).
+6. Test install locally: `pip install dist/ao_dev-0.0.5-py3-none-any.whl` (you need to check the name of the `.whl` file).
 7. Do a test upload, it's worth it:
    1. Publish to TestPyPI first: `python -m twine upload --repository testpypi dist/*`. Then try to install from TestPyPi. Ask Ferdi if you don't have the key to our TestPyPI account.
    2. When installing from TestPyPI, do the following (just swap out the package name at the end of the command): `pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ ao-dev==0.0.1`
@@ -127,7 +126,7 @@ Our CI test suit comprises of ["non_billable"](/tests/non_billable) and ["billab
 3. Install `npm install -g @vscode/vsce` if you haven't already.
 4. Create VSIX package: `cd src/user_interfaces/vscode_extension` and run `./build-vsix.sh`.
 5. Try to install the VSIX locally to see if it works: Go to the marketplace, click the three dots at the top right of the panel, click "Install from VSIX...".
-6. Publish to store: `vsce publish` or upload via https://marketplace.visualstudio.com/manage/. Ask Ferdi for a personal access token / log in if you don't have it.
+6. Publish to store: Upload via https://marketplace.visualstudio.com/manage/. Ask Ferdi for log-in if you don't have it.
 
 ### Hosted web app
 

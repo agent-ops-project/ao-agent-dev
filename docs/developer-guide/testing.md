@@ -61,7 +61,7 @@ Tests that make real LLM API calls. These cost money and should be run sparingly
 
 ```bash
 # Run a single billable test (requires API keys)
-uv run pytest -v -s "tests/billable/test_caching.py::test_debug_examples[./example_workflows/debug_examples/anthropic/add_numbers.py]"
+uv run pytest -v -s "tests/billable/test_caching.py::test_debug_examples[./example_workflows/debug_examples/anthropic/debate.py]"
 
 # Run all billable tests (expensive!)
 uv run pytest tests/billable/ -v -s
@@ -74,7 +74,7 @@ uv run pytest tests/billable/ -v -s
 !!! note "Quoting in zsh"
     If using zsh, quote test paths with brackets to prevent shell expansion:
     ```bash
-    uv run pytest "tests/billable/test_caching.py::test_debug_examples[./example_workflows/debug_examples/anthropic/add_numbers.py]"
+    uv run pytest "tests/billable/test_caching.py::test_debug_examples[./example_workflows/debug_examples/anthropic/debate.py]"
     ```
 
 ## Taint Propagation Tests
@@ -87,26 +87,11 @@ uv run pytest -v tests/non_billable/taint/
 
 ### Special Setup for General Function Tests
 
-Tests in `taint/general_functions` have a special setup because they rely on AST rewriting.
+Tests for content-based edge detection verify that dataflow edges are correctly detected when LLM outputs appear in subsequent LLM inputs:
 
-**Why special?**
-
-- Pytest normally ignores `.pyc` files and compiles from source
-- Our tests need the AST-rewritten `.pyc` files
-- Solution: Run tests inside an `ao-record` process
-
-**How it works:**
-
-1. Test cases are in files like `json_test_cases.py`
-2. All tests in a file run sequentially in one `ao-record` process
-3. Individual test results are recorded
-4. Results are sent back to pytest for reporting
-
-This approach provides:
-
-- Accurate testing of actual AST rewrites
-- Per-test granularity in results
-- Reduced overhead (one `ao-record` per file, not per test)
+```bash
+python -m pytest tests/billable/ -k "edge"
+```
 
 ## Writing New Tests
 
@@ -224,21 +209,26 @@ def test_my_operation():
 import pytest
 from unittest.mock import MagicMock
 
-def test_openai_patch():
-    # Mock the OpenAI client
-    mock_client = MagicMock()
+### Edge Detection Test
 
-    # Apply patches
-    from ao.runner.monkey_patching.apply_monkey_patches import openai_patch
-    openai_patch()
+To test that edges are correctly detected:
 
-    # Test the patched behavior
-    # ...
+```python
+def test_edge_detection():
+    # LLM call 1 - output contains "42"
+    response1 = llm_call("Output the number 42")
+
+    # LLM call 2 - input contains "42" from previous output
+    response2 = llm_call(f"Add 1 to {response1}")
+
+    # Verify an edge was created between the two nodes
+    # Check the graph topology in the session
+    pass
 ```
 
 ## Test Fixtures
 
-Common fixtures are defined in `conftest.py`:
+Common test helpers are defined in `tests/utils.py`, including:
 
 ```python
 @pytest.fixture

@@ -61,10 +61,10 @@ Open this project in a new VS Code window. Select the "Run Extension" option fro
 
 ### Try an Example
 
-In the new window, you can now open any project that you are working on. For example, run the `openai_add_numbers.py` example from the `example_workflows/debug_examples/` folder:
+In the new window, you can now open any project that you are working on. For example, run the `openai_debate.py` example from the `example_workflows/debug_examples/` folder:
 
 ```bash
-ao-record ./example_workflows/debug_examples/openai_add_numbers.py
+ao-record ./example_workflows/debug_examples/openai_debate.py
 ```
 
 > **Note:** This example depends on the OpenAI API. You may need to install it first: `pip install openai`
@@ -87,14 +87,6 @@ Some Python linters may incorrectly report that modules inside the codebase can'
 
 ```bash
 ln -s src ao
-```
-
-### Fetching Large Files
-
-The repository uses Git LFS for large files (videos, etc.). After cloning, fetch them with:
-
-```bash
-git lfs pull
 ```
 
 ## Next Steps

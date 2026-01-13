@@ -44,8 +44,8 @@
       "request": "launch",
       "module": "ao.cli.ao_record",
       // Anthropic examples
-      // "args": ["./example_workflows/debug_examples/anthropic/async_add_numbers.py"],
-      // "args": ["./example_workflows/debug_examples/anthropic/add_numbers.py"],
+      // "args": ["./example_workflows/debug_examples/anthropic/async_debate.py"],
+      "args": ["./example_workflows/debug_examples/anthropic/debate.py"],
       // "args": ["./example_workflows/debug_examples/anthropic/document_query.py"],
       // "args": ["./example_workflows/debug_examples/anthropic/image_tool_call.py"],
       // "args": ["./example_workflows/debug_examples/anthropic/inline_docs.py"],
@@ -54,7 +54,7 @@
       // "args": ["./example_workflows/debug_examples/langchain/agent.py"],
       // "args": ["./example_workflows/debug_examples/langchain/simple_chat.py"],
       // Together examples
-      // "args": ["./example_workflows/debug_examples/together/add_numbers.py"],
+      // "args": ["./example_workflows/debug_examples/together/debate.py"],
       // CrewAI examples
       // "args": ["./example_workflows/debug_examples/crewai/research_writer.py"],
       // "args": ["./example_workflows/debug_examples/crewai/jina_scraper.py"],
@@ -66,16 +66,16 @@
       // "args": ["./example_workflows/debug_examples/google/streaming_async.py"],
       // "args": ["./example_workflows/debug_examples/google/streaming.py"],
       // "args": ["./example_workflows/debug_examples/google/gen_image.py"],
-      // "args": ["./example_workflows/debug_examples/google/add_numbers_async.py"],
-      // "args": ["./example_workflows/debug_examples/google/add_numbers.py"],
+      // "args": ["./example_workflows/debug_examples/google/debate_async.py"],
+      // "args": ["./example_workflows/debug_examples/google/debate.py"],
       // Ollama examples
-      "args": ["./example_workflows/debug_examples/ollama/native_add_numbers.py"],
-      // "args": ["./example_workflows/debug_examples/ollama/add_numbers.py"],
+      // "args": ["./example_workflows/debug_examples/ollama/native_debate.py"],
+      // "args": ["./example_workflows/debug_examples/ollama/debate.py"],
       // OpenAI examples
       // "args": ["./example_workflows/debug_examples/openai/document_query.py"],
       // "args": ["./example_workflows/debug_examples/openai/chat_async.py"],
-      // "args": ["./example_workflows/debug_examples/openai/add_numbers.py"],
-      // "args": ["./example_workflows/debug_examples/openai/async_add_numbers.py"],
+      // "args": ["./example_workflows/debug_examples/openai/debate.py"],
+      // "args": ["./example_workflows/debug_examples/openai/async_debate.py"],
       // "args": ["./example_workflows/debug_examples/openai/tool_call.py"],
       // "args": ["./example_workflows/debug_examples/openai/document_reader.py"],
       // "args": ["./example_workflows/debug_examples/openai/document_writer.py"],
