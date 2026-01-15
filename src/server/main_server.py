@@ -591,6 +591,99 @@ class MainServer:
         # Then send the experiment list
         self.broadcast_experiment_list_to_uis(conn)
 
+    def handle_get_lessons(self, conn: socket.socket) -> None:
+        """Handle request for LLM lessons list."""
+        lessons = self.get_llm_lessons()
+        send_json(conn, {"type": "lessons_list", "lessons": lessons})
+
+    def get_llm_lessons(self) -> list:
+        """Return a list of LLM best practices and lessons.
+
+        This is a simple dummy implementation that returns static lessons.
+        """
+        return [
+            {
+                "id": "1",
+                "title": "Understanding Temperature",
+                "category": "Basics",
+                "description": "Temperature controls randomness in responses. Lower values (0.1-0.3) make outputs more focused and deterministic, while higher values (0.7-1.0) make them more creative and diverse.",
+                "difficulty": "Beginner",
+                "tags": ["parameters", "temperature", "basics"],
+            },
+            {
+                "id": "2",
+                "title": "Effective Prompt Engineering",
+                "category": "Prompting",
+                "description": "Clear, specific prompts yield better results. Include context, specify the desired format, provide examples, and break complex tasks into steps.",
+                "difficulty": "Beginner",
+                "tags": ["prompting", "best-practices"],
+            },
+            {
+                "id": "3",
+                "title": "Managing Context Windows",
+                "category": "Optimization",
+                "description": "LLMs have token limits. Prioritize relevant context, use summarization for long histories, and consider chunking large documents for processing.",
+                "difficulty": "Intermediate",
+                "tags": ["context", "tokens", "optimization"],
+            },
+            {
+                "id": "4",
+                "title": "Chain of Thought Reasoning",
+                "category": "Advanced Techniques",
+                "description": "Ask the model to think step-by-step before answering. Prefix prompts with 'Let's think through this step by step' to improve reasoning quality.",
+                "difficulty": "Intermediate",
+                "tags": ["reasoning", "prompting", "techniques"],
+            },
+            {
+                "id": "5",
+                "title": "Handling Hallucinations",
+                "category": "Best Practices",
+                "description": "LLMs can generate false information. Mitigate by requesting citations, using retrieval-augmented generation (RAG), and validating critical outputs.",
+                "difficulty": "Intermediate",
+                "tags": ["hallucinations", "accuracy", "rag"],
+            },
+            {
+                "id": "6",
+                "title": "Few-Shot Learning",
+                "category": "Advanced Techniques",
+                "description": "Provide 2-5 examples in your prompt to demonstrate the desired output format and style. This dramatically improves consistency.",
+                "difficulty": "Intermediate",
+                "tags": ["few-shot", "examples", "prompting"],
+            },
+            {
+                "id": "7",
+                "title": "System Message Design",
+                "category": "Prompting",
+                "description": "System messages set the assistant's behavior. Use them to define role, tone, constraints, and output format preferences.",
+                "difficulty": "Beginner",
+                "tags": ["system-message", "setup", "configuration"],
+            },
+            {
+                "id": "8",
+                "title": "Token Economics",
+                "category": "Optimization",
+                "description": "Tokens include both input and output. Optimize prompts for brevity, cache common prefixes, and use cheaper models for simple tasks.",
+                "difficulty": "Advanced",
+                "tags": ["cost", "tokens", "efficiency"],
+            },
+            {
+                "id": "9",
+                "title": "Error Handling and Retries",
+                "category": "Best Practices",
+                "description": "Implement exponential backoff for rate limits, validate responses, and have fallback strategies for API failures.",
+                "difficulty": "Intermediate",
+                "tags": ["errors", "reliability", "production"],
+            },
+            {
+                "id": "10",
+                "title": "JSON Mode and Structured Outputs",
+                "category": "Advanced Techniques",
+                "description": "Use JSON mode to enforce structured outputs. Provide a schema in your prompt and validate the response format.",
+                "difficulty": "Advanced",
+                "tags": ["json", "structured-data", "parsing"],
+            },
+        ]
+
     # NOTE: Auth disabled - handle_auth method commented out
     # def handle_auth(self, msg: dict, conn: socket.socket) -> None:
     #     """Handle auth messages from UI clients: attach user_id to connection and store current user."""
@@ -808,6 +901,8 @@ class MainServer:
             self.handle_update_command(msg)
         elif msg_type == "watch_file":
             self.handle_watch_file(msg)
+        elif msg_type == "get_lessons":
+            self.handle_get_lessons(conn)
         else:
             logger.error(f"Unknown message type. Message:\n{msg}")
 

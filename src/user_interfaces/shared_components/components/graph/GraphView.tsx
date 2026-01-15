@@ -416,7 +416,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
           <div
             className={styles.flowContainer}
             style={{
-              width: `${containerWidth}px`,
+              width: "100%",
               height: `${containerHeight}px`,
               marginTop: "0px",
               paddingTop: "0px",

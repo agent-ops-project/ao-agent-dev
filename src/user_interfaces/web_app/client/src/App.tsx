@@ -5,6 +5,7 @@ import type { GraphNode, GraphEdge, ProcessInfo } from "../../../shared_componen
 import { GraphTabApp } from "../../../shared_components/components/GraphTabApp";
 import { ExperimentsView} from "../../../shared_components/components/experiment/ExperimentsView";
 import type { MessageSender } from "../../../shared_components/types/MessageSender";
+import { LessonsView, type Lesson } from "../../../shared_components/components/lessons/LessonsView";
 
 interface Experiment {
   session_id: string;
@@ -25,13 +26,14 @@ interface WSMessage {
   session_id?: string;
   color_preview? : string[];
   database_mode?: string;
+  lessons?: Lesson[];
 }
 
 
 function App() {
-  const [authenticated, setAuthenticated] = useState(false);
-  const [user, setUser] = useState<any | null>(null);
-  const [checkingSession, setCheckingSession] = useState(true);
+  // const [authenticated, setAuthenticated] = useState(false);
+  // const [user, setUser] = useState<any | null>(null);
+  // const [checkingSession, setCheckingSession] = useState(true);
   const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5958";
   const [experiments, setExperiments] = useState<ProcessInfo[]>([]);
   const [selectedExperiment, setSelectedExperiment] = useState<ProcessInfo | null>(null);
@@ -52,6 +54,8 @@ function App() {
   const graphContainerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const messageBufferRef = useRef<string>(''); // Buffer for incomplete WebSocket frames
+  const [showLessons, setShowLessons] = useState(false);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
 
   // Detect dark theme reactively
   const [isDarkTheme, setIsDarkTheme] = useState(() => {
@@ -121,7 +125,7 @@ function App() {
   };
 
   useEffect(() => {
-    if (!authenticated) return;
+    // if (!authenticated) return;
     
     // Permitir definir la URL del WebSocket por variable de entorno
     const baseWsUrl = import.meta.env.VITE_APP_WS_URL || (() => {
@@ -133,9 +137,9 @@ function App() {
     })();
     
     // Include user_id in WebSocket URL if available for cleaner handshake authentication
-    const wsUrl = user && user.id ? `${baseWsUrl}?user_id=${encodeURIComponent(user.id)}` : baseWsUrl;
+    // const wsUrl = user && user.id ? `${baseWsUrl}?user_id=${encodeURIComponent(user.id)}` : baseWsUrl;
 
-    const socket = new WebSocket(wsUrl);
+    const socket = new WebSocket(baseWsUrl);
     setWs(socket);
     wsRef.current = socket; // Keep ref in sync
 
@@ -230,58 +234,65 @@ function App() {
           }
           break;
 
+        case "lessons_list":
+          if (msg.lessons) {
+            setLessons(msg.lessons);
+          }
+          break;
+
         default:
           console.warn(`Unhandled message type: ${msg.type}`);
       }
     };
 
     return () => socket.close();
-  }, [authenticated, user]);
+  }, []);
+  // }, [authenticated, user]);
 
   // On app mount check session (useful after OAuth redirect)
   // Fetch session and set user+authenticated state
-  const checkSession = async () => {
-    console.log('🔍 checkSession starting, API_BASE:', API_BASE);
-    setCheckingSession(true);
-    try {
-      const sessionUrl = `${API_BASE}/auth/session`;
-      console.log('📡 Fetching session from:', sessionUrl);
-      const resp = await fetch(sessionUrl, { credentials: 'include' });
-      console.log('📡 Session response status:', resp.status, 'ok:', resp.ok);
+  // const checkSession = async () => {
+  //   console.log('🔍 checkSession starting, API_BASE:', API_BASE);
+  //   setCheckingSession(true);
+  //   try {
+  //     const sessionUrl = `${API_BASE}/auth/session`;
+  //     console.log('📡 Fetching session from:', sessionUrl);
+  //     const resp = await fetch(sessionUrl, { credentials: 'include' });
+  //     console.log('📡 Session response status:', resp.status, 'ok:', resp.ok);
       
-      if (!resp.ok) {
-        console.log('❌ Response not OK, setting authenticated=false');
-        setAuthenticated(false);
-        setUser(null);
-        return;
-      }
+  //     if (!resp.ok) {
+  //       console.log('❌ Response not OK, setting authenticated=false');
+  //       setAuthenticated(false);
+  //       setUser(null);
+  //       return;
+  //     }
       
-      const data = await resp.json();
-      console.log('📋 Session data received:', data);
-      console.log('📋 Has user?', !!(data && data.user));
+  //     const data = await resp.json();
+  //     console.log('📋 Session data received:', data);
+  //     console.log('📋 Has user?', !!(data && data.user));
       
-      if (data && data.user) {
-        console.log('✅ Setting authenticated=true, user:', data.user);
-        setAuthenticated(true);
-        setUser(data.user);
-      } else {
-        console.log('❌ No user in data, setting authenticated=false');
-        setAuthenticated(false);
-        setUser(null);
-      }
-    } catch (err) {
-      console.error('❌ Failed to check session', err);
-      setAuthenticated(false);
-      setUser(null);
-    } finally {
-      console.log('🏁 checkSession finished, calling setCheckingSession(false)');
-      setCheckingSession(false);
-    }
-  };
+  //     if (data && data.user) {
+  //       console.log('✅ Setting authenticated=true, user:', data.user);
+  //       setAuthenticated(true);
+  //       setUser(data.user);
+  //     } else {
+  //       console.log('❌ No user in data, setting authenticated=false');
+  //       setAuthenticated(false);
+  //       setUser(null);
+  //     }
+  //   } catch (err) {
+  //     console.error('❌ Failed to check session', err);
+  //     setAuthenticated(false);
+  //     setUser(null);
+  //   } finally {
+  //     console.log('🏁 checkSession finished, calling setCheckingSession(false)');
+  //     setCheckingSession(false);
+  //   }
+  // };
 
-  useEffect(() => {
-    checkSession();
-  }, []);
+  // useEffect(() => {
+  //   checkSession();
+  // }, []);
 
   const handleNodeUpdate = (
     nodeId: string,
@@ -322,9 +333,21 @@ function App() {
     // Clear graph data when switching experiments to avoid showing stale data
     setGraphData(null);
     setSelectedExperiment(experiment);
+    setShowLessons(false); // Hide lessons when viewing an experiment
 
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "get_graph", session_id: experiment.session_id }));
+    }
+  };
+
+  const handleLessonsClick = () => {
+    setShowLessons(true);
+    setSelectedExperiment(null);
+    setGraphData(null);
+
+    // Request lessons from server
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "get_lessons" }));
     }
   };
 
@@ -350,28 +373,28 @@ function App() {
   const running = sortedExperiments.filter((e) => e.status === "running");
   const finished = sortedExperiments.filter((e) => e.status === "finished");
 
-  if (checkingSession) {
-    // while we verify session do not show the login screen to avoid flicker
-    return (
-      <div className={`app-container ${isDarkTheme ? 'dark' : ''}`}>
-        <div style={{ padding: 24 }}>
-          Checking authentication...
-        </div>
-      </div>
-    );
-  }
+  // if (checkingSession) {
+  //   // while we verify session do not show the login screen to avoid flicker
+  //   return (
+  //     <div className={`app-container ${isDarkTheme ? 'dark' : ''}`}>
+  //       <div style={{ padding: 24 }}>
+  //         Checking authentication...
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
-  if (!authenticated) {
-    return (
-      <LoginScreen
-        onSuccess={async () => {
-          setAuthenticated(true);
-          // after successful login try to load session user
-          await checkSession();
-        }}
-      />
-    );
-  }
+  // if (!authenticated) {
+  //   return (
+  //     <LoginScreen
+  //       onSuccess={async () => {
+  //         setAuthenticated(true);
+  //         // after successful login try to load session user
+  //         await checkSession();
+  //       }}
+  //     />
+  //   );
+  // }
 
   return (
     <div className={`app-container ${isDarkTheme ? 'dark' : ''}`}>
@@ -382,20 +405,21 @@ function App() {
           finishedProcesses={finished}
           onCardClick={handleExperimentClick}
           isDarkTheme={isDarkTheme}
-          user={{
-            displayName: user?.name || user?.displayName,
-            avatarUrl: user?.picture || user?.avatarUrl,
-            email: user?.email,
-          }}
-          onLogout={() => {
-            fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
-              .catch((err) => console.warn('Logout request failed', err));
-            setAuthenticated(false);
-            setUser(null);
-          }}
+          // user={{
+          //   displayName: user?.name || user?.displayName,
+          //   avatarUrl: user?.picture || user?.avatarUrl,
+          //   email: user?.email,
+          // }}
+          // onLogout={() => {
+          //   fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
+          //     .catch((err) => console.warn('Logout request failed', err));
+          //   setAuthenticated(false);
+          //   setUser(null);
+          // }}
           showHeader={true}
           onModeChange={handleDatabaseModeChange}
           currentMode={databaseMode}
+          onLessonsClick={handleLessonsClick}
         />
         <div
           className="sidebar-resize-handle"
@@ -404,7 +428,9 @@ function App() {
       </div>
 
       <div className="graph-container" ref={graphContainerRef}>
-        {selectedExperiment && graphData ? (
+        {showLessons ? (
+          <LessonsView lessons={lessons} isDarkTheme={isDarkTheme} />
+        ) : selectedExperiment && graphData ? (
           <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             {/* Graph Title Header */}
             <div
@@ -418,7 +444,7 @@ function App() {
                 flexShrink: 0,
               }}
             >
-              {selectedExperiment.run_name || selectedExperiment.session_id}
+              {selectedExperiment.run_name || 'Untitled'}
             </div>
             {/* Graph */}
             <div style={{ flex: 1, minHeight: 0 }}>
@@ -434,7 +460,7 @@ function App() {
           </div>
         ) : (
           <div className="no-graph">
-            {selectedExperiment ? "Loading graph..." : "Select an experiment to view its graph"}
+            {selectedExperiment ? "Loading graph..." : "Select an experiment or view lessons"}
           </div>
         )}
       </div>

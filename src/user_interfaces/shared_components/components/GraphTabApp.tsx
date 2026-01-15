@@ -105,7 +105,7 @@ export const GraphTabApp: React.FC<GraphTabAppProps> = ({
               isDarkTheme={isDarkTheme}
               metadataPanel={experiment ? (
                 <WorkflowRunDetailsPanel
-                  runName={experiment.run_name || experiment.session_id}
+                  runName={experiment.run_name || ''}
                   result={experiment.result || ''}
                   notes={experiment.notes || ''}
                   log={experiment.log || ''}
