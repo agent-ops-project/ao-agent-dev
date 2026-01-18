@@ -10,7 +10,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { CustomNode } from './CustomNode';
 import { CustomEdge } from './CustomEdge';
-import { GraphNode, GraphEdge, ProcessInfo } from '../../types';
+import { GraphNode, GraphEdge } from '../../types';
 import { LayoutEngine } from '../../utils/layoutEngine';
 import { MessageSender } from '../../types/MessageSender';
 import styles from './GraphView.module.css';
@@ -21,7 +21,6 @@ interface GraphViewProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
   onNodeUpdate: (nodeId: string, field: keyof GraphNode, value: string) => void;
-  experiment?: ProcessInfo;
   session_id?: string;
   messageSender: MessageSender;
   isDarkTheme?: boolean;
@@ -46,8 +45,7 @@ const FlowWithViewport: React.FC<{
   onNodesChange: any;
   onEdgesChange: any;
   viewport: { x: number; y: number; zoom: number };
-  rfKey: number;
-}> = ({ nodes, edges, onNodesChange, onEdgesChange, viewport, rfKey }) => {
+}> = ({ nodes, edges, onNodesChange, onEdgesChange, viewport }) => {
   const { setViewport: setRFViewport } = useReactFlow();
 
   // Apply viewport changes using ReactFlow's API
@@ -57,7 +55,6 @@ const FlowWithViewport: React.FC<{
 
   return (
     <ReactFlow
-      key={rfKey}
       nodes={nodes}
       edges={edges}
       onNodesChange={onNodesChange}
@@ -92,7 +89,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
   nodes: initialNodes,
   edges: initialEdges,
   onNodeUpdate,
-  experiment,
   session_id,
   messageSender,
   isDarkTheme = false,
@@ -105,10 +101,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [containerWidth, setContainerWidth] = useState(400);
-  const [maxContainerWidth, setMaxContainerWidth] = useState<number | null>(null);
   const [containerHeight, setContainerHeight] = useState(1500);
   const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
-  const [rfKey, setRfKey] = useState(0);
   const [isMetadataPanelOpen, setIsMetadataPanelOpen] = useState(false);
 
   // Create layout engine instance using useMemo to prevent recreation
@@ -229,15 +223,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
       widthSpan,
     };
 
-    console.log('[GraphView] Layout calculated:', {
-      maxContainerWidth,
-      nodeCount: flowNodes.length,
-      edgeCount: flowEdges.length,
-      minXAll,
-      maxXAll,
-      widthSpan,
-    });
-
     setNodes(flowNodes);
     setEdges(flowEdges);
 
@@ -264,26 +249,15 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const updateViewport = useCallback(() => {
     if (!layoutCacheRef.current) return;
 
-    const { minXAll, maxXAll, widthSpan } = layoutCacheRef.current;
+    const { minXAll, widthSpan } = layoutCacheRef.current;
     const PADDING_X = 40;
     const bboxW = widthSpan + PADDING_X * 2;
     const availableW = Math.max(1, containerWidth);
     const zoom = Math.min(1, availableW / bboxW);
     const x = -minXAll * zoom + (availableW - widthSpan * zoom) / 2;
 
-    console.log('[GraphView] Viewport update:', {
-      containerWidth,
-      isMetadataPanelOpen,
-      minXAll,
-      maxXAll,
-      widthSpan,
-      zoom,
-      viewportX: x,
-    });
-
     setViewport({ x, y: 0, zoom });
-    // Don't increment rfKey here - it causes a flash during metadata panel toggle
-  }, [containerWidth, isMetadataPanelOpen]);
+  }, [containerWidth]);
 
   // Recalculate layout when structure or width changes, or update data in place if only content changed
   useEffect(() => {
@@ -327,23 +301,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
   useEffect(() => {
     updateViewport();
   }, [updateViewport]);
-
-
-  // Set maxContainerWidth only once on initial mount
-  useEffect(() => {
-    if (containerRef.current && maxContainerWidth === null) {
-      const totalWidth = containerRef.current.offsetWidth;
-      const maxAvailableWidth = totalWidth - BUTTON_COLUMN_WIDTH;
-      setMaxContainerWidth(maxAvailableWidth);
-
-      // Also set initial containerWidth to trigger viewport calculation
-      let graphAvailableWidth = totalWidth - BUTTON_COLUMN_WIDTH;
-      if (isMetadataPanelOpen && metadataPanel) {
-        graphAvailableWidth -= METADATA_PANEL_WIDTH;
-      }
-      setContainerWidth(graphAvailableWidth);
-    }
-  }, [maxContainerWidth, BUTTON_COLUMN_WIDTH, isMetadataPanelOpen, metadataPanel, METADATA_PANEL_WIDTH]);
 
   // Handle container width changes for viewport adjustments
   useEffect(() => {
@@ -446,7 +403,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 viewport={viewport}
-                rfKey={rfKey}
               />
             </div>
           </ReactFlowProvider>

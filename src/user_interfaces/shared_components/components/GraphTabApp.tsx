@@ -134,7 +134,6 @@ export const GraphTabApp: React.FC<GraphTabAppProps> = ({
                 onNodeUpdate(nodeId, field, value, sessionId, attachments);
               }}
               session_id={sessionId}
-              experiment={experiment}
               messageSender={messageSender}
               isDarkTheme={isDarkTheme}
               metadataPanel={experiment ? (
