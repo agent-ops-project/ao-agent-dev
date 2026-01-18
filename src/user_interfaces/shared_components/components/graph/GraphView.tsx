@@ -15,6 +15,7 @@ import { LayoutEngine } from '../../utils/layoutEngine';
 import { MessageSender } from '../../types/MessageSender';
 import styles from './GraphView.module.css';
 import { NODE_WIDTH } from '../../utils/layoutConstants';
+import { Tooltip } from '../common/Tooltip';
 
 interface GraphViewProps {
   nodes: GraphNode[];
@@ -480,89 +481,92 @@ export const GraphView: React.FC<GraphViewProps> = ({
         >
           {/* Metadata Panel Toggle Button */}
           {showMetadataButton && (
+            <Tooltip content={isMetadataPanelOpen ? "Hide metadata" : "Show metadata"} position="left" isDarkTheme={isDarkTheme}>
+              <button
+                style={{
+                  ...restartButtonStyle,
+                  background: isMetadataPanelOpen
+                    ? (isDarkTheme ? "rgba(80, 80, 80, 0.8)" : "rgba(220, 220, 220, 1)")
+                    : (isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)"),
+                  marginBottom: "4px",
+                  border: `1px solid ${isDarkTheme ? "#555" : "#ddd"}`,
+                }}
+                onClick={() => {
+                  setIsMetadataPanelOpen(!isMetadataPanelOpen);
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = isDarkTheme ? "rgba(80, 80, 80, 0.8)" : "rgba(255, 255, 255, 1)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = isMetadataPanelOpen
+                    ? (isDarkTheme ? "rgba(80, 80, 80, 0.8)" : "rgba(220, 220, 220, 1)")
+                    : (isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)");
+                }}
+              >
+                {/* Codicon tag icon */}
+                <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="#d4a825">
+                  <path d="M11 6C10.4477 6 10 5.55228 10 5C10 4.44772 10.4477 4 11 4C11.5523 4 12 4.44772 12 5C12 5.55228 11.5523 6 11 6ZM2.58722 10.1357C1.80426 9.3566 1.80426 8.0934 2.58722 7.31428L7.32688 2.59785C7.70082 2.22574 8.20735 2.01572 8.73617 2.01353L11.9867 2.00002C13.1029 1.99538 14.008 2.89877 13.9999 4.00947L13.9755 7.3725C13.9717 7.89662 13.7608 8.3982 13.3884 8.76882L8.71865 13.4157C7.93569 14.1948 6.66627 14.1948 5.88331 13.4157L2.58722 10.1357ZM3.29605 8.01964C2.90458 8.4092 2.90458 9.0408 3.29606 9.43036L6.59214 12.7103C6.98362 13.0999 7.61834 13.0999 8.00982 12.7103L12.6795 8.06346C12.8658 7.87815 12.9712 7.62736 12.9731 7.3653L12.9975 4.00227C13.0016 3.44692 12.549 2.99522 11.9909 2.99754L8.74036 3.01105C8.47595 3.01215 8.22268 3.11716 8.03571 3.30321L3.29605 8.01964Z"/>
+                </svg>
+              </button>
+            </Tooltip>
+          )}
+
+          <Tooltip content="Erase" position="left" isDarkTheme={isDarkTheme}>
             <button
               style={{
                 ...restartButtonStyle,
-                background: isMetadataPanelOpen
-                  ? (isDarkTheme ? "rgba(80, 80, 80, 0.8)" : "rgba(220, 220, 220, 1)")
-                  : (isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)"),
+                background: isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)",
                 marginBottom: "4px",
                 border: `1px solid ${isDarkTheme ? "#555" : "#ddd"}`,
               }}
-              title={isMetadataPanelOpen ? "Hide metadata" : "Show metadata"}
               onClick={() => {
-                setIsMetadataPanelOpen(!isMetadataPanelOpen);
+                if (!session_id) {
+                  alert("No session_id available for erase! This is a bug.");
+                  throw new Error("No session_id available for erase!");
+                }
+                messageSender.send({ type: "erase", session_id });
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = isDarkTheme ? "rgba(80, 80, 80, 0.8)" : "rgba(255, 255, 255, 1)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = isMetadataPanelOpen
-                  ? (isDarkTheme ? "rgba(80, 80, 80, 0.8)" : "rgba(220, 220, 220, 1)")
-                  : (isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)");
+                e.currentTarget.style.background = isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)";
               }}
             >
-              {/* Codicon tag icon */}
-              <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="#d4a825">
-                <path d="M11 6C10.4477 6 10 5.55228 10 5C10 4.44772 10.4477 4 11 4C11.5523 4 12 4.44772 12 5C12 5.55228 11.5523 6 11 6ZM2.58722 10.1357C1.80426 9.3566 1.80426 8.0934 2.58722 7.31428L7.32688 2.59785C7.70082 2.22574 8.20735 2.01572 8.73617 2.01353L11.9867 2.00002C13.1029 1.99538 14.008 2.89877 13.9999 4.00947L13.9755 7.3725C13.9717 7.89662 13.7608 8.3982 13.3884 8.76882L8.71865 13.4157C7.93569 14.1948 6.66627 14.1948 5.88331 13.4157L2.58722 10.1357ZM3.29605 8.01964C2.90458 8.4092 2.90458 9.0408 3.29606 9.43036L6.59214 12.7103C6.98362 13.0999 7.61834 13.0999 8.00982 12.7103L12.6795 8.06346C12.8658 7.87815 12.9712 7.62736 12.9731 7.3653L12.9975 4.00227C13.0016 3.44692 12.549 2.99522 11.9909 2.99754L8.74036 3.01105C8.47595 3.01215 8.22268 3.11716 8.03571 3.30321L3.29605 8.01964Z"/>
+              {/* Codicon eraser icon */}
+              <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="#e05252">
+                <path d="M14.5 6C14.5 5.6 14.344 5.223 14.061 4.939L11.062 1.939C10.496 1.372 9.504 1.372 8.94 1.939L1.439 9.439C1.156 9.722 1 10.099 1 10.5C1 10.901 1.156 11.277 1.439 11.561L3.439 13.561C3.722 13.844 4.099 14 4.5 14H11.5C11.776 14 12 13.776 12 13.5C12 13.224 11.776 13 11.5 13H8.121L14.06 7.061C14.343 6.778 14.499 6.401 14.499 6H14.5ZM4.146 12.854L2.146 10.854C2.051 10.759 2 10.634 2 10.5C2 10.366 2.052 10.241 2.146 10.146L4.293 8L8 11.707L6.707 13H4.5C4.366 13 4.241 12.948 4.146 12.854ZM13.354 6.354L8.708 11L5.001 7.293L9.648 2.646C9.742 2.552 9.867 2.5 10.001 2.5C10.135 2.5 10.26 2.552 10.355 2.646L13.355 5.646C13.45 5.741 13.501 5.866 13.501 6C13.501 6.134 13.448 6.259 13.354 6.354Z"/>
               </svg>
             </button>
-          )}
-
-          <button
-            style={{
-              ...restartButtonStyle,
-              background: isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)",
-              marginBottom: "4px",
-              border: `1px solid ${isDarkTheme ? "#555" : "#ddd"}`,
-            }}
-            title="Erase"
-            onClick={() => {
-              if (!session_id) {
-                alert("No session_id available for erase! This is a bug.");
-                throw new Error("No session_id available for erase!");
-              }
-              messageSender.send({ type: "erase", session_id });
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = isDarkTheme ? "rgba(80, 80, 80, 0.8)" : "rgba(255, 255, 255, 1)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)";
-            }}
-          >
-            {/* Codicon eraser icon */}
-            <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="#e05252">
-              <path d="M14.5 6C14.5 5.6 14.344 5.223 14.061 4.939L11.062 1.939C10.496 1.372 9.504 1.372 8.94 1.939L1.439 9.439C1.156 9.722 1 10.099 1 10.5C1 10.901 1.156 11.277 1.439 11.561L3.439 13.561C3.722 13.844 4.099 14 4.5 14H11.5C11.776 14 12 13.776 12 13.5C12 13.224 11.776 13 11.5 13H8.121L14.06 7.061C14.343 6.778 14.499 6.401 14.499 6H14.5ZM4.146 12.854L2.146 10.854C2.051 10.759 2 10.634 2 10.5C2 10.366 2.052 10.241 2.146 10.146L4.293 8L8 11.707L6.707 13H4.5C4.366 13 4.241 12.948 4.146 12.854ZM13.354 6.354L8.708 11L5.001 7.293L9.648 2.646C9.742 2.552 9.867 2.5 10.001 2.5C10.135 2.5 10.26 2.552 10.355 2.646L13.355 5.646C13.45 5.741 13.501 5.866 13.501 6C13.501 6.134 13.448 6.259 13.354 6.354Z"/>
-            </svg>
-          </button>
-          <button
-            style={{
-              ...restartButtonStyle,
-              marginBottom: "8px",
-              background: isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)",
-              border: `1px solid ${isDarkTheme ? "#555" : "#ddd"}`,
-            }}
-            title="Restart"
-            onClick={() => {
-              if (!session_id) {
-                alert("No session_id available for restart! This is a bug.");
-                throw new Error("No session_id available for restart!");
-              }
-              messageSender.send({ type: "restart", session_id });
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = isDarkTheme ? "rgba(80, 80, 80, 0.8)" : "rgba(255, 255, 255, 1)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)";
-            }}
-          >
-            {/* Codicon debug-restart icon */}
-            <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="#7fc17b">
-              <path d="M12.9991 8C12.9991 5.23858 10.7605 3 7.99909 3C6.36382 3 4.91128 3.78495 3.99863 5H5.99909C6.27524 5 6.49909 5.22386 6.49909 5.5C6.49909 5.77614 6.27524 6 5.99909 6H3.10868C3.10184 6.00014 3.09498 6.00014 3.08812 6H2.99909C2.72295 6 2.49909 5.77614 2.49909 5.5V2.5C2.49909 2.22386 2.72295 2 2.99909 2C3.27524 2 3.49909 2.22386 3.49909 2.5V4.03138C4.59815 2.78613 6.20656 2 7.99909 2C11.3128 2 13.9991 4.68629 13.9991 8C13.9991 11.3137 11.3128 14 7.99909 14C4.86898 14 2.29916 11.6035 2.02353 8.54488C1.99875 8.26985 2.20161 8.0268 2.47664 8.00202C2.75167 7.97723 2.99471 8.1801 3.0195 8.45512C3.2491 11.003 5.39117 13 7.99909 13C10.7605 13 12.9991 10.7614 12.9991 8Z"/>
-            </svg>
-          </button>
+          </Tooltip>
+          <Tooltip content="Restart" position="left" isDarkTheme={isDarkTheme}>
+            <button
+              style={{
+                ...restartButtonStyle,
+                marginBottom: "8px",
+                background: isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)",
+                border: `1px solid ${isDarkTheme ? "#555" : "#ddd"}`,
+              }}
+              onClick={() => {
+                if (!session_id) {
+                  alert("No session_id available for restart! This is a bug.");
+                  throw new Error("No session_id available for restart!");
+                }
+                messageSender.send({ type: "restart", session_id });
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = isDarkTheme ? "rgba(80, 80, 80, 0.8)" : "rgba(255, 255, 255, 1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)";
+              }}
+            >
+              {/* Codicon debug-restart icon */}
+              <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="#7fc17b">
+                <path d="M12.9991 8C12.9991 5.23858 10.7605 3 7.99909 3C6.36382 3 4.91128 3.78495 3.99863 5H5.99909C6.27524 5 6.49909 5.22386 6.49909 5.5C6.49909 5.77614 6.27524 6 5.99909 6H3.10868C3.10184 6.00014 3.09498 6.00014 3.08812 6H2.99909C2.72295 6 2.49909 5.77614 2.49909 5.5V2.5C2.49909 2.22386 2.72295 2 2.99909 2C3.27524 2 3.49909 2.22386 3.49909 2.5V4.03138C4.59815 2.78613 6.20656 2 7.99909 2C11.3128 2 13.9991 4.68629 13.9991 8C13.9991 11.3137 11.3128 14 7.99909 14C4.86898 14 2.29916 11.6035 2.02353 8.54488C1.99875 8.26985 2.20161 8.0268 2.47664 8.00202C2.75167 7.97723 2.99471 8.1801 3.0195 8.45512C3.2491 11.003 5.39117 13 7.99909 13C10.7605 13 12.9991 10.7614 12.9991 8Z"/>
+              </svg>
+            </button>
+          </Tooltip>
         </div>
       </div>
     </div>
