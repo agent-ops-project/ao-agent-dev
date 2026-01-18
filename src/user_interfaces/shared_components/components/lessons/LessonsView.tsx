@@ -71,7 +71,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({
       style={{
         width: '100%',
         height: '100%',
-        backgroundColor: isDarkTheme ? '#1e1e1e' : '#ffffff',
+        backgroundColor: isDarkTheme ? '#252525' : '#F0F0F0',
         color: isDarkTheme ? '#e5e5e5' : '#333333',
         fontFamily: "var(--vscode-font-family, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif)",
         display: 'flex',
@@ -82,9 +82,9 @@ export const LessonsView: React.FC<LessonsViewProps> = ({
       {/* Header with Search */}
       <div
         style={{
-          padding: '16px 20px',
+          padding: '18px 24px 16px 24px',
           borderBottom: `1px solid ${isDarkTheme ? '#3c3c3c' : '#e0e0e0'}`,
-          backgroundColor: isDarkTheme ? '#1e1e1e' : '#ffffff',
+          backgroundColor: isDarkTheme ? '#252525' : '#F0F0F0',
           flexShrink: 0,
         }}
       >
@@ -162,7 +162,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({
       </div>
 
       {/* Lessons List */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+      <div style={{ flex: 1, overflow: 'auto', padding: '16px 24px 16px 24px' }}>
         {filteredLessons.length === 0 ? (
           <div
             style={{

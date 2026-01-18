@@ -40,8 +40,8 @@ export const GraphHeader: React.FC<GraphHeaderProps> = ({
       <div
         style={{
           position: 'absolute',
-          top: '12px',
-          left: '16px',
+          top: '8px',
+          left: '12px',
           backgroundColor: isDarkTheme ? '#252525' : '#F0F0F0',
           padding: '12px 16px',
           borderRadius: '8px',
