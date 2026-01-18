@@ -5,6 +5,7 @@ import { MessageSender } from '../../../shared_components/types/MessageSender';
 import { useIsVsCodeDarkTheme } from '../../../shared_components/utils/themeUtils';
 import { GraphHeader } from '../../../shared_components/components/graph/GraphHeader';
 import { Lesson } from '../../../shared_components/components/lessons/LessonsView';
+import { DocumentContextProvider, useDocumentContext } from '../../../shared_components/contexts/DocumentContext';
 
 // Global type augmentation for window.vscode
 declare global {
@@ -17,12 +18,14 @@ declare global {
   }
 }
 
-export const GraphTabApp: React.FC = () => {
+// Inner component that uses the document context
+const GraphTabAppInner: React.FC = () => {
   const [experiment, setExperiment] = useState<ProcessInfo | null>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const isDarkTheme = useIsVsCodeDarkTheme();
+  const { setDocumentOpened } = useDocumentContext();
 
   // Override body overflow to allow scrolling
   useEffect(() => {
@@ -134,6 +137,11 @@ export const GraphTabApp: React.FC = () => {
         case 'lessons_list':
           // Update lessons for header stats
           setLessons(message.lessons || []);
+        case 'documentOpened':
+          // Track opened document path for UI update
+          if (message.payload?.documentKey && message.payload?.path) {
+            setDocumentOpened(message.payload.documentKey, message.payload.path);
+          }
           break;
       }
     };
@@ -150,7 +158,7 @@ export const GraphTabApp: React.FC = () => {
     return () => {
       window.removeEventListener('message', handleMessage);
     };
-  }, [sessionId]);
+  }, [sessionId, setDocumentOpened]);
 
   const handleNodeUpdate = (
     nodeId: string,
@@ -227,3 +235,10 @@ export const GraphTabApp: React.FC = () => {
     </div>
   );
 };
+
+// Wrap with DocumentContextProvider
+export const GraphTabApp: React.FC = () => (
+  <DocumentContextProvider>
+    <GraphTabAppInner />
+  </DocumentContextProvider>
+);

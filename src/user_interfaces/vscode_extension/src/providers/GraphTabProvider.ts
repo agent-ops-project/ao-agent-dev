@@ -1,24 +1,19 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { RunDetailsDialogProvider } from './RunDetailsDialogProvider';
+import * as os from 'os';
+import * as path from 'path';
 import { PythonServerClient } from './PythonServerClient';
-import { ProcessInfo } from '../../../../shared_components/types';
+import { ProcessInfo } from '../../../shared_components/types';
 
 export class GraphTabProvider implements vscode.WebviewPanelSerializer {
     public static readonly viewType = 'graphExtension.graphTab';
     private _panels: Map<string, vscode.WebviewPanel> = new Map();
-    private _runDetailsDialogProvider?: RunDetailsDialogProvider;
     private _pythonClient: PythonServerClient | null = null;
 
     constructor(private readonly _extensionUri: vscode.Uri) {
         // Initialize Python client
         this._pythonClient = PythonServerClient.getInstance();
         this._pythonClient.ensureConnected(); // async but don't await in constructor
-    }
-
-
-    public setRunDetailsDialogProvider(provider: RunDetailsDialogProvider): void {
-        this._runDetailsDialogProvider = provider;
     }
 
     public async createOrShowGraphTab(experiment: ProcessInfo): Promise<void> {
@@ -112,12 +107,6 @@ export class GraphTabProvider implements vscode.WebviewPanelSerializer {
                         });
                     }
                     break;
-                case 'showRunDetailsDialog':
-                    console.log('Run details dialog requested:', data.payload);
-                    if (this._runDetailsDialogProvider && data.payload.experiment) {
-                        this._runDetailsDialogProvider.show(data.payload.experiment);
-                    }
-                    break;
                 case 'update_node':
                 case 'edit_input':
                 case 'edit_output':
@@ -154,6 +143,9 @@ export class GraphTabProvider implements vscode.WebviewPanelSerializer {
                 case 'openLessonsTab':
                     // Open the lessons tab
                     this.createOrShowLessonsTab();
+                    break;
+                case 'openDocument':
+                    this._handleOpenDocument(data.payload, panel);
                     break;
             }
         });
@@ -421,6 +413,39 @@ export class GraphTabProvider implements vscode.WebviewPanelSerializer {
             };
         }
         return { filePath: undefined, line: undefined };
+    }
+
+    private async _handleOpenDocument(payload: { data: string; fileType: string; mimeType: string; documentKey?: string }, panel: vscode.WebviewPanel): Promise<void> {
+        const { data, fileType, documentKey } = payload;
+
+        // Whitelist of file types we'll open with system default app
+        const openableTypes = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'docx', 'xlsx'];
+        const shouldOpen = openableTypes.includes(fileType);
+
+        try {
+            // Save to temp file
+            const tempDir = os.tmpdir();
+            const fileName = `ao-preview-${Date.now()}.${fileType}`;
+            const tempPath = path.join(tempDir, fileName);
+
+            const buffer = Buffer.from(data, 'base64');
+            fs.writeFileSync(tempPath, buffer);
+
+            // Open with system default app if whitelisted
+            if (shouldOpen) {
+                const uri = vscode.Uri.file(tempPath);
+                await vscode.env.openExternal(uri);
+            }
+
+            // Send path back to webview
+            panel.webview.postMessage({
+                type: 'documentOpened',
+                payload: { path: tempPath, documentKey }
+            });
+        } catch (error) {
+            console.error('[GraphTabProvider] Failed to open document:', error);
+            vscode.window.showErrorMessage(`Failed to open document: ${error}`);
+        }
     }
 
 
