@@ -439,12 +439,12 @@ export const GraphView: React.FC<GraphViewProps> = ({
       <div
         style={{
           position: 'fixed',
-          top: '49px', // Below the header (header height ~49px with padding)
+          top: '0px',
           right: 0,
           bottom: 0,
           display: 'flex',
           flexDirection: 'row',
-          zIndex: 100,
+          zIndex: 200,
         }}
       >
         {/* Metadata Panel */}

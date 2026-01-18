@@ -4,7 +4,6 @@ import { GraphData, ProcessInfo } from '../../../shared_components/types';
 import { MessageSender } from '../../../shared_components/types/MessageSender';
 import { useIsVsCodeDarkTheme } from '../../../shared_components/utils/themeUtils';
 import { GraphHeader } from '../../../shared_components/components/graph/GraphHeader';
-import { LessonStats } from '../../../shared_components/components/graph/LessonStats';
 import { Lesson } from '../../../shared_components/components/lessons/LessonsView';
 
 // Global type augmentation for window.vscode
@@ -205,19 +204,13 @@ export const GraphTabApp: React.FC = () => {
         position: "relative",
       }}
     >
-      {/* Graph Header */}
-      {experiment && (
+      {/* Graph Header with Lesson Stats */}
+      {experiment && graphData && (
         <GraphHeader
           runName={experiment.run_name || ''}
           isDarkTheme={isDarkTheme}
-        />
-      )}
-      {/* Floating Lesson Stats */}
-      {sessionId && graphData && (
-        <LessonStats
-          sessionId={sessionId}
+          sessionId={sessionId || undefined}
           lessons={lessons}
-          isDarkTheme={isDarkTheme}
           onNavigateToLessons={handleNavigateToLessons}
         />
       )}

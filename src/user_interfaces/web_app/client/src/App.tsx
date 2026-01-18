@@ -7,7 +7,6 @@ import { ExperimentsView} from "../../../shared_components/components/experiment
 import type { MessageSender } from "../../../shared_components/types/MessageSender";
 import { LessonsView, type Lesson } from "../../../shared_components/components/lessons/LessonsView";
 import { GraphHeader } from "../../../shared_components/components/graph/GraphHeader";
-import { LessonStats } from "../../../shared_components/components/graph/LessonStats";
 
 interface Experiment {
   session_id: string;
@@ -479,16 +478,12 @@ function App() {
           />
         ) : selectedExperiment && graphData ? (
           <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "auto", position: "relative" }}>
-            {/* Graph Title Header */}
+            {/* Graph Header with Lesson Stats */}
             <GraphHeader
               runName={selectedExperiment.run_name || ''}
               isDarkTheme={isDarkTheme}
-            />
-            {/* Floating Lesson Stats */}
-            <LessonStats
               sessionId={selectedExperiment.session_id}
               lessons={lessons}
-              isDarkTheme={isDarkTheme}
               onNavigateToLessons={() => setShowLessons(true)}
             />
             {/* Graph */}

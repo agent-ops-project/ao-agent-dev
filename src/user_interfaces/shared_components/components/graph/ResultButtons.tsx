@@ -57,7 +57,7 @@ export const ResultButtons: React.FC<ResultButtonsProps> = ({
         padding: '8px',
         backgroundColor: isDarkTheme ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
         borderRadius: '8px',
-        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.15)',
+        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
         border: `1px solid ${isDarkTheme ? '#3c3c3c' : '#e0e0e0'}`,
       }}
     >
