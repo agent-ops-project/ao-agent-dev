@@ -29,24 +29,11 @@ export const GraphHeader: React.FC<GraphHeaderProps> = ({
   return (
     <div
       style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 150,
-        height: 0,
-        overflow: 'visible',
+        padding: '12px 60px 12px 16px',  // Extra right padding for fixed sidebar
+        marginLeft: '12px',
+        marginTop: '8px',
       }}
     >
-      {/* Content wrapper with background */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '8px',
-          left: '12px',
-          backgroundColor: isDarkTheme ? '#252525' : '#F0F0F0',
-          padding: '12px 16px',
-          borderRadius: '8px',
-        }}
-      >
         {/* Run Name */}
         <div
           style={{
@@ -77,9 +64,6 @@ export const GraphHeader: React.FC<GraphHeaderProps> = ({
         {sessionId && (
           <div
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
               cursor: onNavigateToLessons ? 'pointer' : 'default',
               fontSize: '15px',
               color: isDarkTheme ? '#4da6ff' : '#007acc',
@@ -99,12 +83,9 @@ export const GraphHeader: React.FC<GraphHeaderProps> = ({
             }}
             title="View lessons"
           >
-            <span>{lessonsExtractedFrom} lesson{lessonsExtractedFrom !== 1 ? 's' : ''} extracted</span>
-            <span style={{ color: isDarkTheme ? '#3c7ab8' : '#99c9e8' }}>|</span>
-            <span>{lessonsAppliedTo} lesson{lessonsAppliedTo !== 1 ? 's' : ''} applied</span>
+            {lessonsExtractedFrom} lesson{lessonsExtractedFrom !== 1 ? 's' : ''} extracted, {lessonsAppliedTo} lesson{lessonsAppliedTo !== 1 ? 's' : ''} applied
           </div>
         )}
-      </div>
     </div>
   );
 };

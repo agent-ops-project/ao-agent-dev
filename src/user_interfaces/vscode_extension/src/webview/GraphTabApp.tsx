@@ -208,20 +208,10 @@ const GraphTabAppInner: React.FC = () => {
         display: "flex",
         flexDirection: "column",
         background: isDarkTheme ? "#252525" : "#F0F0F0",
-        overflow: "auto",
+        overflow: "hidden",
         position: "relative",
       }}
     >
-      {/* Graph Header with Lesson Stats */}
-      {experiment && graphData && (
-        <GraphHeader
-          runName={experiment.run_name || ''}
-          isDarkTheme={isDarkTheme}
-          sessionId={sessionId || undefined}
-          lessons={lessons}
-          onNavigateToLessons={handleNavigateToLessons}
-        />
-      )}
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
         <SharedGraphTabApp
           experiment={experiment}
@@ -230,6 +220,15 @@ const GraphTabAppInner: React.FC = () => {
           messageSender={messageSender}
           isDarkTheme={isDarkTheme}
           onNodeUpdate={handleNodeUpdate}
+          headerContent={experiment && graphData ? (
+            <GraphHeader
+              runName={experiment.run_name || ''}
+              isDarkTheme={isDarkTheme}
+              sessionId={sessionId || undefined}
+              lessons={lessons}
+              onNavigateToLessons={handleNavigateToLessons}
+            />
+          ) : undefined}
         />
       </div>
     </div>

@@ -26,6 +26,9 @@ interface GraphViewProps {
   messageSender: MessageSender;
   isDarkTheme?: boolean;
   metadataPanel?: React.ReactNode;
+  currentResult?: string;
+  onResultChange?: (result: string) => void;
+  headerContent?: React.ReactNode;
 }
 
 const nodeTypes = {
@@ -94,6 +97,9 @@ export const GraphView: React.FC<GraphViewProps> = ({
   messageSender,
   isDarkTheme = false,
   metadataPanel,
+  currentResult = '',
+  onResultChange,
+  headerContent,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -408,31 +414,43 @@ export const GraphView: React.FC<GraphViewProps> = ({
           minWidth: 0,
           overflow: "auto",
           display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "center",
-          paddingTop: "120px",
+          flexDirection: "column",
+          alignItems: "stretch",
         }}
       >
-        <ReactFlowProvider>
-          <div
-            className={styles.flowContainer}
-            style={{
-              width: "100%",
-              height: `${containerHeight}px`,
-              marginTop: "0px",
-              paddingTop: "0px",
-            }}
-          >
-            <FlowWithViewport
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              viewport={viewport}
-              rfKey={rfKey}
-            />
-          </div>
-        </ReactFlowProvider>
+        {/* Header content that scrolls with the graph */}
+        {headerContent}
+
+        {/* Graph */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "center",
+            paddingTop: headerContent ? "20px" : "120px",
+          }}
+        >
+          <ReactFlowProvider>
+            <div
+              className={styles.flowContainer}
+              style={{
+                width: "100%",
+                height: `${containerHeight}px`,
+                marginTop: "0px",
+                paddingTop: "0px",
+              }}
+            >
+              <FlowWithViewport
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                viewport={viewport}
+                rfKey={rfKey}
+              />
+            </div>
+          </ReactFlowProvider>
+        </div>
       </div>
 
       {/* Right Section: Fixed side panel (metadata + action buttons) */}
@@ -475,13 +493,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
             padding: "10px",
             backgroundColor: isDarkTheme ? "#1e1e1e" : "#f5f5f5",
             borderLeft: `1px solid ${isDarkTheme ? '#3c3c3c' : '#e0e0e0'}`,
-            minWidth: "52px",
+            minWidth: "35px",
             flexShrink: 0,
           }}
         >
           {/* Metadata Panel Toggle Button */}
           {showMetadataButton && (
-            <Tooltip content={isMetadataPanelOpen ? "Hide metadata" : "Show metadata"} position="left" isDarkTheme={isDarkTheme}>
+            <Tooltip content={isMetadataPanelOpen ? "Hide run info" : "Show run info"} position="left" isDarkTheme={isDarkTheme}>
               <button
                 style={{
                   ...restartButtonStyle,
@@ -511,7 +529,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
             </Tooltip>
           )}
 
-          <Tooltip content="Erase" position="left" isDarkTheme={isDarkTheme}>
+          <Tooltip content="Erase all edits" position="left" isDarkTheme={isDarkTheme}>
             <button
               style={{
                 ...restartButtonStyle,
@@ -539,7 +557,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
               </svg>
             </button>
           </Tooltip>
-          <Tooltip content="Restart" position="left" isDarkTheme={isDarkTheme}>
+          <Tooltip content="Rerun" position="left" isDarkTheme={isDarkTheme}>
             <button
               style={{
                 ...restartButtonStyle,
@@ -567,6 +585,74 @@ export const GraphView: React.FC<GraphViewProps> = ({
               </svg>
             </button>
           </Tooltip>
+
+          {/* Spacer to push result buttons to bottom */}
+          <div style={{ flex: 1 }} />
+
+          {/* Result Buttons */}
+          {onResultChange && (
+            <>
+              <Tooltip content={currentResult === 'Satisfactory' ? "Clear result" : "Mark as Satisfactory"} position="left" isDarkTheme={isDarkTheme}>
+                <button
+                  style={{
+                    ...restartButtonStyle,
+                    width: '24px',
+                    height: '24px',
+                    marginBottom: "4px",
+                    background: currentResult === 'Satisfactory'
+                      ? '#4caf50'
+                      : (isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)"),
+                    border: `2px solid #4caf50`,
+                  }}
+                  onClick={() => onResultChange(currentResult === 'Satisfactory' ? '' : 'Satisfactory')}
+                  onMouseEnter={(e) => {
+                    if (currentResult !== 'Satisfactory') {
+                      e.currentTarget.style.background = 'rgba(76, 175, 80, 0.25)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentResult !== 'Satisfactory') {
+                      e.currentTarget.style.background = isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)";
+                    }
+                  }}
+                >
+                  {/* Checkmark icon */}
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill={currentResult === 'Satisfactory' ? '#ffffff' : '#4caf50'}>
+                    <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
+                  </svg>
+                </button>
+              </Tooltip>
+              <Tooltip content={currentResult === 'Failed' ? "Clear result" : "Mark as Failed"} position="left" isDarkTheme={isDarkTheme}>
+                <button
+                  style={{
+                    ...restartButtonStyle,
+                    width: '24px',
+                    height: '24px',
+                    background: currentResult === 'Failed'
+                      ? '#f44336'
+                      : (isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)"),
+                    border: `2px solid #f44336`,
+                  }}
+                  onClick={() => onResultChange(currentResult === 'Failed' ? '' : 'Failed')}
+                  onMouseEnter={(e) => {
+                    if (currentResult !== 'Failed') {
+                      e.currentTarget.style.background = 'rgba(244, 67, 54, 0.25)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentResult !== 'Failed') {
+                      e.currentTarget.style.background = isDarkTheme ? "rgba(60, 60, 60, 0.6)" : "rgba(255, 255, 255, 0.8)";
+                    }
+                  }}
+                >
+                  {/* X icon */}
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill={currentResult === 'Failed' ? '#ffffff' : '#f44336'}>
+                    <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+                  </svg>
+                </button>
+              </Tooltip>
+            </>
+          )}
         </div>
       </div>
     </div>
