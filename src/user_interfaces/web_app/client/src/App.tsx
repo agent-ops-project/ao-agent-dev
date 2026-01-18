@@ -477,7 +477,7 @@ function App() {
             }}
           />
         ) : selectedExperiment && graphData ? (
-          <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "auto" }}>
             {/* Graph Title Header */}
             <GraphHeader
               runName={selectedExperiment.run_name || ''}

@@ -4,6 +4,7 @@ import { GraphData, ProcessInfo } from '../types';
 import { MessageSender } from '../types/MessageSender';
 import { WorkflowRunDetailsPanel } from './experiment/WorkflowRunDetailsPanel';
 import { NodeEditModal } from './modals/NodeEditModal';
+import { ResultButtons } from './graph/ResultButtons';
 
 interface GraphTabAppProps {
   experiment: ProcessInfo | null;
@@ -118,6 +119,22 @@ export const GraphTabApp: React.FC<GraphTabAppProps> = ({
             />
           </div>
         </div>
+      )}
+
+      {/* Floating Result Buttons */}
+      {experiment && sessionId && (
+        <ResultButtons
+          currentResult={experiment.result || ''}
+          sessionId={sessionId}
+          isDarkTheme={isDarkTheme}
+          onResultChange={(result) => {
+            messageSender.send({
+              type: 'update_result',
+              session_id: sessionId,
+              result: result,
+            });
+          }}
+        />
       )}
 
       {/* Node Edit Modal */}

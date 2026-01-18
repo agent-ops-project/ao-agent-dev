@@ -196,10 +196,11 @@ export const GraphTabApp: React.FC = () => {
     <div
       style={{
         width: "100%",
-        minHeight: "100vh",
+        height: "100vh",
         display: "flex",
         flexDirection: "column",
         background: isDarkTheme ? "#252525" : "#F0F0F0",
+        overflow: "auto",
       }}
     >
       {/* Graph Header with lesson stats */}
@@ -212,7 +213,7 @@ export const GraphTabApp: React.FC = () => {
           onNavigateToLessons={handleNavigateToLessons}
         />
       )}
-      <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
         <SharedGraphTabApp
           experiment={experiment}
           graphData={graphData}

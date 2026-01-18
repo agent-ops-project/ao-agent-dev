@@ -43,6 +43,9 @@ export const GraphHeader: React.FC<GraphHeaderProps> = ({
   return (
     <div
       style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 150,
         padding: '12px 20px',
         borderBottom: `1px solid ${isDarkTheme ? '#3c3c3c' : '#e0e0e0'}`,
         backgroundColor: isDarkTheme ? '#1e1e1e' : '#ffffff',
