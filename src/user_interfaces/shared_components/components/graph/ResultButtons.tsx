@@ -28,30 +28,21 @@ export const ResultButtons: React.FC<ResultButtonsProps> = ({
     gap: '6px',
   };
 
+  const greenColor = '#4caf50';
+  const redColor = '#f44336';
+
   const satisfactoryStyle: React.CSSProperties = {
     ...buttonBaseStyle,
-    backgroundColor: isSelected('Satisfactory')
-      ? (isDarkTheme ? '#2e7d32' : '#4caf50')
-      : (isDarkTheme ? '#2d2d2d' : '#f5f5f5'),
-    color: isSelected('Satisfactory')
-      ? '#ffffff'
-      : (isDarkTheme ? '#4caf50' : '#2e7d32'),
-    border: `1px solid ${isSelected('Satisfactory')
-      ? (isDarkTheme ? '#2e7d32' : '#4caf50')
-      : (isDarkTheme ? '#3c3c3c' : '#e0e0e0')}`,
+    backgroundColor: isSelected('Satisfactory') ? greenColor : 'transparent',
+    color: isSelected('Satisfactory') ? '#ffffff' : greenColor,
+    border: `2px solid ${greenColor}`,
   };
 
   const failedStyle: React.CSSProperties = {
     ...buttonBaseStyle,
-    backgroundColor: isSelected('Failed')
-      ? (isDarkTheme ? '#c62828' : '#f44336')
-      : (isDarkTheme ? '#2d2d2d' : '#f5f5f5'),
-    color: isSelected('Failed')
-      ? '#ffffff'
-      : (isDarkTheme ? '#f44336' : '#c62828'),
-    border: `1px solid ${isSelected('Failed')
-      ? (isDarkTheme ? '#c62828' : '#f44336')
-      : (isDarkTheme ? '#3c3c3c' : '#e0e0e0')}`,
+    backgroundColor: isSelected('Failed') ? redColor : 'transparent',
+    color: isSelected('Failed') ? '#ffffff' : redColor,
+    border: `2px solid ${redColor}`,
   };
 
   return (
@@ -75,12 +66,12 @@ export const ResultButtons: React.FC<ResultButtonsProps> = ({
         onClick={() => onResultChange(isSelected('Satisfactory') ? '' : 'Satisfactory')}
         onMouseEnter={(e) => {
           if (!isSelected('Satisfactory')) {
-            e.currentTarget.style.backgroundColor = isDarkTheme ? '#1b5e20' : '#e8f5e9';
+            e.currentTarget.style.backgroundColor = 'rgba(76, 175, 80, 0.15)';
           }
         }}
         onMouseLeave={(e) => {
           if (!isSelected('Satisfactory')) {
-            e.currentTarget.style.backgroundColor = isDarkTheme ? '#2d2d2d' : '#f5f5f5';
+            e.currentTarget.style.backgroundColor = 'transparent';
           }
         }}
         title="Mark as Satisfactory"
@@ -96,12 +87,12 @@ export const ResultButtons: React.FC<ResultButtonsProps> = ({
         onClick={() => onResultChange(isSelected('Failed') ? '' : 'Failed')}
         onMouseEnter={(e) => {
           if (!isSelected('Failed')) {
-            e.currentTarget.style.backgroundColor = isDarkTheme ? '#b71c1c' : '#ffebee';
+            e.currentTarget.style.backgroundColor = 'rgba(244, 67, 54, 0.15)';
           }
         }}
         onMouseLeave={(e) => {
           if (!isSelected('Failed')) {
-            e.currentTarget.style.backgroundColor = isDarkTheme ? '#2d2d2d' : '#f5f5f5';
+            e.currentTarget.style.backgroundColor = 'transparent';
           }
         }}
         title="Mark as Failed"
