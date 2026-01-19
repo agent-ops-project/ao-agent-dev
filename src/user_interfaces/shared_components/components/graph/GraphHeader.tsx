@@ -60,7 +60,7 @@ export const GraphHeader: React.FC<GraphHeaderProps> = ({
           />
         )}
 
-        {/* Lesson Stats */}
+        {/* Lesson Stats - temporarily disabled
         {sessionId && (
           <div
             style={{
@@ -86,6 +86,7 @@ export const GraphHeader: React.FC<GraphHeaderProps> = ({
             {lessonsExtractedFrom} lesson{lessonsExtractedFrom !== 1 ? 's' : ''} extracted, {lessonsAppliedTo} lesson{lessonsAppliedTo !== 1 ? 's' : ''} applied
           </div>
         )}
+        */}
     </div>
   );
 };
