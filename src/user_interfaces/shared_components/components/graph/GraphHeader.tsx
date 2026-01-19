@@ -100,25 +100,16 @@ export const GraphHeader: React.FC<GraphHeaderProps> = ({
   const groupedExperiments = groupExperiments(filteredExperiments);
   const groupOrder = ['Today', 'Yesterday', 'Past Week', 'Past Month', 'Older'];
 
-  const colors = isDarkTheme
-    ? {
-        text: '#e5e5e5',
-        textMuted: '#888888',
-        border: '#3c3c3c',
-        bg: '#252526',
-        bgHover: '#2a2d2e',
-        inputBg: '#3c3c3c',
-        dropdownBg: '#1e1e1e',
-      }
-    : {
-        text: '#333333',
-        textMuted: '#666666',
-        border: '#d0d0d0',
-        bg: '#ffffff',
-        bgHover: '#f0f0f0',
-        inputBg: '#ffffff',
-        dropdownBg: '#ffffff',
-      };
+  // Use VS Code CSS variables for theme-aware colors
+  const colors = {
+    text: 'var(--vscode-foreground)',
+    textMuted: 'var(--vscode-descriptionForeground)',
+    border: 'var(--vscode-panel-border, var(--vscode-widget-border))',
+    bg: 'var(--vscode-sideBar-background, var(--vscode-editor-background))',
+    bgHover: 'var(--vscode-list-hoverBackground)',
+    inputBg: 'var(--vscode-input-background)',
+    dropdownBg: 'var(--vscode-dropdown-background, var(--vscode-editor-background))',
+  };
 
   const handleExperimentClick = (exp: ProcessInfo) => {
     setIsOpen(false);

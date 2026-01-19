@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { parse, stringify } from 'lossless-json';
 import { JSONViewer } from '../JSONViewer';
 import { DetectedDocument } from '../../utils/documentDetection';
 
@@ -44,31 +43,19 @@ export const NodeEditorView: React.FC<NodeEditorViewProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onSave]);
 
-  const colors = isDarkTheme
-    ? {
-        background: '#1e1e1e',
-        headerBg: '#252526',
-        border: '#3c3c3c',
-        text: '#cccccc',
-        textMuted: '#888888',
-        inputBg: '#3c3c3c',
-        tabActive: '#1e1e1e',
-        tabInactive: '#2d2d2d',
-        tabHover: '#363636',
-        accentColor: '#0e639c',
-      }
-    : {
-        background: '#ffffff',
-        headerBg: '#f3f3f3',
-        border: '#e0e0e0',
-        text: '#333333',
-        textMuted: '#666666',
-        inputBg: '#ffffff',
-        tabActive: '#ffffff',
-        tabInactive: '#ececec',
-        tabHover: '#e0e0e0',
-        accentColor: '#007acc',
-      };
+  // Use VS Code CSS variables for theme-aware colors
+  const colors = {
+    background: 'var(--vscode-editor-background)',
+    headerBg: 'var(--vscode-sideBar-background, var(--vscode-editor-background))',
+    border: 'var(--vscode-panel-border, var(--vscode-widget-border))',
+    text: 'var(--vscode-foreground)',
+    textMuted: 'var(--vscode-descriptionForeground)',
+    inputBg: 'var(--vscode-input-background)',
+    tabActive: 'var(--vscode-tab-activeBackground, var(--vscode-editor-background))',
+    tabInactive: 'var(--vscode-tab-inactiveBackground)',
+    tabHover: 'var(--vscode-tab-hoverBackground)',
+    accentColor: 'var(--vscode-focusBorder)',
+  };
 
   // Filter data based on search query
   const filterData = useCallback((data: any, query: string): any => {

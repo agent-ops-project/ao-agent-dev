@@ -447,8 +447,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
             justifyContent: "flex-start",
             gap: 4,
             padding: "10px",
-            backgroundColor: isDarkTheme ? "#1e1e1e" : "#f5f5f5",
-            borderLeft: `1px solid ${isDarkTheme ? '#3c3c3c' : '#e0e0e0'}`,
+            backgroundColor: "var(--vscode-sideBar-background, var(--vscode-editor-background))",
+            borderLeft: "1px solid var(--vscode-panel-border, var(--vscode-widget-border))",
             minWidth: "35px",
             flexShrink: 0,
           }}
