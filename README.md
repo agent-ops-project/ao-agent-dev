@@ -82,7 +82,7 @@ This should show you the agent's trajectory graph like in the video above. You c
 ## Integration with Coding Agents
 Coding Agents already accelerate generic coding quite successfully. By augmenting them with `ao`, you can supercharge your agent development while making sure you adhere to state-of-the-art coding practices for enterprise-grade agents.
 
-### <img src="docs/media/cc.png" alt="AO x Claude Code" height="24" style="vertical-align: middle;">   Claude Code
+<h3><img src="docs/media/cc.png" alt="Claude Code" height="24" align="absmiddle">&nbsp;&nbsp;Claude Code</h3>
 
 **Setup:**
 
