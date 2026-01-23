@@ -196,7 +196,6 @@ EDIT_IO_EXCLUDE_PATTERNS = [
     r"^content\.usage",
     r"^content\.service_tier$",
     r"^content\.system_fingerprint$",
-    r"^content\.stop_reason$",
     r"^content\.stop_sequence$",
     r"^content\.billing",
     r"^content\.error$",
@@ -223,7 +222,7 @@ EDIT_IO_EXCLUDE_PATTERNS = [
     # content.choices.* fields
     r"^content\.choices\.\d+\.index$",
     r"^content\.choices\.\d+\.message\.(refusal|annotations|reasoning)$",
-    r"^content\.choices\.\d+\.(finish_reason|logprobs|seed)$",
+    r"^content\.choices\.\d+\.(logprobs|seed)$",
     # content.output.* fields
     r"^content\.output\.\d+\.(id|type|status)$",
     r"^content\.output\.\d+\.content\.\d+\.(type|annotations|logprobs)$",
