@@ -208,6 +208,7 @@ EDIT_IO_EXCLUDE_PATTERNS = [
     r"^content\.prompt_cache",
     r"^content\.reasoning\.(effort|summary)$",
     r"^content\.safety_identifier$",
+    r"^content\.signature$",
     r"^content\.store$",
     r"^content\.temperature$",
     r"^content\.text\.(format\.type|verbosity)$",
@@ -217,7 +218,7 @@ EDIT_IO_EXCLUDE_PATTERNS = [
     r"^content\.user$",
     r"^content\.responseId$",
     # content.content.* fields (array elements)
-    r"^content\.content\.\d+\.(type|id)$",
+    r"^content\.content\.\d+\.(type|id|signature)$",
     r"^content\.content\.\d+\.content\.\d+\.type$",
     # content.choices.* fields
     r"^content\.choices\.\d+\.index$",
@@ -253,6 +254,7 @@ STRING_MATCH_EXCLUDE_PATTERNS = [
     r".*previous_response_id$",
     r".*prompt_cache_key$",
     r".*safety_identifier$",
+    r".*signature$",
     # Model & config
     r".*model$",
     r".*modelVersion$",

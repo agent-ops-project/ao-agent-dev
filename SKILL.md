@@ -19,6 +19,17 @@ description: ao helps you develop and maintain adaptable agentic systems. It ext
 Record agent execution as a graph where nodes are LLM/tool calls and edges are data dependencies.
 
 ### Record a script
+The keyword `record` can be thought of as a replacement for the `python` command.
+Wrong:
+```
+uv run ao-tool record python -m some.module --arg1
+```
+
+Correct:
+```
+uv run ao-tool record -m some.module --arg1
+```
+
 ```bash
 ao-tool record agent.py                       # Start recording, return immediately
 ao-tool record --wait agent.py                # Block until script completes
@@ -90,8 +101,7 @@ Integrate the lessons API first:
 # Example code here
 ```
 
-Scan the user-code for caching mechanisms (such as ad-hoc implementation of LLM-input caching or benchmark caching) that can interfere with the re-run capability. If you encounter such caching,
-flag this to the user and propose to change it by, for example, being able to disable caching with a `--no-cache` flag.
+Scan the user-code for caching mechanisms (such as ad-hoc implementation of LLM-input caching or benchmark caching) that can interfere with the re-run capability. If you encounter such caching, flag this to the user and propose to change it by, for example, being able to disable caching with a `--no-cache` flag. **NOTE:** Caching that happens at the API provider level, for example using `cache_control` in the Anthropic API is OK!
 
 ### Debugging a failing agent
 
@@ -125,6 +135,13 @@ from ao import ao_launch
 with ao_launch("experiment-name"):
     result = my_agent_function()
 ```
+---
+
+## Troubleshooting
+You executed a code using  `uv run ao-tool --help`
+but you get: `error: Failed to spawn: ao-tool` &rarr; You need to add ao-dev to your `uv` dependencies.
+
+You executed `ao-tool record some_script.py` and a module is not found &rarr; You need to add the module to your virtual environment.
 
 ---
 

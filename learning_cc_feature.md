@@ -3,6 +3,8 @@
 - CC suggested already to extract a lesson
 
 ## Learnings from CC feature
+- CC executes and waits for task output. can we add a hook and trigger it?
+- uv run ao-tool record -c "print(2)"? Does this work?
 - Generating valid JSON only in CLI for CC is hard. It wrote the JSON to a .txt and fed that into the command and it worked
     - CC is good at writing stuff to a file.. it leveraged that automatically
     - CC made a mistake with the required structure of the JSON it can change. We should flatten the dict so that there is only one level.
