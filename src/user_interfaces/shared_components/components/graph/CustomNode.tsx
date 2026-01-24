@@ -103,7 +103,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
   };  
 
   const isDarkTheme = data.isDarkTheme ?? false;
-  const isHighlighted = data.isHighlighted ?? false;
+  // const isHighlighted = data.isHighlighted ?? false;
 
   const nodeRef = useRef<HTMLDivElement>(null);
   const [popoverCoords, setPopoverCoords] = useState<{top: number, left: number} | null>(null);
@@ -133,10 +133,10 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
         borderRadius: 8,
         padding: 2,
         position: "relative",
-        boxShadow: isHighlighted
-          ? `0 0 8px 2px ${isDarkTheme ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.4)'}`
-          : 'none',
-        transition: 'box-shadow 0.15s ease-out',
+        // boxShadow: isHighlighted
+        //   ? `0 0 8px 2px ${isDarkTheme ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.4)'}`
+        //   : 'none',
+        // transition: 'box-shadow 0.15s ease-out',
       }}
       onMouseEnter={() => {
         if (leaveTimeoutRef.current) {
@@ -145,7 +145,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({
         }
         enterTimeoutRef.current = window.setTimeout(() => {
           setShowPopover(true);
-        }, 0);
+        }, 300);
         data.onHover?.(id);
       }}
       onMouseLeave={() => {
