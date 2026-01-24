@@ -47,7 +47,7 @@ export const CustomEdge: React.FC<EdgeProps<CustomEdgeData>> = ({
 
   const defaultStroke = 'var(--vscode-foreground, #CCCCCC)';
   const isHighlighted = data?.isHighlighted ?? false;
-  const highlightColor = '#43884e';
+  const highlightColor = '#4a90d9';
 
   const markerId = `arrow-${id}`;
 
