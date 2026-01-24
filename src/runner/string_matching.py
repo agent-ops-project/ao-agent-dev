@@ -256,6 +256,11 @@ def extract_input_text(input_dict: Dict[str, Any], api_type: str) -> str:
             strings = _extract_all_strings(request_dict)
             return "\n".join(strings)
 
+        elif api_type.startswith("langchain.BaseTool."):
+            # Tool input is {"tool_name": str, "input": str|dict}
+            strings = _extract_all_strings(input_dict)
+            return "\n".join(strings)
+
         else:
             logger.warning(f"Unknown API type for text extraction: {api_type}")
             return ""
@@ -314,6 +319,12 @@ def extract_output_text(output_obj: Any, api_type: str) -> List[str]:
                     return _extract_all_strings(body_json)
                 except (json.JSONDecodeError, AttributeError):
                     return []
+            return []
+
+        elif api_type.startswith("langchain.BaseTool."):
+            # Tool outputs are typically strings or simple values
+            if output_obj is not None:
+                return [str(output_obj)]
             return []
 
         else:

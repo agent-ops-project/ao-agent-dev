@@ -1,12 +1,7 @@
 from functools import wraps
 from ao.runner.monkey_patching.patching_utils import get_input_dict, send_graph_node_and_edges
 from ao.runner.string_matching import find_source_nodes, store_output_strings
-from ao.runner.context_manager import (
-    get_session_id,
-    get_langchain_pending_llm_parent,
-    set_langchain_pending_llm_parent,
-    set_langchain_pending_tool_parent,
-)
+from ao.runner.context_manager import get_session_id
 from ao.server.database_manager import DB
 from ao.common.logger import logger
 from ao.common.utils import is_whitelisted_endpoint
@@ -60,12 +55,6 @@ def patch_httpx_send(bound_obj, bound_cls):
         session_id = get_session_id()
         source_node_ids = find_source_nodes(session_id, input_dict, api_type)
 
-        # Check for langchain tool parent (explicit dataflow edge from tool → LLM)
-        tool_parent = get_langchain_pending_llm_parent()
-        if tool_parent and tool_parent not in source_node_ids:
-            source_node_ids.append(tool_parent)
-            set_langchain_pending_llm_parent(None)  # Clear after use
-
         # Get result from cache or call LLM
         cache_output = DB.get_in_out(input_dict, api_type)
         if cache_output.output is None:
@@ -76,9 +65,6 @@ def patch_httpx_send(bound_obj, bound_cls):
         store_output_strings(
             cache_output.session_id, cache_output.node_id, cache_output.output, api_type
         )
-
-        # Set this LLM as potential parent for langchain tool calls (LLM → tool edge)
-        set_langchain_pending_tool_parent(cache_output.node_id)
 
         # Send graph node to server
         send_graph_node_and_edges(
@@ -113,12 +99,6 @@ def patch_async_httpx_send(bound_obj, bound_cls):
         session_id = get_session_id()
         source_node_ids = find_source_nodes(session_id, input_dict, api_type)
 
-        # Check for langchain tool parent (explicit dataflow edge from tool → LLM)
-        tool_parent = get_langchain_pending_llm_parent()
-        if tool_parent and tool_parent not in source_node_ids:
-            source_node_ids.append(tool_parent)
-            set_langchain_pending_llm_parent(None)  # Clear after use
-
         # Get result from cache or call LLM
         cache_output = DB.get_in_out(input_dict, api_type)
         if cache_output.output is None:
@@ -129,9 +109,6 @@ def patch_async_httpx_send(bound_obj, bound_cls):
         store_output_strings(
             cache_output.session_id, cache_output.node_id, cache_output.output, api_type
         )
-
-        # Set this LLM as potential parent for langchain tool calls (LLM → tool edge)
-        set_langchain_pending_tool_parent(cache_output.node_id)
 
         # Send graph node to server
         send_graph_node_and_edges(

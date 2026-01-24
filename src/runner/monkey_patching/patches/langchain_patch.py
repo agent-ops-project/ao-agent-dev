@@ -1,6 +1,8 @@
 """
 Langchain patch for tool node visualization.
 
+NOTE: Tool call are not cached since they may have side effects!
+
 This patch intercepts langchain tool calls to create tool nodes in the dataflow graph.
 LLM calls are handled by the httpx patch; this patch only adds the missing tool nodes.
 
@@ -17,10 +19,8 @@ from functools import wraps
 import uuid
 import threading
 from ao.runner.monkey_patching.patching_utils import send_graph_node_and_edges
-from ao.runner.context_manager import (
-    get_langchain_pending_tool_parent,
-    set_langchain_pending_llm_parent,
-)
+from ao.runner.string_matching import find_source_nodes, store_output_strings
+from ao.runner.context_manager import get_session_id
 from ao.common.logger import logger
 
 # Thread-local storage to prevent duplicate node creation when invoke calls run
@@ -39,16 +39,12 @@ def _set_tool_call_active(active):
 
 def _create_tool_node(tool_name, tool_input, result, api_type):
     """Create and send a tool node to the server."""
-    # Get parent LLM node (set by httpx patch)
-    parent_node_id = get_langchain_pending_tool_parent()
-    source_node_ids = [parent_node_id] if parent_node_id else []
-
-    # Create tool node
     node_id = str(uuid.uuid4())
     input_dict = {"tool_name": tool_name, "input": tool_input}
 
-    # Set this tool as parent for the next LLM call
-    set_langchain_pending_llm_parent(node_id)
+    # Content-based edge detection (finds LLM outputs that contain tool arguments)
+    session_id = get_session_id()
+    source_node_ids = find_source_nodes(session_id, input_dict, api_type)
 
     # Send node to server
     send_graph_node_and_edges(
@@ -59,9 +55,10 @@ def _create_tool_node(tool_name, tool_input, result, api_type):
         api_type=api_type,
     )
 
-    logger.info(
-        f"[langchain_patch] Tool '{tool_name}' node created: {node_id[:8]}, parent: {parent_node_id[:8] if parent_node_id else 'None'}"
-    )
+    # Store tool output for content-based edge detection (Tool → LLM edges)
+    store_output_strings(session_id, node_id, result, api_type)
+
+    logger.info(f"[langchain_patch] Tool '{tool_name}' node created: {node_id[:8]}")
 
 
 def langchain_patch():
