@@ -15,7 +15,7 @@ from ao.common.constants import PLAYBOOK_SERVER_URL
 from ao.common.logger import logger
 
 
-def inject_lesson(context: str, top_k: Optional[int] = None) -> str:
+def inject_lesson(context: Optional[str] = None, top_k: Optional[int] = None) -> str:
     """
     Inject relevant lessons into a context string.
 
@@ -30,9 +30,13 @@ def inject_lesson(context: str, top_k: Optional[int] = None) -> str:
         The context with lessons prepended, or original context if server unavailable
     """
     url = f"{PLAYBOOK_SERVER_URL}/api/v1/query/lessons"
-    payload = {"query": context}
+
+    payload = {}
     if top_k is not None:
         payload["top_k"] = top_k
+    if context is not None:
+        payload["query"] = context
+
     data = json.dumps(payload).encode("utf-8")
 
     headers = {"Content-Type": "application/json"}
