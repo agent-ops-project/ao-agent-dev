@@ -433,7 +433,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
             display: "flex",
             alignItems: "flex-start",
             justifyContent: "center",
-            paddingTop: headerContent ? "8px" : "120px",
+            paddingTop: headerContent ? "100px" : "120px",
           }}
         >
           <ReactFlowProvider>

@@ -43,19 +43,32 @@ export const NodeEditorView: React.FC<NodeEditorViewProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onSave]);
 
-  // Use VS Code CSS variables for theme-aware colors
-  const colors = {
-    background: 'var(--vscode-editor-background)',
-    headerBg: 'var(--vscode-sideBar-background, var(--vscode-editor-background))',
-    border: 'var(--vscode-panel-border, var(--vscode-widget-border))',
-    text: 'var(--vscode-foreground)',
-    textMuted: 'var(--vscode-descriptionForeground)',
-    inputBg: 'var(--vscode-input-background)',
-    tabActive: 'var(--vscode-tab-activeBackground, var(--vscode-editor-background))',
-    tabInactive: 'var(--vscode-tab-inactiveBackground)',
-    tabHover: 'var(--vscode-tab-hoverBackground)',
-    accentColor: 'var(--vscode-focusBorder)',
-  };
+  // Use VS Code CSS variables for theme-aware colors, with fallbacks for webapp
+  const colors = isDarkTheme
+    ? {
+        background: 'var(--vscode-editor-background, #1e1e1e)',
+        headerBg: 'var(--vscode-sideBar-background, #252526)',
+        border: 'var(--vscode-panel-border, #3c3c3c)',
+        text: 'var(--vscode-foreground, #cccccc)',
+        textMuted: 'var(--vscode-descriptionForeground, #808080)',
+        inputBg: 'var(--vscode-input-background, #3c3c3c)',
+        tabActive: 'var(--vscode-tab-activeBackground, #1e1e1e)',
+        tabInactive: 'var(--vscode-tab-inactiveBackground, #2d2d2d)',
+        tabHover: 'var(--vscode-tab-hoverBackground, #383838)',
+        accentColor: 'var(--vscode-focusBorder, #007acc)',
+      }
+    : {
+        background: 'var(--vscode-editor-background, #ffffff)',
+        headerBg: 'var(--vscode-sideBar-background, #f3f3f3)',
+        border: 'var(--vscode-panel-border, #e0e0e0)',
+        text: 'var(--vscode-foreground, #333333)',
+        textMuted: 'var(--vscode-descriptionForeground, #666666)',
+        inputBg: 'var(--vscode-input-background, #ffffff)',
+        tabActive: 'var(--vscode-tab-activeBackground, #ffffff)',
+        tabInactive: 'var(--vscode-tab-inactiveBackground, #ececec)',
+        tabHover: 'var(--vscode-tab-hoverBackground, #e8e8e8)',
+        accentColor: 'var(--vscode-focusBorder, #007acc)',
+      };
 
   // Filter data based on search query
   const filterData = useCallback((data: any, query: string): any => {
@@ -115,7 +128,7 @@ export const NodeEditorView: React.FC<NodeEditorViewProps> = ({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100vh',
+        height: '100%',
         backgroundColor: colors.background,
         color: colors.text,
         fontFamily: "var(--vscode-font-family, 'Segoe UI', sans-serif)",

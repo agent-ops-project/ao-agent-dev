@@ -120,13 +120,14 @@ function App() {
       } else if (message.type === "openNodeEditorTab") {
         // Handle openNodeEditorTab by dispatching window event to show inline modal
         // This is sent by CustomNode when clicking "Edit input" or "Edit output"
-        const value = message.field === "input" ? message.inputValue : message.outputValue;
         window.dispatchEvent(new CustomEvent('show-node-edit-modal', {
           detail: {
             nodeId: message.nodeId,
+            sessionId: message.sessionId,
             field: message.field,
             label: message.label,
-            value: value,
+            inputValue: message.inputValue,
+            outputValue: message.outputValue,
           }
         }));
       } else if (message.type === "navigateToCode") {
